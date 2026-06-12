@@ -17,7 +17,7 @@ const firebaseConfig = {
 };
 
 // Inicializar Firebase
-const firebaseApp = initializeApp(firebaseConfig);
+export const firebaseApp = initializeApp(firebaseConfig);
 
 // Exportar instancias de los servicios para usarlas en la app
 export const db = getFirestore(firebaseApp);
