@@ -74,6 +74,7 @@ import { collection, doc, setDoc, updateDoc, Timestamp, query, where, getDocs } 
 import { initializeApp, deleteApp } from 'firebase/app';
 import { getAuth, createUserWithEmailAndPassword, sendPasswordResetEmail } from 'firebase/auth';
 import { useCollection } from 'vuefire';
+import { useRoute } from 'vue-router';
 import { db, firebaseApp } from '../firebase';
 import { useUsuarioStore } from '../stores/usuarioStore';
 import { useSessionStore } from '../stores/sessionStore';
@@ -82,6 +83,7 @@ import UserModal from '../components/UserModal.vue';
 
 const usuarioStore = useUsuarioStore();
 const sessionStore = useSessionStore();
+const route = useRoute();
 
 // Estado del Modal
 const isModalOpen = ref(false);
@@ -216,13 +218,23 @@ const handleDeleteUser = async (user: any) => {
   }
 };
 
-onMounted(() => {
+onMounted(async () => {
   // Inicia la escucha de la colección Firebase utilizando el contexto de seguridad del usuario actual
   if (sessionStore.currentUser) {
-    usuarioStore.listarUsuarios(
-      sessionStore.currentUser.system_role,
-      sessionStore.currentUser.empresa_id
-    );
+    let roleToFetch = sessionStore.currentUser.system_role;
+    let empresaIdToFetch = sessionStore.currentUser.empresa_id;
+
+    // Si es un super_admin navegando en el scope de una empresa específica, limitamos la vista a esa empresa
+    if (roleToFetch === 'super_admin' && route.params.companySlug) {
+      const qEmp = query(collection(db, 'empresas'), where('slug', '==', route.params.companySlug));
+      const snap = await getDocs(qEmp);
+      if (!snap.empty) {
+        roleToFetch = 'admin'; // Forzamos al store a comportarse como admin local
+        empresaIdToFetch = snap.docs[0].id;
+      }
+    }
+
+    usuarioStore.listarUsuarios(roleToFetch, empresaIdToFetch);
   }
 });
 </script>

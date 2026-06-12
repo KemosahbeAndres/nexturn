@@ -18,6 +18,7 @@
             <th class="p-4 font-medium">Empresa</th>
             <th class="p-4 font-medium">RUT</th>
             <th class="p-4 font-medium">Correo Principal</th>
+            <th class="p-4 font-medium">Slug</th>
             <th class="p-4 font-medium">Tipo</th>
             <th class="p-4 font-medium">Estado</th>
             <th class="p-4 font-medium">Acciones</th>
@@ -29,8 +30,9 @@
               {{ empresa.contacto?.first_name || 'Cargando...' }}
               <span class="block text-xs text-gray-500 font-normal">{{ empresa.contacto?.last_name }}</span>
             </td>
-          <td class="p-4 text-sm text-gray-600 dark:text-gray-300 font-mono">{{ empresa.contacto?.rut || 'N/A' }}</td>
-          <td class="p-4 text-sm text-gray-600 dark:text-gray-300">{{ empresa.contacto?.email || 'N/A' }}</td>
+            <td class="p-4 text-sm text-gray-600 dark:text-gray-300 font-mono">{{ empresa.contacto?.rut || 'N/A' }}</td>
+            <td class="p-4 text-sm text-gray-600 dark:text-gray-300">{{ empresa.contacto?.email || 'N/A' }}</td>
+            <td class="p-4 text-sm text-blue-600 dark:text-blue-400 font-mono">{{ empresa.slug || 'N/A' }}</td>
             <td class="p-4 text-sm text-gray-600 dark:text-gray-300 capitalize">{{ empresa.type }}</td>
             <td class="p-4 text-sm">
               <span :class="['px-2 py-1 text-xs font-semibold rounded-md', empresa.active ? 'bg-green-100 text-green-800 dark:bg-green-900/50 dark:text-green-300' : 'bg-red-100 text-red-800 dark:bg-red-900/50 dark:text-red-300']">
@@ -38,6 +40,9 @@
               </span>
             </td>
             <td class="p-4 text-sm flex gap-3">
+              <router-link v-if="sessionStore.currentUser?.system_role === 'super_admin' && empresa.slug" :to="{ name: 'empresa-dashboard', params: { companySlug: empresa.slug } }" class="text-green-600 hover:text-green-800 dark:text-green-400 dark:hover:text-green-300 font-medium transition-colors">
+                Ingresar
+              </router-link>
               <button @click="openModal('edit', empresa)" class="text-blue-600 hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-300 font-medium transition-colors">Editar</button>
               <button v-if="sessionStore.currentUser?.system_role === 'super_admin'" @click="handleDeleteCompany(empresa)" class="text-red-600 hover:text-red-800 dark:text-red-400 dark:hover:text-red-300 font-medium transition-colors">Desactivar</button>
             </td>
@@ -108,13 +113,17 @@ const handleSaveCompany = async (data: any) => {
         await setDoc(contactRef, newContacto);
       }
 
+      // Usamos el slug personalizado o generamos uno desde el nombre
+      const baseName = data.first_name || 'empresa';
+      const slug = data.slug || baseName.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)+/g, '');
+
       // Buscar si la empresa estaba borrada y revivirla, o crear nueva
       const qEmp = query(collection(db, 'empresas'), where('contact_id', '==', finalContactId));
       const empSnap = await getDocs(qEmp);
       if (!empSnap.empty) {
-        await empresaStore.updateEmpresa(empSnap.docs[0].id, { type: data.type, active: true, deletedAt: null });
+        await empresaStore.updateEmpresa(empSnap.docs[0].id, { type: data.type, active: true, deletedAt: null, slug });
       } else {
-        await empresaStore.createEmpresa({ active: true, contact_id: finalContactId, type: data.type, work_roles: [] });
+        await empresaStore.createEmpresa({ active: true, contact_id: finalContactId, type: data.type, work_roles: [], slug });
       }
     } else if (modalMode.value === 'edit' && selectedCompany.value) {
       if (selectedCompany.value.contact_id) {
@@ -123,7 +132,9 @@ const handleSaveCompany = async (data: any) => {
           rut: data.rut, email: data.email, phone: data.phone, address: data.address
         });
       }
-      await empresaStore.updateEmpresa(selectedCompany.value.id, { type: data.type });
+      const baseName = data.first_name || 'empresa';
+      const slug = data.slug || baseName.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)+/g, '');
+      await empresaStore.updateEmpresa(selectedCompany.value.id, { type: data.type, slug });
     }
     isModalOpen.value = false;
   } catch (error: any) {

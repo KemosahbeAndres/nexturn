@@ -54,6 +54,18 @@
             </div>
           </template>
 
+          <!-- Slug (URL amigable) -->
+          <div>
+            <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Slug (Identificador en la URL)</label>
+            <div class="flex rounded-lg shadow-sm">
+              <span class="inline-flex items-center px-3 rounded-l-lg border border-r-0 border-gray-300 bg-gray-50 text-gray-500 text-sm dark:bg-gray-600 dark:border-gray-500 dark:text-gray-300">
+                nexturn.com/
+              </span>
+              <input v-model="formData.slug" @input="isSlugCustomized = true" type="text" class="flex-1 min-w-0 block w-full px-3 py-2 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-none rounded-r-lg focus:outline-none focus:ring-2 focus:ring-blue-500 dark:text-white sm:text-sm" placeholder="mi-empresa">
+            </div>
+            <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">Solo letras minúsculas, números y guiones.</p>
+          </div>
+
           <!-- Campos Comunes a ambos modos -->
           <div class="grid grid-cols-2 gap-4">
             <div>
@@ -86,7 +98,8 @@ import { db } from '../firebase';
 const props = defineProps<{ isOpen: boolean; mode: 'create' | 'edit'; initialData?: any; }>();
 const emit = defineEmits(['close', 'save']);
 
-const formData = ref({ rut: '', email: '', first_name: '', last_name: '', phone: '', address: '', type: 'empresa' });
+const isSlugCustomized = ref(false);
+const formData = ref({ rut: '', email: '', first_name: '', last_name: '', slug: '', phone: '', address: '', type: 'empresa' });
 
 watch(() => props.isOpen, (newVal) => {
   if (newVal) {
@@ -94,11 +107,14 @@ watch(() => props.isOpen, (newVal) => {
       formData.value = {
         rut: props.initialData.contacto?.rut || '', email: props.initialData.contacto?.email || '',
         first_name: props.initialData.contacto?.first_name || '', last_name: props.initialData.contacto?.last_name || '',
+        slug: props.initialData.slug || '',
         phone: props.initialData.contacto?.phone || '', address: props.initialData.contacto?.address || '',
         type: props.initialData.type || 'empresa'
       };
+      isSlugCustomized.value = !!props.initialData.slug;
     } else {
-      formData.value = { rut: '', email: '', first_name: '', last_name: '', phone: '', address: '', type: 'empresa' };
+      formData.value = { rut: '', email: '', first_name: '', last_name: '', slug: '', phone: '', address: '', type: 'empresa' };
+      isSlugCustomized.value = false;
     }
   }
 });
@@ -108,6 +124,24 @@ watch(() => formData.value.type, (newType) => {
     formData.value.rut = '';
     formData.value.email = '';
     formData.value.last_name = '';
+  }
+});
+
+// Generar el slug automáticamente si el usuario no lo ha tocado manualmente
+watch(() => formData.value.first_name, (newName) => {
+  if (!isSlugCustomized.value && newName) {
+    formData.value.slug = newName
+      .toLowerCase()
+      .normalize("NFD").replace(/[\u0300-\u036f]/g, "") // Remueve tildes
+      .replace(/[^a-z0-9]+/g, '-') // Reemplaza espacios y símbolos por guiones
+      .replace(/(^-|-$)+/g, ''); // Quita guiones iniciales o finales
+  }
+});
+
+// Formatear el slug si el usuario lo edita a mano (previene espacios o mayúsculas en tiempo real)
+watch(() => formData.value.slug, (newSlug) => {
+  if (isSlugCustomized.value && newSlug) {
+    formData.value.slug = newSlug.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-z0-9\-]+/g, '-');
   }
 });
 
@@ -131,5 +165,8 @@ const searchExisting = async () => {
   } catch (error) { console.error(error); }
 };
 
-const handleSave = () => emit('save', { ...formData.value });
+const handleSave = () => {
+  formData.value.slug = formData.value.slug.replace(/(^-|-$)+/g, ''); // Limpieza final de guiones colgados
+  emit('save', { ...formData.value });
+};
 </script>
