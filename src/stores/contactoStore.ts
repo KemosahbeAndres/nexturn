@@ -1,7 +1,7 @@
 import { defineStore } from 'pinia';
 import { useCollection } from 'vuefire';
 import { collection, doc, setDoc, updateDoc, query, where, Timestamp } from 'firebase/firestore';
-import { db } from '@/firebase'; // Ajusta a la ruta de tu instancia
+import { db } from '../firebase'; // Ajusta a la ruta de tu instancia
 import { Contacto, contactoConverter } from '../models/Contacto';
 
 export const useContactoStore = defineStore('contacto', () => {

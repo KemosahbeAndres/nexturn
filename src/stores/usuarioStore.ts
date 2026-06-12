@@ -1,8 +1,8 @@
 import { defineStore } from 'pinia';
 import { useCollection } from 'vuefire';
-import { collection, doc, setDoc, updateDoc, query, where, Timestamp, getDoc } from 'firebase/firestore';
+import { collection, doc, setDoc, updateDoc, query, where, Timestamp } from 'firebase/firestore';
 import { ref, computed } from 'vue';
-import { db } from '@/firebase'; // Ajusta esto a la ruta real de tu instancia de Firebase
+import { db } from '../firebase'; // Ajusta esto a la ruta real de tu instancia de Firebase
 import { Usuario, usuarioConverter } from '../models/Usuario';
 
 export const useUsuarioStore = defineStore('usuario', () => {

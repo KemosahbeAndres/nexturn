@@ -89,8 +89,7 @@
 <script setup lang="ts">
 import { ref } from 'vue';
 import { useRouter, useRoute } from 'vue-router';
-import { IonPage, IonRouterOutlet } from '@ionic/vue';
-import { useSessionStore } from '@/stores/sessionStore';
+import { useSessionStore } from '../stores/sessionStore';
 
 const isMobileMenuOpen = ref(false);
 const sessionStore = useSessionStore();
