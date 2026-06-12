@@ -52,7 +52,8 @@ export const useEmpresaStore = defineStore('empresa', () => {
       data.active,
       data.contact_id,
       data.type,
-      data.work_roles
+      data.work_roles,
+      data.slug
     );
     
     await setDoc(docRef, newEmpresa);

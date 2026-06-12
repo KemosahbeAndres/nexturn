@@ -11,6 +11,7 @@ export class Empresa {
     public contact_id: string,
     public type: string,
     public work_roles: string[],
+    public slug: string,
     public createdAt: Date = new Date(),
     public updatedAt: Date = new Date(),
     public deletedAt: Date | null = null
@@ -24,6 +25,7 @@ export const empresaConverter: FirestoreDataConverter<Empresa> = {
       contact_id: empresa.contact_id,
       type: empresa.type,
       work_roles: empresa.work_roles,
+      slug: empresa.slug,
       createdAt: empresa.createdAt ? Timestamp.fromDate(empresa.createdAt) : Timestamp.now(),
       updatedAt: Timestamp.now(), // Siempre refresca el updatedAt al guardar
       deletedAt: empresa.deletedAt ? Timestamp.fromDate(empresa.deletedAt) : null,
@@ -37,6 +39,7 @@ export const empresaConverter: FirestoreDataConverter<Empresa> = {
       data.contact_id,
       data.type,
       data.work_roles || [],
+      data.slug || '',
       data.createdAt?.toDate() || new Date(),
       data.updatedAt?.toDate() || new Date(),
       data.deletedAt?.toDate() || null
