@@ -2,7 +2,7 @@
   <main class="min-h-screen flex items-center justify-center bg-gray-100 dark:bg-gray-900 p-4 relative transition-colors duration-300">
         
         <!-- Botón de Modo Oscuro / Claro -->
-        <button type="button" @click="sessionStore.toggleTheme()" class="btn-theme-toggle fixed top-6 right-6 z-[999]">
+        <button type="button" @click="sessionStore.toggleTheme()" class="fixed top-6 right-6 z-[999] p-3 rounded-full bg-gray-200 dark:bg-gray-700 text-gray-800 dark:text-gray-200 hover:bg-gray-300 dark:hover:bg-gray-600 transition-colors shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
           <!-- Icono Sol -->
           <svg v-if="!sessionStore.isDarkMode" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-6 h-6">
             <path stroke-linecap="round" stroke-linejoin="round" d="M12 3v2.25m6.364.386l-1.591 1.591M21 12h-2.25m-.386 6.364l-1.591-1.591M12 18.75V21m-4.773-4.227l-1.591 1.591M5.25 12H3m4.227-4.773L5.636 5.636M15.75 12a3.75 3.75 0 11-7.5 0 3.75 3.75 0 017.5 0z" />
@@ -51,7 +51,7 @@
             </div>
           </div>
             
-          <button @click="handleSetup" :disabled="loading" class="btn-primary mt-6">
+          <button @click="handleSetup" :disabled="loading" class="w-full py-3 px-4 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-lg shadow-md transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed mt-6">
             {{ loading ? 'Creando Usuario...' : 'Crear y Entrar' }}
           </button>
           
@@ -81,7 +81,7 @@
             </div>
           </div>
           
-          <button @click="handleLogin" :disabled="loading" class="btn-primary mt-6">
+          <button @click="handleLogin" :disabled="loading" class="w-full py-3 px-4 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-lg shadow-md transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed mt-6">
             {{ loading ? 'Iniciando...' : 'Iniciar Sesión' }}
           </button>
           
