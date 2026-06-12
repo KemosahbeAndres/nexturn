@@ -49,6 +49,8 @@ export const useUsuarioStore = defineStore('usuario', () => {
           const contactSnap = await getDoc(contactoRef);
           if (contactSnap.exists()) {
             user.contacto = contactSnap.data();
+          } else {
+            user.contacto = { first_name: 'Desconocido', last_name: '' } as any;
           }
         } catch (error) {
           console.error('Error hidratando contacto para el usuario:', user.id, error);
@@ -62,13 +64,15 @@ export const useUsuarioStore = defineStore('usuario', () => {
           const empresaSnap = await getDoc(empresaRef);
           if (empresaSnap.exists()) {
             user.empresa = empresaSnap.data();
+          } else {
+            user.empresa = { nombre: 'Global / No asignada' } as any;
           }
         } catch (error) {
           console.error('Error hidratando empresa para el usuario:', user.id, error);
         }
       }
     }
-  });
+  }, { deep: true });
 
   // CREATE
   async function createUsuario(data: Omit<Usuario, 'id' | 'createdAt' | 'updatedAt' | 'deletedAt'>) {
@@ -101,7 +105,6 @@ export const useUsuarioStore = defineStore('usuario', () => {
       docRef.id,
       data.empresa_id,
       data.contact_id,
-      data.password, 
       data.system_role
     );
     
@@ -110,8 +113,8 @@ export const useUsuarioStore = defineStore('usuario', () => {
   }
 
   // UPDATE
-  async function updateUsuario(id: string, updateData: Partial<Omit<Usuario, 'id' | 'createdAt' | 'deletedAt'>>) {
-    const docRef = doc(usuariosRef, id);
+  async function updateUsuario(id: string, updateData: Partial<Omit<Usuario, 'id' | 'createdAt'>>) {
+    const docRef = doc(db, 'usuarios', id);
     await updateDoc(docRef, {
       ...updateData,
       updatedAt: Timestamp.now()
@@ -120,7 +123,7 @@ export const useUsuarioStore = defineStore('usuario', () => {
 
   // SOFT DELETE (Borrado Lógico)
   async function softDeleteUsuario(id: string) {
-    const docRef = doc(usuariosRef, id);
+    const docRef = doc(db, 'usuarios', id);
     await updateDoc(docRef, {
       deletedAt: Timestamp.now()
     });
