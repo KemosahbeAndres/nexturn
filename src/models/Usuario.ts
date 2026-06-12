@@ -1,4 +1,5 @@
-import { DocumentData, FirestoreDataConverter, QueryDocumentSnapshot, SnapshotOptions, Timestamp } from 'firebase/firestore';
+import { Timestamp } from 'firebase/firestore';
+import type { DocumentData, FirestoreDataConverter, QueryDocumentSnapshot, SnapshotOptions } from 'firebase/firestore';
 import { Contacto } from './Contacto';
 import { Empresa } from './Empresa';
 

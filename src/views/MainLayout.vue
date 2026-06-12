@@ -1,5 +1,5 @@
 <template>
-  <ion-page>
+  <section>
     <div class="flex h-screen w-full overflow-hidden bg-gray-100 dark:bg-gray-900 transition-colors duration-300">
       
       <!-- Overlay Menu Móvil -->
@@ -77,13 +77,13 @@
           </button>
         </header>
 
-        <!-- Contenido Dinámico: Router Outlet de Ionic -->
+        <!-- Contenido Dinámico: Router Outlet -->
         <main class="flex-1 relative overflow-hidden bg-gray-100 dark:bg-gray-900 transition-colors duration-300">
-          <ion-router-outlet></ion-router-outlet>
+          
         </main>
       </div>
     </div>
-  </ion-page>
+  </section>
 </template>
 
 <script setup lang="ts">

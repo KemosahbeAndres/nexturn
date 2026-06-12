@@ -24,9 +24,9 @@ export const useSessionStore = defineStore('session', () => {
   watch(() => preferences.value.theme, (newTheme) => {
     localStorage.setItem('theme_preference', newTheme);
     if (newTheme === 'dark') {
-      document.documentElement.classList.add('dark', 'ion-palette-dark');
+      document.documentElement.classList.add('dark');
     } else {
-      document.documentElement.classList.remove('dark', 'ion-palette-dark');
+      document.documentElement.classList.remove('dark');
     }
   }, { immediate: true });
 
