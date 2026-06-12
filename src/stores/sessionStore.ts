@@ -1,7 +1,7 @@
 import { defineStore } from 'pinia';
 import { ref, computed, watch } from 'vue';
 import { collection, doc, setDoc, getDocs, getDoc, deleteDoc, updateDoc, query, where, Timestamp, limit } from 'firebase/firestore';
-import { signInWithEmailAndPassword, signOut } from 'firebase/auth';
+import { signInWithEmailAndPassword, signOut, createUserWithEmailAndPassword } from 'firebase/auth';
 import { db, auth } from '../firebase'; // Asegúrate de exportar 'auth' desde la config de tu proyecto
 import { Usuario, usuarioConverter } from '../models/Usuario';
 import { empresaConverter } from '../models/Empresa';
@@ -51,7 +51,7 @@ export const useSessionStore = defineStore('session', () => {
     }
 
     // 1. Crear el usuario en la autenticación de Firebase
-    //const userCredential = await createUserWithEmailAndPassword(auth, userData.email, userData.password);
+    await createUserWithEmailAndPassword(auth, userData.email, userData.password);
 
     // 2. Crear el Contacto asociado
     const contactosRef = collection(db, 'contactos').withConverter(contactoConverter);
@@ -69,7 +69,6 @@ export const useSessionStore = defineStore('session', () => {
       newUsuarioRef.id,
       null, // empresa_id (super_admin no pertenece a una empresa)
       newContactoRef.id,
-      userData.password, // Aunque está cifrada en Auth, el requerimiento actual lo pide en modelo
       'super_admin'
     );
     await setDoc(newUsuarioRef, newUsuario);
