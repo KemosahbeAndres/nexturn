@@ -30,7 +30,7 @@
             <td class="p-4 text-sm text-gray-900 dark:text-white font-medium">{{ user.contacto?.first_name || 'Cargando...' }} {{ user.contacto?.last_name || '' }}</td>
             <td class="p-4 text-sm text-gray-600 dark:text-gray-300 font-mono">{{ user.contacto?.rut || '...' }}</td>
             <td class="p-4 text-sm text-gray-600 dark:text-gray-300">{{ user.contacto?.email || '...' }}</td>
-            <td class="p-4 text-sm text-gray-600 dark:text-gray-300 font-medium">{{ user.empresa?.nombre || (user.empresa_id ? 'Cargando...' : 'N/A') }}</td>
+            <td class="p-4 text-sm text-gray-600 dark:text-gray-300 font-medium">{{ getCompanyName(user.empresa_id) }}</td>
             <td class="p-4 text-sm text-gray-600 dark:text-gray-300 capitalize">
               <span class="inline-block px-2.5 py-1 bg-blue-100 text-blue-800 dark:bg-blue-900/50 dark:text-blue-300 text-xs font-semibold rounded-md">
                 {{ user.system_role.replace('_', ' ') }}
@@ -60,7 +60,7 @@
     <UserModal
       :is-open="isModalOpen"
       :mode="modalMode"
-      :empresas="empresas"
+      :empresas="empresaStore.empresas"
       :initial-data="selectedUser"
       @close="isModalOpen = false"
       @save="handleSaveUser"
@@ -73,25 +73,33 @@ import { ref, onMounted } from 'vue';
 import { collection, doc, setDoc, updateDoc, Timestamp, query, where, getDocs } from 'firebase/firestore';
 import { initializeApp, deleteApp } from 'firebase/app';
 import { getAuth, createUserWithEmailAndPassword, sendPasswordResetEmail } from 'firebase/auth';
-import { useCollection } from 'vuefire';
 import { useRoute } from 'vue-router';
 import { db, firebaseApp } from '../firebase';
 import { useUsuarioStore } from '../stores/usuarioStore';
 import { useSessionStore } from '../stores/sessionStore';
+import { useEmpresaStore } from '../stores/empresaStore';
 import { Contacto, contactoConverter } from '../models/Contacto';
 import UserModal from '../components/UserModal.vue';
 
 const usuarioStore = useUsuarioStore();
 const sessionStore = useSessionStore();
 const route = useRoute();
+const empresaStore = useEmpresaStore();
 
 // Estado del Modal
 const isModalOpen = ref(false);
 const modalMode = ref<'create' | 'edit'>('create');
 const selectedUser = ref<any>(null);
 
-// Colección de empresas para llenar el "Select" del Modal
-const empresas = useCollection(collection(db, 'empresas'));
+// Helper para buscar reactivamente el nombre hidratado de la empresa
+const getCompanyName = (empresaId: string | null) => {
+  if (!empresaId) return 'N/A';
+  const empresa = empresaStore.empresas?.find((e: any) => e.id === empresaId);
+  if (empresa) {
+    return empresa.contacto?.first_name || empresa.slug || 'Cargando...';
+  }
+  return 'Cargando...';
+};
 
 const openModal = (mode: 'create' | 'edit', user: any = null) => {
   modalMode.value = mode;
@@ -235,6 +243,7 @@ onMounted(async () => {
     }
 
     usuarioStore.listarUsuarios(roleToFetch, empresaIdToFetch);
+    empresaStore.listarEmpresas(roleToFetch, empresaIdToFetch);
   }
 });
 </script>

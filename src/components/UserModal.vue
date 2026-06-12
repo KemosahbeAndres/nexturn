@@ -45,7 +45,7 @@
         <div>
           <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Rol en el Sistema</label>
           <select v-model="formData.system_role" class="w-full px-3 py-2 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 dark:text-white">
-            <option value="super_admin">Super Administrador (Global)</option>
+            <option value="super_admin" v-if="sessionStore.userRole === 'super_admin' && !sessionStore.activeCompanyId">Super Administrador (Global)</option>
             <option value="admin">Administrador de Empresa</option>
             <option value="user">Usuario (Gestión de Personal/Turnos)</option>
             <option value="visitor">Visitante (Solo lectura)</option>
@@ -54,13 +54,14 @@
 
         <div>
           <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Empresa a la que pertenece</label>
-          <select v-model="formData.empresa_id" :required="formData.system_role !== 'super_admin'" :disabled="formData.system_role === 'super_admin'" class="w-full px-3 py-2 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-50 dark:text-white">
+          <select v-model="formData.empresa_id" :required="formData.system_role !== 'super_admin'" :disabled="formData.system_role === 'super_admin' || !!sessionStore.activeCompanyId" class="w-full px-3 py-2 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-50 dark:text-white">
             <option value="">-- Seleccionar Empresa --</option>
             <option v-for="empresa in empresas" :key="empresa.id" :value="empresa.id">
-              {{ empresa.nombre || 'Empresa sin nombre' }}
+              {{ empresa.contacto?.first_name || empresa.nombre || 'Empresa sin nombre' }}
             </option>
           </select>
           <p v-if="formData.system_role === 'super_admin'" class="text-xs text-blue-500 mt-1">Los Super Administradores no están vinculados a una empresa específica.</p>
+          <p v-else-if="sessionStore.activeCompanyId" class="text-xs text-blue-500 mt-1">El usuario será asignado a la empresa actual.</p>
         </div>
       </div>
 
@@ -83,6 +84,7 @@
 import { ref, watch } from 'vue';
 import { collection, query, where, getDocs } from 'firebase/firestore';
 import { db } from '../firebase';
+import { useSessionStore } from '../stores/sessionStore';
 
 const props = defineProps<{
   isOpen: boolean;
@@ -92,6 +94,7 @@ const props = defineProps<{
 }>();
 
 const emit = defineEmits(['close', 'save']);
+const sessionStore = useSessionStore();
 
 const formData = ref({
   first_name: '', last_name: '', rut: '', email: '', password: '', empresa_id: '', system_role: 'user'
@@ -107,7 +110,7 @@ watch(() => props.isOpen, (newVal) => {
         empresa_id: props.initialData.empresa_id || '', system_role: props.initialData.system_role || 'user'
       };
     } else {
-      formData.value = { first_name: '', last_name: '', rut: '', email: '', password: '', empresa_id: '', system_role: 'user' };
+      formData.value = { first_name: '', last_name: '', rut: '', email: '', password: '', empresa_id: sessionStore.activeCompanyId || '', system_role: 'user' };
     }
   }
 });

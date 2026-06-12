@@ -12,6 +12,7 @@ export const useSessionStore = defineStore('session', () => {
   // 1. STATE (Datos Reactivos)
   const currentUser = ref<Usuario | null>(null);
   const currentSession = ref<Sesion | null>(null);
+  const activeCompanyId = ref<string | null>(null); // Contexto de la empresa en la que navegamos
   
   // Preferencias personales del usuario persistidas en el estado local
   const preferences = ref({ 
@@ -133,6 +134,7 @@ export const useSessionStore = defineStore('session', () => {
     }
     
     currentUser.value = usuarioData;
+    activeCompanyId.value = usuarioData.empresa_id || null;
 
     // 3.4.1. Cargar preferencias del usuario si existen
     if (usuarioData.preferences) {
@@ -173,6 +175,7 @@ export const useSessionStore = defineStore('session', () => {
     // Resetear el estado local
     currentUser.value = null;
     currentSession.value = null;
+    activeCompanyId.value = null;
 
     // Limpiamos el Local Storage
     localStorage.removeItem('session_token');
@@ -253,6 +256,7 @@ export const useSessionStore = defineStore('session', () => {
       // 5. Rehidratar estado en memoria
       currentUser.value = usuarioData;
       currentSession.value = sessionData;
+      activeCompanyId.value = usuarioData.empresa_id || null;
 
       // Cargar preferencias del usuario si existen
       if (usuarioData.preferences) {
@@ -271,6 +275,7 @@ export const useSessionStore = defineStore('session', () => {
   return { 
     currentUser, 
     currentSession, 
+    activeCompanyId,
     preferences, 
     isAuthenticated, 
     userRole, 

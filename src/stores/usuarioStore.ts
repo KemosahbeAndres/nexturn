@@ -56,21 +56,6 @@ export const useUsuarioStore = defineStore('usuario', () => {
           console.error('Error hidratando contacto para el usuario:', user.id, error);
         }
       }
-
-      // Hidratar la información de la empresa
-      if (!user.empresa && user.empresa_id) {
-        try {
-          const empresaRef = doc(db, 'empresas', user.empresa_id).withConverter(empresaConverter);
-          const empresaSnap = await getDoc(empresaRef);
-          if (empresaSnap.exists()) {
-            user.empresa = empresaSnap.data();
-          } else {
-            user.empresa = { nombre: 'Global / No asignada' } as any;
-          }
-        } catch (error) {
-          console.error('Error hidratando empresa para el usuario:', user.id, error);
-        }
-      }
     }
   }, { deep: true });
 

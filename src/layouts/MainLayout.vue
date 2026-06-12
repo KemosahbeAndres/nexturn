@@ -56,12 +56,18 @@
 </template>
 
 <script setup lang="ts">
+import { onMounted } from 'vue';
 import { useRouter, useRoute } from 'vue-router';
 import { useSessionStore } from '../stores/sessionStore';
 
 const sessionStore = useSessionStore();
 const router = useRouter();
 const route = useRoute();
+
+onMounted(() => {
+  // Limpiar el contexto local si el super_admin regresa a la vista de administración global
+  sessionStore.activeCompanyId = null;
+});
 
 const handleLogout = async () => {
   try {
