@@ -1,9 +1,11 @@
 import { defineStore } from 'pinia';
 import { useCollection } from 'vuefire';
-import { collection, doc, setDoc, updateDoc, query, where, Timestamp } from 'firebase/firestore';
-import { ref, computed } from 'vue';
+import { collection, doc, setDoc, updateDoc, query, where, Timestamp, getDoc } from 'firebase/firestore';
+import { ref, computed, watch } from 'vue';
 import { db } from '../firebase'; // Ajusta esto a la ruta real de tu instancia de Firebase
 import { Usuario, usuarioConverter } from '../models/Usuario';
+import { contactoConverter } from '../models/Contacto';
+import { empresaConverter } from '../models/Empresa';
 
 export const useUsuarioStore = defineStore('usuario', () => {
   // 1. Ref con converter nativo
@@ -36,6 +38,37 @@ export const useUsuarioStore = defineStore('usuario', () => {
 
   // 5. Estado local Reactivo manejado directamente por VueFire
   const usuarios = useCollection(usuariosQuery);
+
+  // 6. Hidratar la información de contacto automáticamente
+  watch(usuarios, async (newUsers) => {
+    if (!newUsers) return;
+    for (const user of newUsers) {
+      if (!user.contacto && user.contact_id) {
+        try {
+          const contactoRef = doc(db, 'contactos', user.contact_id).withConverter(contactoConverter);
+          const contactSnap = await getDoc(contactoRef);
+          if (contactSnap.exists()) {
+            user.contacto = contactSnap.data();
+          }
+        } catch (error) {
+          console.error('Error hidratando contacto para el usuario:', user.id, error);
+        }
+      }
+
+      // Hidratar la información de la empresa
+      if (!user.empresa && user.empresa_id) {
+        try {
+          const empresaRef = doc(db, 'empresas', user.empresa_id).withConverter(empresaConverter);
+          const empresaSnap = await getDoc(empresaRef);
+          if (empresaSnap.exists()) {
+            user.empresa = empresaSnap.data();
+          }
+        } catch (error) {
+          console.error('Error hidratando empresa para el usuario:', user.id, error);
+        }
+      }
+    }
+  });
 
   // CREATE
   async function createUsuario(data: Omit<Usuario, 'id' | 'createdAt' | 'updatedAt' | 'deletedAt'>) {
