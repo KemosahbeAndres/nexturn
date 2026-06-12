@@ -24,6 +24,7 @@
       <nav class="flex-1 p-4 space-y-2 overflow-y-auto">
         <router-link to="/dashboard" class="block p-3 rounded-lg text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors" active-class="bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400 font-medium">Dashboard</router-link>
         <router-link to="/usuarios" class="block p-3 rounded-lg text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors" active-class="bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400 font-medium">Usuarios</router-link>
+        <router-link to="/empresas" class="block p-3 rounded-lg text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors" active-class="bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400 font-medium">Empresas</router-link>
       </nav>
 
       <!-- Sección Inferior: Acciones Finales -->

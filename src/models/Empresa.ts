@@ -1,6 +1,10 @@
-import { DocumentData, QueryDocumentSnapshot, SnapshotOptions, Timestamp } from 'firebase/firestore';
+import { Timestamp } from 'firebase/firestore';
+import type { DocumentData, FirestoreDataConverter, QueryDocumentSnapshot, SnapshotOptions } from 'firebase/firestore';
+import { Contacto } from './Contacto';
 
 export class Empresa {
+  public contacto?: Contacto;
+
   constructor(
     public id: string,
     public active: boolean,
@@ -13,7 +17,7 @@ export class Empresa {
   ) {}
 }
 
-export const empresaConverter = {
+export const empresaConverter: FirestoreDataConverter<Empresa> = {
   toFirestore(empresa: Empresa): DocumentData {
     return {
       active: empresa.active,
@@ -25,7 +29,7 @@ export const empresaConverter = {
       deletedAt: empresa.deletedAt ? Timestamp.fromDate(empresa.deletedAt) : null,
     };
   },
-  fromFirestore(snapshot: QueryDocumentSnapshot, options: SnapshotOptions): Empresa {
+  fromFirestore(snapshot: QueryDocumentSnapshot, options?: SnapshotOptions): Empresa {
     const data = snapshot.data(options)!;
     return new Empresa(
       snapshot.id,
