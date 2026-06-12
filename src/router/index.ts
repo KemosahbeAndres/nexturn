@@ -30,6 +30,12 @@ const router = createRouter({
           name: 'usuarios',
           meta: { title: 'Usuarios' },
           component: () => import('../views/UsersView.vue')
+        },
+        {
+          path: 'empresas',
+          name: 'empresas',
+          meta: { title: 'Empresas y Clientes' },
+          component: () => import('../views/CompaniesView.vue')
         }
       ]
     }
