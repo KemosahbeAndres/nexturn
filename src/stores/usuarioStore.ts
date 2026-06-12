@@ -5,7 +5,7 @@ import { ref, computed, watch } from 'vue';
 import { db } from '../firebase'; // Ajusta esto a la ruta real de tu instancia de Firebase
 import { Usuario, usuarioConverter } from '../models/Usuario';
 import { contactoConverter } from '../models/Contacto';
-import { empresaConverter } from '../models/Empresa';
+//import { empresaConverter } from '../models/Empresa';
 
 export const useUsuarioStore = defineStore('usuario', () => {
   // 1. Ref con converter nativo

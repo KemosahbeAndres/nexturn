@@ -121,7 +121,7 @@ const handleSaveUser = async (data: any) => {
 
       if (!rutSnap.empty) {
         const existingContactDoc = rutSnap.docs[0];
-        const existingContact = existingContactDoc.data();
+        //const existingContact = existingContactDoc.data();
 
         // Si existe (activo o borrado), actualizamos su info básica y aseguramos que no esté borrado
         finalContactId = existingContactDoc.id;
