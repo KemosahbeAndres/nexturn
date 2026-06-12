@@ -85,7 +85,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted } from 'vue';
+import { computed, onMounted, watchEffect } from 'vue';
 import { useRouter, useRoute } from 'vue-router';
 import { useSessionStore } from '../stores/sessionStore';
 import { useEmpresaStore } from '../stores/empresaStore';
@@ -106,17 +106,34 @@ const menuItems = [
 
 const activeCompany = computed(() => {
   if (sessionStore.userRole !== 'super_admin') {
-    return sessionStore.currentUser?.empresa?.nombre || sessionStore.currentUser?.contacto?.first_name || 'Cargando empresa...';
+    const emp = empresaStore.empresas?.find((e: any) => e.id === sessionStore.currentUser?.empresa_id);
+    return emp?.contacto?.first_name || emp?.slug || 'Cargando empresa...';
   }
   const slug = route.params.companySlug;
   const emp = empresaStore.empresas?.find((e: any) => e.slug === slug);
   return emp?.contacto?.first_name || slug;
 });
 
+// Mantener sincronizada la empresa activa en la sesión global
+watchEffect(() => {
+  if (sessionStore.userRole !== 'super_admin') {
+    sessionStore.activeCompanyId = sessionStore.currentUser?.empresa_id || null;
+  } else {
+    const slug = route.params.companySlug;
+    if (slug && empresaStore.empresas) {
+      const emp = empresaStore.empresas.find((e: any) => e.slug === slug);
+      sessionStore.activeCompanyId = emp ? emp.id : null;
+    }
+  }
+});
+
 onMounted(() => {
-  // Si un super_admin recarga la página dentro de una empresa, necesitamos cargar la lista de empresas para obtener su nombre real
-  if (sessionStore.userRole === 'super_admin' && (!empresaStore.empresas || empresaStore.empresas.length === 0)) {
-    empresaStore.listarEmpresas('super_admin', null);
+  // Aseguramos que el catálogo base de empresas esté cargado para proveer nombres al layout y las vistas
+  if (!empresaStore.empresas || empresaStore.empresas.length === 0) {
+    empresaStore.listarEmpresas(
+      sessionStore.userRole,
+      sessionStore.userRole === 'super_admin' ? null : sessionStore.currentUser?.empresa_id
+    );
   }
 });
 
