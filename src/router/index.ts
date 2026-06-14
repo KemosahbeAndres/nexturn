@@ -38,10 +38,10 @@ const router = createRouter({
           component: () => import('../views/CompaniesView.vue')
         },
         {
-          path: 'ajustes',
-          name: 'admin-ajustes',
-          meta: { title: 'Ajustes' },
-          component: () => import('../views/AjustesView.vue')
+          path: 'perfil',
+          name: 'admin-perfil',
+          meta: { title: 'Mi perfil' },
+          component: () => import('../views/PerfilView.vue')
         }
       ]
     },
@@ -70,7 +70,7 @@ const router = createRouter({
         { path: 'sucursales', name: 'empresa-sucursales', component: () => import('../views/SucursalesView.vue') },
         { path: 'turnos', name: 'empresa-turnos', component: () => import('../views/TurnosView.vue') },
         { path: 'calendario', name: 'empresa-calendario', component: () => import('../views/CalendarioView.vue') },
-        { path: 'ajustes', name: 'empresa-ajustes', meta: { title: 'Ajustes' }, component: () => import('../views/AjustesView.vue') }
+        { path: 'perfil', name: 'empresa-perfil', meta: { title: 'Mi perfil' }, component: () => import('../views/PerfilView.vue') }
       ]
     }
   ]

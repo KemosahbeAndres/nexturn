@@ -5,18 +5,41 @@
     <div class="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700 p-4 sm:p-6 transition-colors duration-300">
       <div class="flex flex-col sm:flex-row gap-3">
 
-        <!-- Select empresa / rol (modo multi) -->
-        <select
-          v-if="mode === 'multi'"
-          v-model="selectedFilter"
-          class="flex-1 px-3 py-2 text-sm bg-gray-50 dark:bg-gray-700 border border-gray-200 dark:border-gray-600 text-gray-900 dark:text-white rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 transition-colors"
-        >
-          <option value="">Todas las empresas</option>
-          <option value="__super_admin__">Solo Super Admins</option>
-          <option v-for="empresa in empresas" :key="empresa.id" :value="empresa.id">
-            {{ empresa.contacto?.first_name || empresa.slug || empresa.id }}
-          </option>
-        </select>
+        <!-- Select custom empresa / rol (modo multi) -->
+        <div v-if="mode === 'multi'" class="relative flex-1" ref="selectRef">
+          <button
+            type="button"
+            @click.stop="selectOpen = !selectOpen"
+            class="w-full flex items-center justify-between px-3 py-2 text-sm bg-gray-50 dark:bg-gray-700 border border-gray-200 dark:border-gray-600 text-gray-900 dark:text-white rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 transition-colors text-left"
+          >
+            <span class="truncate">{{ selectedFilterLabel }}</span>
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" class="w-4 h-4 shrink-0 ml-2 text-gray-400 transition-transform duration-150" :class="selectOpen ? 'rotate-180' : ''">
+              <path fill-rule="evenodd" d="M5.22 8.22a.75.75 0 0 1 1.06 0L10 11.94l3.72-3.72a.75.75 0 1 1 1.06 1.06l-4.25 4.25a.75.75 0 0 1-1.06 0L5.22 9.28a.75.75 0 0 1 0-1.06Z" clip-rule="evenodd" />
+            </svg>
+          </button>
+          <div
+            v-if="selectOpen"
+            class="absolute left-0 top-full mt-1 z-30 w-full min-w-[180px] bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-600 rounded-lg shadow-lg py-1 max-h-60 overflow-y-auto"
+          >
+            <button type="button" @click="selectedFilter = ''; selectOpen = false"
+              class="w-full flex items-center px-3 py-2 text-sm text-left hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
+              :class="selectedFilter === '' ? 'text-blue-600 dark:text-blue-400 font-medium' : 'text-gray-700 dark:text-gray-200'"
+            >Todas las empresas</button>
+            <button type="button" @click="selectedFilter = '__super_admin__'; selectOpen = false"
+              class="w-full flex items-center px-3 py-2 text-sm text-left hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
+              :class="selectedFilter === '__super_admin__' ? 'text-blue-600 dark:text-blue-400 font-medium' : 'text-gray-700 dark:text-gray-200'"
+            >Solo Super Admins</button>
+            <div class="my-1 border-t border-gray-100 dark:border-gray-700"></div>
+            <button
+              v-for="empresa in empresas"
+              :key="empresa.id"
+              type="button"
+              @click="selectedFilter = empresa.id; selectOpen = false"
+              class="w-full flex items-center px-3 py-2 text-sm text-left hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
+              :class="selectedFilter === empresa.id ? 'text-blue-600 dark:text-blue-400 font-medium' : 'text-gray-700 dark:text-gray-200'"
+            >{{ empresa.contacto?.first_name || empresa.slug || empresa.id }}</button>
+          </div>
+        </div>
 
         <!-- Búsqueda libre -->
         <div class="relative flex-[2]">
@@ -206,9 +229,20 @@ defineEmits<{
   'delete-user': [user: Usuario]
 }>();
 
+// ---- Select custom ----
+const selectOpen = ref(false);
+const selectRef = ref<HTMLElement | null>(null);
+
 // ---- Filtros ----
 const selectedFilter = ref('');  // '' = todas | '__super_admin__' | empresa.id
 const searchText = ref('');
+
+const selectedFilterLabel = computed(() => {
+  if (selectedFilter.value === '') return 'Todas las empresas';
+  if (selectedFilter.value === '__super_admin__') return 'Solo Super Admins';
+  const emp = props.empresas?.find((e) => e.id === selectedFilter.value);
+  return emp?.contacto?.first_name || emp?.slug || selectedFilter.value;
+});
 
 const hasActiveFilters = computed(() =>
   selectedFilter.value !== '' || searchText.value.trim() !== ''
@@ -286,6 +320,9 @@ const toggleMenu = (id: string) => {
 const closeMenu = () => { openMenuId.value = null; };
 
 const onClickOutside = (e: MouseEvent) => {
+  if (selectOpen.value && selectRef.value && !selectRef.value.contains(e.target as Node)) {
+    selectOpen.value = false;
+  }
   if (!openMenuId.value) return;
   const ref = menuRefs.value[openMenuId.value];
   if (ref && !ref.contains(e.target as Node)) closeMenu();

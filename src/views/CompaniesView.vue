@@ -11,8 +11,8 @@
       </button>
     </div>
 
-    <!-- Tabla (md+) -->
-    <div v-if="empresaStore.empresas && empresaStore.empresas.length > 0" class="hidden md:block overflow-x-auto">
+    <!-- Tabla (lg+) -->
+    <div v-if="empresaStore.empresas && empresaStore.empresas.length > 0" class="hidden lg:block overflow-x-auto overflow-y-visible rounded-b-xl">
       <table class="w-full text-left border-collapse">
         <thead>
           <tr class="bg-gray-50 dark:bg-gray-700/50 border-b border-gray-100 dark:border-gray-700 text-xs text-gray-500 dark:text-gray-400 uppercase tracking-wide">
@@ -53,7 +53,8 @@
     </div>
 
     <!-- Tarjetas (móvil) -->
-    <div v-if="empresaStore.empresas && empresaStore.empresas.length > 0" class="md:hidden divide-y divide-gray-100 dark:divide-gray-700">
+    <!-- Tarjetas (móvil + tablet) -->
+    <div v-if="empresaStore.empresas && empresaStore.empresas.length > 0" class="lg:hidden divide-y divide-gray-100 dark:divide-gray-700">
       <div v-for="empresa in empresaStore.empresas" :key="empresa.id" class="p-4 flex items-start justify-between gap-3">
         <div class="flex items-start gap-3 min-w-0">
           <!-- Avatar inicial -->
