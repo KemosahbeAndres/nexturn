@@ -1,52 +1,22 @@
 <template>
-  <div class="flex flex-col gap-4">
+  <div class="flex flex-col gap-6">
 
-    <!-- Filtros (modo monoempresa: solo búsqueda de texto) -->
-    <div class="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700 p-6 transition-colors duration-300">
-      <h3 class="text-sm font-semibold text-gray-700 dark:text-gray-300 mb-4 uppercase tracking-wide">Búsqueda</h3>
-      <div class="flex flex-col sm:flex-row gap-3">
-        <div class="relative flex-1">
-          <span class="absolute inset-y-0 left-3 flex items-center text-gray-400 dark:text-gray-500 pointer-events-none">
-            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-4.35-4.35M17 11A6 6 0 1 1 5 11a6 6 0 0 1 12 0z" />
-            </svg>
-          </span>
-          <input
-            v-model="searchText"
-            type="text"
-            placeholder="Buscar por nombre, email o RUT..."
-            class="w-full pl-9 pr-3 py-2 text-sm bg-gray-50 dark:bg-gray-700 border border-gray-200 dark:border-gray-600 text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-gray-500 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 transition-colors"
-          />
-        </div>
-        <button
-          v-if="searchText.trim()"
-          @click="searchText = ''"
-          class="shrink-0 px-3 py-2 text-sm text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 border border-gray-200 dark:border-gray-600 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
-        >
-          Limpiar
-        </button>
-      </div>
-    </div>
-
-    <!-- Lista de usuarios de la empresa -->
-    <div class="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700 overflow-hidden transition-colors duration-300">
+    <!-- Tarjeta: Lista de Super Admins -->
+    <div class="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700 overflow-hidden flex flex-col transition-colors duration-300">
       <div class="p-6 border-b border-gray-100 dark:border-gray-700 flex flex-col sm:flex-row sm:justify-between sm:items-center gap-4">
         <div>
-          <h2 class="text-lg font-bold text-gray-900 dark:text-white">Usuarios</h2>
-          <p class="text-sm text-gray-500 dark:text-gray-400 mt-1">
-            {{ filteredUsers.length }} usuario{{ filteredUsers.length !== 1 ? 's' : '' }}
-            <span v-if="searchText.trim()"> encontrado{{ filteredUsers.length !== 1 ? 's' : '' }}</span>
-          </p>
+          <h2 class="text-lg font-bold text-gray-900 dark:text-white">Super Administradores</h2>
+          <p class="text-sm text-gray-500 dark:text-gray-400 mt-1">Cuentas con acceso total al sistema.</p>
         </div>
         <button
           @click="openModal('create')"
           class="shrink-0 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white font-medium rounded-lg transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 dark:focus:ring-offset-gray-800"
         >
-          + Añadir Usuario
+          + Añadir Super Admin
         </button>
       </div>
 
-      <div v-if="filteredUsers.length > 0" class="overflow-x-auto">
+      <div v-if="superAdmins.length > 0" class="overflow-x-auto">
         <table class="w-full text-left border-collapse">
           <thead>
             <tr class="bg-gray-50 dark:bg-gray-700/50 border-b border-gray-100 dark:border-gray-700 text-sm text-gray-500 dark:text-gray-400">
@@ -59,7 +29,7 @@
           </thead>
           <tbody class="divide-y divide-gray-100 dark:divide-gray-700">
             <tr
-              v-for="user in filteredUsers"
+              v-for="user in superAdmins"
               :key="user.id"
               class="hover:bg-gray-50 dark:hover:bg-gray-700/25 transition-colors"
             >
@@ -69,8 +39,8 @@
               <td class="p-4 text-sm text-gray-600 dark:text-gray-300 font-mono">{{ user.contacto?.rut || '...' }}</td>
               <td class="p-4 text-sm text-gray-600 dark:text-gray-300">{{ user.contacto?.email || '...' }}</td>
               <td class="p-4 text-sm">
-                <span class="inline-block px-2.5 py-1 bg-blue-100 text-blue-800 dark:bg-blue-900/50 dark:text-blue-300 text-xs font-semibold rounded-md capitalize">
-                  {{ user.system_role.replace('_', ' ') }}
+                <span class="inline-block px-2.5 py-1 bg-purple-100 text-purple-800 dark:bg-purple-900/50 dark:text-purple-300 text-xs font-semibold rounded-md">
+                  Super Admin
                 </span>
               </td>
               <td class="p-4 text-sm flex gap-3">
@@ -82,21 +52,24 @@
         </table>
       </div>
 
-      <div v-else class="p-16 flex flex-col items-center justify-center text-center">
-        <div class="w-16 h-16 bg-gray-50 dark:bg-gray-700 rounded-full flex items-center justify-center mb-4">
-          <span class="text-2xl">👥</span>
+      <div v-else class="p-12 flex flex-col items-center justify-center text-center">
+        <div class="w-14 h-14 bg-gray-50 dark:bg-gray-700 rounded-full flex items-center justify-center mb-4">
+          <span class="text-xl">🔐</span>
         </div>
-        <h3 class="text-md font-semibold text-gray-900 dark:text-white">
-          {{ searchText.trim() ? 'Sin resultados' : 'Aún no hay registros' }}
-        </h3>
-        <p class="text-sm text-gray-500 dark:text-gray-400 mt-1 max-w-sm">
-          {{ searchText.trim()
-            ? 'No se encontraron usuarios con ese término. Intenta con otro.'
-            : 'Aquí aparecerá el listado de usuarios. Utiliza el botón superior para registrar.'
-          }}
-        </p>
+        <h3 class="text-md font-semibold text-gray-900 dark:text-white">Sin super administradores</h3>
+        <p class="text-sm text-gray-500 dark:text-gray-400 mt-1 max-w-sm">No hay cuentas con acceso total registradas.</p>
       </div>
     </div>
+
+    <!-- Filtros multiempresa + Lista de usuarios de empresa -->
+    <UserFilteredList
+      mode="multi"
+      :usuarios="usuarioStore.usuarios ?? []"
+      :empresas="empresaStore.empresas ?? []"
+      @add-user="openModal('create')"
+      @edit-user="openModal('edit', $event)"
+      @delete-user="handleDeleteUser"
+    />
 
     <UserModal
       :is-open="isModalOpen"
@@ -114,45 +87,21 @@ import { ref, computed, onMounted } from 'vue';
 import { collection, doc, setDoc, updateDoc, Timestamp, query, where, getDocs } from 'firebase/firestore';
 import { initializeApp, deleteApp } from 'firebase/app';
 import { getAuth, createUserWithEmailAndPassword, sendPasswordResetEmail } from 'firebase/auth';
-import { useRoute } from 'vue-router';
 import { db, firebaseApp } from '../firebase';
 import { useUsuarioStore } from '../stores/usuarioStore';
 import { useSessionStore } from '../stores/sessionStore';
 import { useEmpresaStore } from '../stores/empresaStore';
 import { Contacto, contactoConverter } from '../models/Contacto';
 import UserModal from '../components/UserModal.vue';
+import UserFilteredList from '../components/UserFilteredList.vue';
 
 const usuarioStore = useUsuarioStore();
 const sessionStore = useSessionStore();
-const route = useRoute();
 const empresaStore = useEmpresaStore();
 
-// ID de empresa resuelto: se actualiza en onMounted cuando el super_admin navega por companySlug
-const resolvedEmpresaId = ref<string | null>(null);
-
-// Excluye super_admins y filtra por la empresa resuelta en onMounted.
-// El store ya trae solo los usuarios de esa empresa desde Firestore,
-// pero este filtro adicional es la guardia ante cualquier race condition.
-const companyUsers = computed(() => {
-  const list = usuarioStore.usuarios ?? [];
-  if (!resolvedEmpresaId.value) return list.filter((u) => u.system_role !== 'super_admin');
-  return list.filter(
-    (u) => u.system_role !== 'super_admin' && u.empresa_id === resolvedEmpresaId.value
-  );
-});
-
-const searchText = ref('');
-
-const filteredUsers = computed(() => {
-  const term = searchText.value.trim().toLowerCase();
-  if (!term) return companyUsers.value;
-  return companyUsers.value.filter((u) => {
-    const fullName = `${u.contacto?.first_name ?? ''} ${u.contacto?.last_name ?? ''}`.toLowerCase();
-    const email = (u.contacto?.email ?? '').toLowerCase();
-    const rut = (u.contacto?.rut ?? '').toLowerCase();
-    return fullName.includes(term) || email.includes(term) || rut.includes(term);
-  });
-});
+const superAdmins = computed(() =>
+  (usuarioStore.usuarios ?? []).filter((u) => u.system_role === 'super_admin')
+);
 
 const isModalOpen = ref(false);
 const modalMode = ref<'create' | 'edit'>('create');
@@ -166,8 +115,7 @@ const openModal = (mode: 'create' | 'edit', user: any = null) => {
 
 const handleSaveUser = async (data: any) => {
   try {
-    // Siempre fija la empresa resuelta en onMounted; nunca acepta empresa_id del formulario
-    const empresaIdToSave = resolvedEmpresaId.value;
+    const empresaIdToSave = data.system_role === 'super_admin' ? null : (data.empresa_id || null);
 
     if (modalMode.value === 'create') {
       const qRut = query(collection(db, 'contactos'), where('rut', '==', data.rut));
@@ -243,9 +191,6 @@ const handleSaveUser = async (data: any) => {
 };
 
 const handleDeleteUser = async (user: any) => {
-  // Guardia de aislamiento: solo usuarios de esta empresa
-  if (user.empresa_id !== resolvedEmpresaId.value) return;
-
   if (!confirm(`¿Estás seguro de que deseas eliminar a ${user.contacto?.first_name || 'este usuario'}? Esta acción le impedirá acceder al sistema.`)) return;
 
   try {
@@ -259,24 +204,10 @@ const handleDeleteUser = async (user: any) => {
   }
 };
 
-onMounted(async () => {
-  if (!sessionStore.currentUser) return;
-
-  let roleToFetch = sessionStore.currentUser.system_role;
-  let empresaIdToFetch = sessionStore.currentUser.empresa_id;
-
-  // super_admin navegando dentro del scope de una empresa (/:companySlug/usuarios)
-  if (roleToFetch === 'super_admin' && route.params.companySlug) {
-    const qEmp = query(collection(db, 'empresas'), where('slug', '==', route.params.companySlug));
-    const snap = await getDocs(qEmp);
-    if (!snap.empty) {
-      roleToFetch = 'admin';
-      empresaIdToFetch = snap.docs[0].id;
-    }
+onMounted(() => {
+  if (sessionStore.currentUser?.system_role === 'super_admin') {
+    usuarioStore.listarUsuarios('super_admin', null);
+    empresaStore.listarEmpresas('super_admin', null);
   }
-
-  resolvedEmpresaId.value = empresaIdToFetch ?? null;
-  usuarioStore.listarUsuarios(roleToFetch, empresaIdToFetch);
-  empresaStore.listarEmpresas(roleToFetch, empresaIdToFetch);
 });
 </script>

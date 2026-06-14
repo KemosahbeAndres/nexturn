@@ -15,8 +15,8 @@ export const useSessionStore = defineStore('session', () => {
   const activeCompanyId = ref<string | null>(null); // Contexto de la empresa en la que navegamos
   
   // Preferencias personales del usuario persistidas en el estado local
-  const preferences = ref({ 
-    theme: localStorage.getItem('theme_preference') || (typeof window !== 'undefined' && window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'),
+  const preferences = ref({
+    theme: localStorage.getItem('theme_preference') || 'light',
     language: 'es',
     notificationsEnabled: true
   });
