@@ -1,5 +1,5 @@
 <template>
-  <div class="flex h-screen bg-gray-50 dark:bg-gray-900 transition-colors duration-300">
+  <div class="flex h-[100dvh] bg-gray-50 dark:bg-gray-900 transition-colors duration-300">
 
     <!-- ===================== SIDEBAR (md+) ===================== -->
     <aside class="hidden md:flex md:w-44 lg:w-64 bg-white dark:bg-gray-800 border-r border-gray-200 dark:border-gray-700 flex-col shrink-0 transition-[width] duration-300">
@@ -107,21 +107,21 @@
       <main class="flex-1 overflow-y-auto p-4 sm:p-6 lg:p-8 pb-20 md:pb-8">
         <router-view />
       </main>
-
-      <!-- BOTTOMBAR (solo móvil) -->
-      <nav class="md:hidden shrink-0 h-16 bg-white dark:bg-gray-800 border-t border-gray-200 dark:border-gray-700 flex items-center justify-around px-1 transition-colors duration-300">
-        <router-link
-          v-for="item in bottomItems"
-          :key="item.routeName"
-          :to="{ name: item.routeName, params: { companySlug: $route.params.companySlug } }"
-          class="flex flex-col items-center gap-0.5 px-2 py-1 rounded-lg transition-colors min-w-0"
-          :class="$route.name === item.routeName ? 'text-blue-600 dark:text-blue-400' : 'text-gray-500 dark:text-gray-400'"
-        >
-          <component :is="item.icon" class="w-6 h-6 shrink-0" />
-          <span class="text-[10px] font-medium truncate">{{ item.name }}</span>
-        </router-link>
-      </nav>
     </div>
+
+    <!-- BOTTOMBAR (solo móvil) — fixed para no depender del viewport del browser -->
+    <nav class="md:hidden fixed bottom-0 left-0 right-0 z-40 h-16 bg-white dark:bg-gray-800 border-t border-gray-200 dark:border-gray-700 flex items-center justify-around px-1 transition-colors duration-300">
+      <router-link
+        v-for="item in bottomItems"
+        :key="item.routeName"
+        :to="{ name: item.routeName, params: { companySlug: $route.params.companySlug } }"
+        class="flex flex-col items-center gap-0.5 px-2 py-1 rounded-lg transition-colors min-w-0"
+        :class="$route.name === item.routeName ? 'text-blue-600 dark:text-blue-400' : 'text-gray-500 dark:text-gray-400'"
+      >
+        <component :is="item.icon" class="w-6 h-6 shrink-0" />
+        <span class="text-[10px] font-medium truncate">{{ item.name }}</span>
+      </router-link>
+    </nav>
 
     <!-- ===================== OFFCANVAS PERFIL (solo móvil) ===================== -->
     <Transition name="offcanvas">
