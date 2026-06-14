@@ -1,6 +1,6 @@
 import { defineStore } from 'pinia';
 import { ref, computed, watch } from 'vue';
-import { collection, doc, setDoc, getDocs, getDoc, deleteDoc, updateDoc, query, where, Timestamp, limit } from 'firebase/firestore';
+import { collection, doc, setDoc, getDocs, getDoc, updateDoc, query, where, Timestamp, limit } from 'firebase/firestore';
 import { signInWithEmailAndPassword, signOut, createUserWithEmailAndPassword } from 'firebase/auth';
 import { db, auth } from '../firebase'; // Asegúrate de exportar 'auth' desde la config de tu proyecto
 import { Usuario, usuarioConverter } from '../models/Usuario';
@@ -163,10 +163,10 @@ export const useSessionStore = defineStore('session', () => {
   }
 
   async function logout() {
-    // Eliminar la sesión activa en Firestore
+    // Marcar la sesión como inactiva (soft-delete) para que no pueda reutilizarse
     if (currentSession.value) {
       const sessionRef = doc(db, 'sesiones', currentSession.value.id);
-      await deleteDoc(sessionRef); 
+      await updateDoc(sessionRef, { active: false, updatedAt: Timestamp.now() });
     }
     
     // Limpiar Firebase Auth
@@ -229,10 +229,10 @@ export const useSessionStore = defineStore('session', () => {
     try {
       // 1. Validar si existe en la base de datos
       const sesionesRef = collection(db, 'sesiones').withConverter(sesionConverter);
-      const qSession = query(sesionesRef, where('user_id', '==', storedUserId), where('token', '==', storedToken));
+      const qSession = query(sesionesRef, where('user_id', '==', storedUserId), where('token', '==', storedToken), where('active', '==', true));
       const sessionSnap = await getDocs(qSession);
 
-      if (sessionSnap.empty) throw new Error('Sesión no encontrada o inválida');
+      if (sessionSnap.empty) throw new Error('Sesión no encontrada, inválida o cerrada');
       const sessionData = sessionSnap.docs[0].data();
 
       // 2. Reconstruir Perfil de Usuario

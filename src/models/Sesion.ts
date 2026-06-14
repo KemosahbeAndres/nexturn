@@ -7,6 +7,7 @@ export class Sesion {
     public browser_agent: string,
     public token: string,
     public duration: number,
+    public active: boolean = true,
     public createdAt: Date = new Date(),
     public updatedAt: Date = new Date()
   ) {}
@@ -19,6 +20,7 @@ export const sesionConverter = {
       browser_agent: sesion.browser_agent,
       token: sesion.token,
       duration: sesion.duration,
+      active: sesion.active,
       createdAt: sesion.createdAt ? Timestamp.fromDate(sesion.createdAt) : Timestamp.now(),
       updatedAt: Timestamp.now(),
     };
@@ -31,6 +33,7 @@ export const sesionConverter = {
       data.browser_agent,
       data.token,
       data.duration,
+      data.active !== false, // documentos viejos sin el campo se tratan como activos
       data.createdAt?.toDate() || new Date(),
       data.updatedAt?.toDate() || new Date()
     );

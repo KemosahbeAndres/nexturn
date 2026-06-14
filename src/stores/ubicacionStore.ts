@@ -1,6 +1,6 @@
 import { defineStore } from 'pinia';
 import { useCollection } from 'vuefire';
-import { collection, doc, setDoc, updateDoc, query, where, Timestamp } from 'firebase/firestore';
+import { collection, doc, setDoc, updateDoc, query, where, Timestamp, arrayUnion } from 'firebase/firestore';
 import { ref, computed } from 'vue';
 import { db } from '../firebase';
 import { Ubicacion, ubicacionConverter, type Turno } from '../models/Ubicacion';
@@ -67,7 +67,7 @@ export const useUbicacionStore = defineStore('ubicacion', () => {
   async function addTurno(ubicacionId: string, turnoData: Omit<Turno, 'id' | 'createdAt' | 'updatedAt' | 'deletedAt'>) {
     const docRef = doc(db, 'ubicaciones', ubicacionId);
     const newTurno: Turno = {
-      id: uuidv4(),
+      id: crypto.randomUUID(),
       ...turnoData,
       createdAt: new Date(),
       updatedAt: new Date(),
