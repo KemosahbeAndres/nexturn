@@ -52,13 +52,13 @@ const router = createRouter({
       children: [
         {
           path: '',
-          redirect: { name: 'empresa-dashboard' }
+          redirect: { name: 'empresa-home' }
         },
         {
-          path: 'dashboard',
-          name: 'empresa-dashboard',
-          meta: { title: 'Dashboard' },
-          component: () => import('../views/DashboardView.vue') // Reutilizado
+          path: 'empresa',
+          name: 'empresa-home',
+          meta: { title: 'Empresa' },
+          component: () => import('../views/EmpresaView.vue')
         },
         {
           path: 'usuarios',
@@ -95,12 +95,12 @@ router.beforeEach(async (to, _from) => {
     }
 
     if (to.name === 'login') {
-      return isSuperAdmin ? { name: 'admin-dashboard' } : { name: 'empresa-dashboard', params: { companySlug } };
+      return isSuperAdmin ? { name: 'admin-dashboard' } : { name: 'empresa-home', params: { companySlug } };
     }
 
     // Usuarios de empresa intentando acceder al panel super_admin (/dashboard, /usuarios, /empresas)
     if (to.meta.requiresSuperAdmin && !isSuperAdmin) {
-      return { name: 'empresa-dashboard', params: { companySlug } };
+      return { name: 'empresa-home', params: { companySlug } };
     }
 
     if (to.meta.requiresCompany) {
@@ -108,7 +108,7 @@ router.beforeEach(async (to, _from) => {
 
       // Aislamiento por URL: el usuario solo puede navegar por el slug de su propia empresa
       if (to.params.companySlug !== companySlug) {
-        return { name: 'empresa-dashboard', params: { companySlug } };
+        return { name: 'empresa-home', params: { companySlug } };
       }
     }
   }

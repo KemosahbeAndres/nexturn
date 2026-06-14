@@ -2,6 +2,8 @@ import { Timestamp } from 'firebase/firestore';
 import type { DocumentData, FirestoreDataConverter, QueryDocumentSnapshot, SnapshotOptions } from 'firebase/firestore';
 import { Contacto } from './Contacto';
 
+export type EmpresaType = 'empresa' | 'congregacion';
+
 export class Empresa {
   public contacto?: Contacto;
 
@@ -9,13 +11,25 @@ export class Empresa {
     public id: string,
     public active: boolean,
     public contact_id: string,
-    public type: string,
+    public type: EmpresaType,
     public work_roles: string[],
     public slug: string,
     public createdAt: Date = new Date(),
     public updatedAt: Date = new Date(),
     public deletedAt: Date | null = null
   ) {}
+
+  get isEmpresa(): boolean {
+    return this.type === 'empresa';
+  }
+
+  get isCongregacion(): boolean {
+    return this.type === 'congregacion';
+  }
+
+  get displayName(): string {
+    return this.contacto?.first_name ?? this.slug;
+  }
 }
 
 export const empresaConverter: FirestoreDataConverter<Empresa> = {
@@ -27,7 +41,7 @@ export const empresaConverter: FirestoreDataConverter<Empresa> = {
       work_roles: empresa.work_roles,
       slug: empresa.slug,
       createdAt: empresa.createdAt ? Timestamp.fromDate(empresa.createdAt) : Timestamp.now(),
-      updatedAt: Timestamp.now(), // Siempre refresca el updatedAt al guardar
+      updatedAt: Timestamp.now(),
       deletedAt: empresa.deletedAt ? Timestamp.fromDate(empresa.deletedAt) : null,
     };
   },
@@ -37,7 +51,7 @@ export const empresaConverter: FirestoreDataConverter<Empresa> = {
       snapshot.id,
       data.active,
       data.contact_id,
-      data.type,
+      data.type as EmpresaType,
       data.work_roles || [],
       data.slug || '',
       data.createdAt?.toDate() || new Date(),

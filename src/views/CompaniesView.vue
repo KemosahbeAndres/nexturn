@@ -1,198 +1,264 @@
 <template>
-  <div class="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700 flex flex-col transition-colors duration-300">
-    
-    <div class="p-6 border-b border-gray-100 dark:border-gray-700 flex flex-col sm:flex-row sm:justify-between sm:items-center gap-4">
-      <div>
-        <h2 class="text-lg font-bold text-gray-900 dark:text-white">Empresas</h2>
-        <p class="text-sm text-gray-500 dark:text-gray-400 mt-1">Administra los inquilinos del sistema.</p>
-      </div>
-      <button v-if="sessionStore.currentUser?.system_role === 'super_admin'" @click="openModal('create')" class="shrink-0 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white font-medium rounded-lg transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500">
-        + Añadir Empresa
-      </button>
-    </div>
+  <div class="space-y-6">
 
-    <!-- Tabla (lg+) -->
-    <div v-if="empresaStore.empresas && empresaStore.empresas.length > 0" class="hidden lg:block overflow-x-auto overflow-y-visible rounded-b-xl">
-      <table class="w-full text-left border-collapse">
-        <thead>
-          <tr class="bg-gray-50 dark:bg-gray-700/50 border-b border-gray-100 dark:border-gray-700 text-xs text-gray-500 dark:text-gray-400 uppercase tracking-wide">
-            <th class="px-4 py-3 font-medium">Empresa</th>
-            <th class="px-4 py-3 font-medium">RUT</th>
-            <th class="px-4 py-3 font-medium">Correo</th>
-            <th class="px-4 py-3 font-medium">Slug</th>
-            <th class="px-4 py-3 font-medium">Tipo</th>
-            <th class="px-4 py-3 font-medium">Estado</th>
-            <th class="px-4 py-3 font-medium">Acciones</th>
-          </tr>
-        </thead>
-        <tbody class="divide-y divide-gray-100 dark:divide-gray-700">
-          <tr v-for="empresa in empresaStore.empresas" :key="empresa.id" class="hover:bg-gray-50 dark:hover:bg-gray-700/25 transition-colors">
-            <td class="px-4 py-3 text-sm font-medium text-gray-900 dark:text-white">
-              {{ empresa.contacto?.first_name || '—' }}
-              <span class="block text-xs text-gray-400 font-normal">{{ empresa.contacto?.last_name }}</span>
-            </td>
-            <td class="px-4 py-3 text-sm text-gray-500 dark:text-gray-400 font-mono">{{ empresa.contacto?.rut || '—' }}</td>
-            <td class="px-4 py-3 text-sm text-gray-500 dark:text-gray-400">{{ empresa.contacto?.email || '—' }}</td>
-            <td class="px-4 py-3 text-sm text-blue-600 dark:text-blue-400 font-mono">{{ empresa.slug || '—' }}</td>
-            <td class="px-4 py-3 text-sm text-gray-500 dark:text-gray-400 capitalize">{{ empresa.type }}</td>
-            <td class="px-4 py-3">
-              <span :class="empresa.active ? 'bg-green-100 text-green-800 dark:bg-green-900/50 dark:text-green-300' : 'bg-red-100 text-red-800 dark:bg-red-900/50 dark:text-red-300'" class="px-2 py-0.5 text-xs font-semibold rounded-md">
-                {{ empresa.active ? 'Activa' : 'Inactiva' }}
-              </span>
-            </td>
-            <td class="px-4 py-3">
-              <div class="flex gap-2 items-center">
-                <router-link v-if="sessionStore.currentUser?.system_role === 'super_admin' && empresa.slug" :to="{ name: 'empresa-dashboard', params: { companySlug: empresa.slug } }" class="text-xs font-medium text-green-600 hover:text-green-800 dark:text-green-400 dark:hover:text-green-300 transition-colors">Ingresar</router-link>
-                <button @click="openModal('edit', empresa)" class="text-xs font-medium text-blue-600 hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-300 transition-colors">Editar</button>
-                <button v-if="sessionStore.currentUser?.system_role === 'super_admin'" @click="handleDeleteCompany(empresa)" class="text-xs font-medium text-red-500 hover:text-red-700 dark:text-red-400 dark:hover:text-red-300 transition-colors">Desactivar</button>
-              </div>
-            </td>
-          </tr>
-        </tbody>
-      </table>
-    </div>
+    <!-- ══════════════════════ PANEL EMPRESAS ══════════════════════ -->
+    <section class="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700 flex flex-col transition-colors duration-300">
 
-    <!-- Tarjetas (móvil) -->
-    <!-- Tarjetas (móvil + tablet) -->
-    <div v-if="empresaStore.empresas && empresaStore.empresas.length > 0" class="lg:hidden divide-y divide-gray-100 dark:divide-gray-700">
-      <div v-for="empresa in empresaStore.empresas" :key="empresa.id" class="p-4 flex items-start justify-between gap-3">
-        <div class="flex items-start gap-3 min-w-0">
-          <!-- Avatar inicial -->
-          <div class="w-10 h-10 rounded-full bg-indigo-100 dark:bg-indigo-900/50 flex items-center justify-center shrink-0 text-indigo-600 dark:text-indigo-300 font-bold text-sm">
-            {{ (empresa.contacto?.first_name?.[0] ?? '?').toUpperCase() }}
-          </div>
-          <div class="min-w-0">
-            <p class="text-sm font-semibold text-gray-900 dark:text-white truncate">
-              {{ empresa.contacto?.first_name || '—' }}
-              <span v-if="empresa.contacto?.last_name" class="font-normal"> {{ empresa.contacto.last_name }}</span>
-            </p>
-            <p class="text-xs text-gray-500 dark:text-gray-400 truncate mt-0.5">{{ empresa.contacto?.email || '—' }}</p>
-            <p class="text-xs text-gray-400 dark:text-gray-500 font-mono mt-0.5">{{ empresa.contacto?.rut || '—' }}</p>
-            <div class="flex items-center gap-2 mt-1.5 flex-wrap">
-              <span :class="empresa.active ? 'bg-green-100 text-green-800 dark:bg-green-900/50 dark:text-green-300' : 'bg-red-100 text-red-800 dark:bg-red-900/50 dark:text-red-300'" class="inline-block px-2 py-0.5 text-xs font-semibold rounded-md">
-                {{ empresa.active ? 'Activa' : 'Inactiva' }}
-              </span>
-              <span class="text-xs text-gray-400 dark:text-gray-500 capitalize">{{ empresa.type }}</span>
-              <span class="text-xs text-blue-500 dark:text-blue-400 font-mono">{{ empresa.slug }}</span>
-            </div>
-          </div>
+      <!-- Header empresas -->
+      <div class="px-6 py-4 border-b border-gray-100 dark:border-gray-700 flex flex-col sm:flex-row sm:items-center gap-3">
+        <div class="flex-1 min-w-0">
+          <h2 class="text-base font-bold text-gray-900 dark:text-white flex items-center gap-2">
+            🏢 Empresas
+            <span class="text-xs font-normal bg-gray-100 dark:bg-gray-700 text-gray-500 dark:text-gray-400 px-2 py-0.5 rounded-full">
+              {{ empTable.filtered.value.length }}
+            </span>
+          </h2>
         </div>
-        <!-- Menú 3 puntos -->
-        <div class="relative shrink-0" :ref="el => { menuRefs[empresa.id] = el as Element }">
-          <button @click.stop="openMenuId = openMenuId === empresa.id ? null : empresa.id" class="w-8 h-8 flex items-center justify-center rounded-lg text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors">
-            <svg xmlns="http://www.w3.org/2000/svg" fill="currentColor" viewBox="0 0 24 24" class="w-5 h-5">
-              <path d="M12 6a1.5 1.5 0 1 0 0-3 1.5 1.5 0 0 0 0 3Zm0 6a1.5 1.5 0 1 0 0-3 1.5 1.5 0 0 0 0 3Zm0 6a1.5 1.5 0 1 0 0-3 1.5 1.5 0 0 0 0 3Z"/>
-            </svg>
-          </button>
-          <div v-if="openMenuId === empresa.id" class="absolute right-0 top-9 z-20 w-36 bg-white dark:bg-gray-800 rounded-xl shadow-lg border border-gray-100 dark:border-gray-700 py-1">
-            <router-link
-              v-if="sessionStore.currentUser?.system_role === 'super_admin' && empresa.slug"
-              :to="{ name: 'empresa-dashboard', params: { companySlug: empresa.slug } }"
-              @click="openMenuId = null"
-              class="w-full flex items-center gap-2 px-3 py-2 text-sm text-green-700 dark:text-green-400 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
-            >
-              <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-4 h-4"><path stroke-linecap="round" stroke-linejoin="round" d="M15.75 9V5.25A2.25 2.25 0 0 0 13.5 3h-6a2.25 2.25 0 0 0-2.25 2.25v13.5A2.25 2.25 0 0 0 7.5 21h6a2.25 2.25 0 0 0 2.25-2.25V15M12 9l3 3m0 0-3 3m3-3H2.25"/></svg>
-              Ingresar
-            </router-link>
-            <button @click="openModal('edit', empresa); openMenuId = null" class="w-full flex items-center gap-2 px-3 py-2 text-sm text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors">
-              <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-4 h-4"><path stroke-linecap="round" stroke-linejoin="round" d="m16.862 4.487 1.687-1.688a1.875 1.875 0 1 1 2.652 2.652L10.582 16.07a4.5 4.5 0 0 1-1.897 1.13L6 18l.8-2.685a4.5 4.5 0 0 1 1.13-1.897l8.932-8.931Z"/></svg>
-              Editar
-            </button>
-            <button v-if="sessionStore.currentUser?.system_role === 'super_admin'" @click="handleDeleteCompany(empresa); openMenuId = null" class="w-full flex items-center gap-2 px-3 py-2 text-sm text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors">
-              <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-4 h-4"><path stroke-linecap="round" stroke-linejoin="round" d="M18.364 18.364A9 9 0 0 0 5.636 5.636m12.728 12.728A9 9 0 0 1 5.636 5.636m12.728 12.728L5.636 5.636"/></svg>
-              Desactivar
-            </button>
-          </div>
+        <div class="relative w-full sm:w-64">
+          <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none">
+            <path stroke-linecap="round" stroke-linejoin="round" d="m21 21-5.197-5.197m0 0A7.5 7.5 0 1 0 5.196 5.196a7.5 7.5 0 0 0 10.607 10.607Z"/>
+          </svg>
+          <input v-model="empTable.search.value" type="text" placeholder="Buscar empresa…"
+            class="w-full pl-9 pr-3 py-2 text-sm bg-gray-50 dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 dark:text-white dark:placeholder-gray-400">
+        </div>
+        <button v-if="isSuperAdmin" @click="openModal('create', 'empresa')"
+          class="shrink-0 px-4 py-2 text-sm bg-blue-600 hover:bg-blue-700 text-white font-medium rounded-lg transition-colors">
+          + Añadir
+        </button>
+      </div>
+
+      <!-- Tabla escritorio (lg+) -->
+      <div class="hidden lg:block overflow-x-auto">
+        <table class="w-full text-left border-collapse">
+          <thead>
+            <tr class="bg-gray-50 dark:bg-gray-700/50 border-b border-gray-100 dark:border-gray-700 text-xs text-gray-500 dark:text-gray-400 uppercase tracking-wide">
+              <th class="px-4 py-3 font-medium">Empresa</th>
+              <th class="px-4 py-3 font-medium">RUT</th>
+              <th class="px-4 py-3 font-medium">Correo</th>
+              <th class="px-4 py-3 font-medium">Slug</th>
+              <th class="px-4 py-3 font-medium">Estado</th>
+              <th class="px-4 py-3 font-medium w-28">Acciones</th>
+            </tr>
+          </thead>
+          <tbody class="divide-y divide-gray-100 dark:divide-gray-700">
+            <tr v-for="org in empTable.paginated.value" :key="org.id"
+              class="group cursor-pointer transition-colors"
+              :class="org.slug ? 'hover:bg-blue-50 dark:hover:bg-blue-900/10' : 'hover:bg-gray-50 dark:hover:bg-gray-700/25'"
+              @click="org.slug && navigateTo(org.slug)">
+              <!-- Nombre + indicador hover -->
+              <td class="px-4 py-3 text-sm font-medium text-gray-900 dark:text-white">
+                <div class="flex items-center gap-2">
+                  <span>{{ org.contacto?.first_name || '—' }}</span>
+                  <span v-if="org.slug"
+                    class="opacity-0 group-hover:opacity-100 transition-opacity inline-flex items-center gap-1 text-xs font-normal text-blue-600 dark:text-blue-400 bg-blue-100 dark:bg-blue-900/40 px-1.5 py-0.5 rounded">
+                    Abrir <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" fill="currentColor" class="w-3 h-3"><path fill-rule="evenodd" d="M6.22 4.22a.75.75 0 0 1 1.06 0l3.25 3.25a.75.75 0 0 1 0 1.06l-3.25 3.25a.75.75 0 0 1-1.06-1.06L8.94 8 6.22 5.28a.75.75 0 0 1 0-1.06Z" clip-rule="evenodd"/></svg>
+                  </span>
+                </div>
+                <span class="block text-xs text-gray-400 font-normal">{{ org.contacto?.last_name }}</span>
+              </td>
+              <td class="px-4 py-3 text-sm text-gray-500 dark:text-gray-400 font-mono">{{ org.contacto?.rut || '—' }}</td>
+              <td class="px-4 py-3 text-sm text-gray-500 dark:text-gray-400">{{ org.contacto?.email || '—' }}</td>
+              <td class="px-4 py-3 text-sm text-blue-600 dark:text-blue-400 font-mono">{{ org.slug || '—' }}</td>
+              <td class="px-4 py-3"><StatusBadge :active="org.active" /></td>
+              <td class="px-4 py-3" @click.stop>
+                <RowActions :org="org" :is-super-admin="isSuperAdmin"
+                  @edit="openModal('edit', 'empresa', org)" @delete="handleDeleteCompany(org)" />
+              </td>
+            </tr>
+            <tr v-if="empTable.paginated.value.length === 0">
+              <td colspan="6" class="px-4 py-8 text-center text-sm text-gray-400 dark:text-gray-500">
+                {{ empTable.search.value ? 'Sin resultados para la búsqueda.' : 'Aún no hay empresas registradas.' }}
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <!-- Tarjetas móvil/tablet (<lg) -->
+      <div class="lg:hidden divide-y divide-gray-100 dark:divide-gray-700">
+        <MobileCard v-for="org in empTable.paginated.value" :key="org.id" :org="org" :is-super-admin="isSuperAdmin"
+          :open-menu-id="openMenuId ?? undefined" :menu-refs="menuRefs"
+          @navigate="org.slug && navigateTo(org.slug)"
+          @toggle-menu="toggleMenu" @close-menu="openMenuId = null"
+          @edit="openModal('edit', 'empresa', org)" @delete="handleDeleteCompany(org)" />
+        <div v-if="empTable.paginated.value.length === 0" class="p-8 text-center text-sm text-gray-400 dark:text-gray-500">
+          {{ empTable.search.value ? 'Sin resultados para la búsqueda.' : 'Aún no hay empresas registradas.' }}
         </div>
       </div>
-    </div>
 
-    <!-- Estado vacío -->
-    <div v-if="!empresaStore.empresas || empresaStore.empresas.length === 0" class="p-12 flex flex-col items-center justify-center text-center">
-      <div class="w-14 h-14 bg-gray-50 dark:bg-gray-700 rounded-full flex items-center justify-center mb-4">
-        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-6 h-6 text-gray-400">
-          <path stroke-linecap="round" stroke-linejoin="round" d="M3.75 21h16.5M4.5 3h15M5.25 3v18m13.5-18v18M9 6.75h1.5m-1.5 3h1.5m-1.5 3h1.5m3-6H15m-1.5 3H15m-1.5 3H15M9 21v-3.375c0-.621.504-1.125 1.125-1.125h3.75c.621 0 1.125.504 1.125 1.125V21"/>
-        </svg>
+      <Pagination v-if="empTable.totalPages.value > 1"
+        :page="empTable.page.value" :total-pages="empTable.totalPages.value"
+        :total="empTable.filtered.value.length"
+        @prev="empTable.prev()" @next="empTable.next()" @go="empTable.goTo($event)" />
+    </section>
+
+    <!-- ══════════════════════ PANEL CONGREGACIONES ══════════════════════ -->
+    <section class="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700 flex flex-col transition-colors duration-300">
+
+      <!-- Header congregaciones -->
+      <div class="px-6 py-4 border-b border-gray-100 dark:border-gray-700 flex flex-col sm:flex-row sm:items-center gap-3">
+        <div class="flex-1 min-w-0">
+          <h2 class="text-base font-bold text-gray-900 dark:text-white flex items-center gap-2">
+            ⛪ Congregaciones
+            <span class="text-xs font-normal bg-gray-100 dark:bg-gray-700 text-gray-500 dark:text-gray-400 px-2 py-0.5 rounded-full">
+              {{ congTable.filtered.value.length }}
+            </span>
+          </h2>
+        </div>
+        <div class="relative w-full sm:w-64">
+          <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none">
+            <path stroke-linecap="round" stroke-linejoin="round" d="m21 21-5.197-5.197m0 0A7.5 7.5 0 1 0 5.196 5.196a7.5 7.5 0 0 0 10.607 10.607Z"/>
+          </svg>
+          <input v-model="congTable.search.value" type="text" placeholder="Buscar congregación…"
+            class="w-full pl-9 pr-3 py-2 text-sm bg-gray-50 dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 dark:text-white dark:placeholder-gray-400">
+        </div>
+        <button v-if="isSuperAdmin" @click="openModal('create', 'congregacion')"
+          class="shrink-0 px-4 py-2 text-sm bg-blue-600 hover:bg-blue-700 text-white font-medium rounded-lg transition-colors">
+          + Añadir
+        </button>
       </div>
-      <p class="text-sm font-semibold text-gray-900 dark:text-white">Aún no hay empresas registradas</p>
-    </div>
 
-    <CompanyModal :is-open="isModalOpen" :mode="modalMode" :initial-data="selectedCompany" @close="isModalOpen = false" @save="handleSaveCompany" />
+      <!-- Tabla escritorio -->
+      <div class="hidden lg:block overflow-x-auto">
+        <table class="w-full text-left border-collapse">
+          <thead>
+            <tr class="bg-gray-50 dark:bg-gray-700/50 border-b border-gray-100 dark:border-gray-700 text-xs text-gray-500 dark:text-gray-400 uppercase tracking-wide">
+              <th class="px-4 py-3 font-medium">Congregación</th>
+              <th class="px-4 py-3 font-medium">Correo</th>
+              <th class="px-4 py-3 font-medium">Teléfono</th>
+              <th class="px-4 py-3 font-medium">Slug</th>
+              <th class="px-4 py-3 font-medium">Estado</th>
+              <th class="px-4 py-3 font-medium w-28">Acciones</th>
+            </tr>
+          </thead>
+          <tbody class="divide-y divide-gray-100 dark:divide-gray-700">
+            <tr v-for="org in congTable.paginated.value" :key="org.id"
+              class="group cursor-pointer transition-colors"
+              :class="org.slug ? 'hover:bg-blue-50 dark:hover:bg-blue-900/10' : 'hover:bg-gray-50 dark:hover:bg-gray-700/25'"
+              @click="org.slug && navigateTo(org.slug)">
+              <td class="px-4 py-3 text-sm font-medium text-gray-900 dark:text-white">
+                <div class="flex items-center gap-2">
+                  <span>{{ org.contacto?.first_name || '—' }}</span>
+                  <span v-if="org.slug"
+                    class="opacity-0 group-hover:opacity-100 transition-opacity inline-flex items-center gap-1 text-xs font-normal text-blue-600 dark:text-blue-400 bg-blue-100 dark:bg-blue-900/40 px-1.5 py-0.5 rounded">
+                    Abrir <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" fill="currentColor" class="w-3 h-3"><path fill-rule="evenodd" d="M6.22 4.22a.75.75 0 0 1 1.06 0l3.25 3.25a.75.75 0 0 1 0 1.06l-3.25 3.25a.75.75 0 0 1-1.06-1.06L8.94 8 6.22 5.28a.75.75 0 0 1 0-1.06Z" clip-rule="evenodd"/></svg>
+                  </span>
+                </div>
+              </td>
+              <td class="px-4 py-3 text-sm text-gray-500 dark:text-gray-400">{{ org.contacto?.email || '—' }}</td>
+              <td class="px-4 py-3 text-sm text-gray-500 dark:text-gray-400">{{ org.contacto?.phone || '—' }}</td>
+              <td class="px-4 py-3 text-sm text-blue-600 dark:text-blue-400 font-mono">{{ org.slug || '—' }}</td>
+              <td class="px-4 py-3"><StatusBadge :active="org.active" /></td>
+              <td class="px-4 py-3" @click.stop>
+                <RowActions :org="org" :is-super-admin="isSuperAdmin"
+                  @edit="openModal('edit', 'congregacion', org)" @delete="handleDeleteCompany(org)" />
+              </td>
+            </tr>
+            <tr v-if="congTable.paginated.value.length === 0">
+              <td colspan="6" class="px-4 py-8 text-center text-sm text-gray-400 dark:text-gray-500">
+                {{ congTable.search.value ? 'Sin resultados para la búsqueda.' : 'Aún no hay congregaciones registradas.' }}
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <!-- Tarjetas móvil/tablet -->
+      <div class="lg:hidden divide-y divide-gray-100 dark:divide-gray-700">
+        <MobileCard v-for="org in congTable.paginated.value" :key="org.id" :org="org" :is-super-admin="isSuperAdmin"
+          :open-menu-id="openMenuId ?? undefined" :menu-refs="menuRefs"
+          @navigate="org.slug && navigateTo(org.slug)"
+          @toggle-menu="toggleMenu" @close-menu="openMenuId = null"
+          @edit="openModal('edit', 'congregacion', org)" @delete="handleDeleteCompany(org)" />
+        <div v-if="congTable.paginated.value.length === 0" class="p-8 text-center text-sm text-gray-400 dark:text-gray-500">
+          {{ congTable.search.value ? 'Sin resultados para la búsqueda.' : 'Aún no hay congregaciones registradas.' }}
+        </div>
+      </div>
+
+      <Pagination v-if="congTable.totalPages.value > 1"
+        :page="congTable.page.value" :total-pages="congTable.totalPages.value"
+        :total="congTable.filtered.value.length"
+        @prev="congTable.prev()" @next="congTable.next()" @go="congTable.goTo($event)" />
+    </section>
+
+    <CompanyModal :is-open="isModalOpen" :mode="modalMode" :initial-data="selectedCompany"
+      @close="isModalOpen = false" @save="handleSaveCompany" />
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted } from 'vue';
+import { ref, computed, onMounted, onUnmounted, defineComponent, h } from 'vue';
+import { useRouter } from 'vue-router';
 import { collection, doc, setDoc, updateDoc, Timestamp, query, where, getDocs } from 'firebase/firestore';
 import { db } from '../firebase';
 import { useEmpresaStore } from '../stores/empresaStore';
 import { useSessionStore } from '../stores/sessionStore';
 import { Contacto, contactoConverter } from '../models/Contacto';
+import { useOrgTable } from '../composables/useOrgTable';
 import CompanyModal from '../components/CompanyModal.vue';
+import type { EmpresaType } from '../models/Empresa';
 
+const router = useRouter();
 const empresaStore = useEmpresaStore();
 const sessionStore = useSessionStore();
+const isSuperAdmin = computed(() => sessionStore.currentUser?.system_role === 'super_admin');
 
-const isModalOpen = ref(false);
-const modalMode = ref<'create' | 'edit'>('create');
+const empTable  = useOrgTable(computed(() => empresaStore.empresasTipo));
+const congTable = useOrgTable(computed(() => empresaStore.congregaciones));
+
+function navigateTo(slug: string) {
+  router.push({ name: 'empresa-home', params: { companySlug: slug } });
+}
+
+// ── Modal ──────────────────────────────────────────────────────────────
+const isModalOpen     = ref(false);
+const modalMode       = ref<'create' | 'edit'>('create');
 const selectedCompany = ref<any>(null);
 
-const openModal = (mode: 'create' | 'edit', empresa: any = null) => {
+function openModal(mode: 'create' | 'edit', type: EmpresaType, empresa: any = null) {
   modalMode.value = mode;
-  selectedCompany.value = empresa;
+  selectedCompany.value = empresa ?? { type };
   isModalOpen.value = true;
-};
+}
 
 const handleSaveCompany = async (data: any) => {
   try {
     if (modalMode.value === 'create') {
       let finalContactId = '';
-
-      // Solo buscar si la empresa tiene RUT (omite cuando es 'otros' con string vacío)
       if (data.rut) {
-        const qRut = query(collection(db, 'contactos'), where('rut', '==', data.rut));
-        const rutSnap = await getDocs(qRut);
+        const rutSnap = await getDocs(query(collection(db, 'contactos'), where('rut', '==', data.rut)));
         if (!rutSnap.empty) {
-          const existingDoc = rutSnap.docs[0];
-          finalContactId = existingDoc.id;
+          finalContactId = rutSnap.docs[0].id;
           await updateDoc(doc(db, 'contactos', finalContactId), {
             first_name: data.first_name, last_name: data.last_name,
             email: data.email, phone: data.phone, address: data.address,
-            is_company: true, deletedAt: null
+            is_company: true, deletedAt: null,
           });
         }
       }
-      
       if (!finalContactId) {
         const contactRef = doc(collection(db, 'contactos')).withConverter(contactoConverter);
         finalContactId = contactRef.id;
-        const newContacto = new Contacto(
-          finalContactId, data.first_name, data.last_name, data.rut, data.email, data.phone, data.address, true, true
-        );
-        await setDoc(contactRef, newContacto);
+        await setDoc(contactRef, new Contacto(
+          finalContactId, data.first_name, data.last_name, data.rut,
+          data.email, data.phone, data.address, true, true,
+        ));
       }
-
-      // Usamos el slug personalizado o generamos uno desde el nombre
-      const baseName = data.first_name || 'empresa';
-      const slug = data.slug || baseName.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)+/g, '');
-
-      // Buscar si la empresa estaba borrada y revivirla, o crear nueva
-      const qEmp = query(collection(db, 'empresas'), where('contact_id', '==', finalContactId));
-      const empSnap = await getDocs(qEmp);
+      const slug = data.slug || (data.first_name || 'org').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)+/g, '');
+      const empSnap = await getDocs(query(collection(db, 'empresas'), where('contact_id', '==', finalContactId)));
       if (!empSnap.empty) {
         await empresaStore.updateEmpresa(empSnap.docs[0].id, { type: data.type, active: true, deletedAt: null, slug });
       } else {
         await empresaStore.createEmpresa({ active: true, contact_id: finalContactId, type: data.type, work_roles: [], slug });
       }
-    } else if (modalMode.value === 'edit' && selectedCompany.value) {
+    } else if (selectedCompany.value) {
       if (selectedCompany.value.contact_id) {
         await updateDoc(doc(db, 'contactos', selectedCompany.value.contact_id), {
           first_name: data.first_name, last_name: data.last_name,
-          rut: data.rut, email: data.email, phone: data.phone, address: data.address
+          rut: data.rut, email: data.email, phone: data.phone, address: data.address,
         });
       }
-      const baseName = data.first_name || 'empresa';
-      const slug = data.slug || baseName.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)+/g, '');
+      const slug = data.slug || (data.first_name || 'org').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)+/g, '');
       await empresaStore.updateEmpresa(selectedCompany.value.id, { type: data.type, slug });
     }
     isModalOpen.value = false;
@@ -203,35 +269,182 @@ const handleSaveCompany = async (data: any) => {
 };
 
 const handleDeleteCompany = async (empresa: any) => {
-  if (!confirm(`¿Desactivar ${empresa.contacto?.first_name || 'esta empresa'}?`)) return;
+  if (!confirm(`¿Desactivar ${empresa.contacto?.first_name || 'esta organización'}?`)) return;
   try {
     await empresaStore.softDeleteEmpresa(empresa.id);
     if (empresa.contact_id) {
       await updateDoc(doc(db, 'contactos', empresa.contact_id), { deletedAt: Timestamp.now(), active: false });
     }
-  } catch (error: any) {
-    console.error(error);
-  }
+  } catch (error: any) { console.error(error); }
 };
 
-// ---- Menú 3 puntos ----
+// ── Menú 3 puntos ─────────────────────────────────────────────────────
 const openMenuId = ref<string | null>(null);
 const menuRefs: Record<string, Element | null> = {};
 
+function toggleMenu(id: string) {
+  openMenuId.value = openMenuId.value === id ? null : id;
+}
 const onClickOutside = (e: MouseEvent) => {
   if (!openMenuId.value) return;
   const el = menuRefs[openMenuId.value];
   if (el && !el.contains(e.target as Node)) openMenuId.value = null;
 };
-
 onMounted(() => {
   document.addEventListener('click', onClickOutside);
   if (sessionStore.currentUser) {
-    empresaStore.listarEmpresas(
-      sessionStore.currentUser.system_role,
-      sessionStore.currentUser.empresa_id
-    );
+    empresaStore.listarEmpresas(sessionStore.currentUser.system_role, sessionStore.currentUser.empresa_id);
   }
-  return () => document.removeEventListener('click', onClickOutside);
+});
+onUnmounted(() => document.removeEventListener('click', onClickOutside));
+
+// ── Sub-componentes inline ─────────────────────────────────────────────
+
+const StatusBadge = defineComponent({
+  props: { active: Boolean },
+  setup(props) {
+    return () => h('span', {
+      class: props.active
+        ? 'px-2 py-0.5 text-xs font-semibold rounded-md bg-green-100 text-green-800 dark:bg-green-900/50 dark:text-green-300'
+        : 'px-2 py-0.5 text-xs font-semibold rounded-md bg-red-100 text-red-800 dark:bg-red-900/50 dark:text-red-300',
+    }, props.active ? 'Activa' : 'Inactiva');
+  },
+});
+
+// Sin botón "Ingresar" — la fila entera navega
+const RowActions = defineComponent({
+  props: { org: Object, isSuperAdmin: Boolean },
+  emits: ['edit', 'delete'],
+  setup(props, { emit }) {
+    return () => h('div', { class: 'flex gap-2 items-center' }, [
+      h('button', {
+        class: 'text-xs font-medium text-blue-600 hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-300 transition-colors',
+        onClick: () => emit('edit'),
+      }, 'Editar'),
+      props.isSuperAdmin
+        ? h('button', {
+            class: 'text-xs font-medium text-red-500 hover:text-red-700 dark:text-red-400 dark:hover:text-red-300 transition-colors',
+            onClick: () => emit('delete'),
+          }, 'Desactivar')
+        : null,
+    ]);
+  },
+});
+
+const MobileCard = defineComponent({
+  props: { org: Object, isSuperAdmin: Boolean, openMenuId: String, menuRefs: Object },
+  emits: ['navigate', 'toggle-menu', 'close-menu', 'edit', 'delete'],
+  setup(props, { emit }) {
+    return () => {
+      const org = props.org as any;
+      const isOpen = props.openMenuId === org.id;
+      return h('div', {
+        class: [
+          'p-4 flex items-center justify-between gap-3 transition-colors',
+          org.slug ? 'cursor-pointer hover:bg-blue-50 dark:hover:bg-blue-900/10 active:bg-blue-100 dark:active:bg-blue-900/20' : '',
+        ],
+        onClick: () => emit('navigate'),
+      }, [
+        // Contenido principal
+        h('div', { class: 'flex items-center gap-3 min-w-0' }, [
+          h('div', {
+            class: 'w-10 h-10 rounded-full bg-indigo-100 dark:bg-indigo-900/50 flex items-center justify-center shrink-0 text-indigo-600 dark:text-indigo-300 font-bold text-sm',
+          }, (org.contacto?.first_name?.[0] ?? '?').toUpperCase()),
+          h('div', { class: 'min-w-0' }, [
+            h('div', { class: 'flex items-center gap-1.5' }, [
+              h('p', { class: 'text-sm font-semibold text-gray-900 dark:text-white truncate' },
+                `${org.contacto?.first_name || '—'}${org.contacto?.last_name ? ' ' + org.contacto.last_name : ''}`),
+              // Indicador flecha siempre visible en móvil (no hay hover)
+              org.slug
+                ? h('svg', {
+                    xmlns: 'http://www.w3.org/2000/svg', viewBox: '0 0 16 16', fill: 'currentColor',
+                    class: 'w-3.5 h-3.5 shrink-0 text-blue-400 dark:text-blue-500',
+                  }, [h('path', { 'fill-rule': 'evenodd', d: 'M6.22 4.22a.75.75 0 0 1 1.06 0l3.25 3.25a.75.75 0 0 1 0 1.06l-3.25 3.25a.75.75 0 0 1-1.06-1.06L8.94 8 6.22 5.28a.75.75 0 0 1 0-1.06Z', 'clip-rule': 'evenodd' })])
+                : null,
+            ]),
+            h('p', { class: 'text-xs text-gray-500 dark:text-gray-400 truncate mt-0.5' }, org.contacto?.email || '—'),
+            org.contacto?.rut
+              ? h('p', { class: 'text-xs text-gray-400 dark:text-gray-500 font-mono mt-0.5' }, org.contacto.rut)
+              : null,
+            h('div', { class: 'flex items-center gap-2 mt-1.5 flex-wrap' }, [
+              h('span', {
+                class: org.active
+                  ? 'px-2 py-0.5 text-xs font-semibold rounded-md bg-green-100 text-green-800 dark:bg-green-900/50 dark:text-green-300'
+                  : 'px-2 py-0.5 text-xs font-semibold rounded-md bg-red-100 text-red-800 dark:bg-red-900/50 dark:text-red-300',
+              }, org.active ? 'Activa' : 'Inactiva'),
+              org.slug
+                ? h('span', { class: 'text-xs text-blue-500 dark:text-blue-400 font-mono' }, org.slug)
+                : null,
+            ]),
+          ]),
+        ]),
+        // Menú 3 puntos — stopPropagation para no disparar navigate
+        h('div', {
+          class: 'relative shrink-0',
+          ref: (el: any) => { if (props.menuRefs) (props.menuRefs as any)[org.id] = el; },
+          onClick: (e: Event) => e.stopPropagation(),
+        }, [
+          h('button', {
+            class: 'w-8 h-8 flex items-center justify-center rounded-lg text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors',
+            onClick: (e: Event) => { e.stopPropagation(); emit('toggle-menu', org.id); },
+          }, '⋮'),
+          isOpen
+            ? h('div', {
+                class: 'absolute right-0 top-9 z-20 w-36 bg-white dark:bg-gray-800 rounded-xl shadow-lg border border-gray-100 dark:border-gray-700 py-1',
+              }, [
+                h('button', {
+                  class: 'w-full flex items-center gap-2 px-3 py-2 text-sm text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors',
+                  onClick: () => { emit('edit'); emit('close-menu'); },
+                }, 'Editar'),
+                props.isSuperAdmin
+                  ? h('button', {
+                      class: 'w-full flex items-center gap-2 px-3 py-2 text-sm text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors',
+                      onClick: () => { emit('delete'); emit('close-menu'); },
+                    }, 'Desactivar')
+                  : null,
+              ])
+            : null,
+        ]),
+      ]);
+    };
+  },
+});
+
+const Pagination = defineComponent({
+  props: { page: Number, totalPages: Number, total: Number },
+  emits: ['prev', 'next', 'go'],
+  setup(props, { emit }) {
+    return () => {
+      const page = props.page ?? 1;
+      const total = props.totalPages ?? 1;
+      const range: number[] = [];
+      for (let i = Math.max(1, page - 2); i <= Math.min(total, page + 2); i++) range.push(i);
+      return h('div', { class: 'px-4 py-3 border-t border-gray-100 dark:border-gray-700 flex items-center justify-between gap-2' }, [
+        h('span', { class: 'text-xs text-gray-400 dark:text-gray-500' },
+          `${props.total} registro${(props.total ?? 0) !== 1 ? 's' : ''}`),
+        h('div', { class: 'flex items-center gap-1' }, [
+          h('button', {
+            class: 'px-2 py-1 text-xs rounded-md text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700 disabled:opacity-30 disabled:cursor-not-allowed transition-colors',
+            disabled: page <= 1,
+            onClick: () => emit('prev'),
+          }, '←'),
+          ...range.map(n =>
+            h('button', {
+              key: n,
+              class: n === page
+                ? 'px-2.5 py-1 text-xs rounded-md bg-blue-600 text-white font-semibold'
+                : 'px-2.5 py-1 text-xs rounded-md text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors',
+              onClick: () => emit('go', n),
+            }, String(n))
+          ),
+          h('button', {
+            class: 'px-2 py-1 text-xs rounded-md text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700 disabled:opacity-30 disabled:cursor-not-allowed transition-colors',
+            disabled: page >= total,
+            onClick: () => emit('next'),
+          }, '→'),
+        ]),
+      ]);
+    };
+  },
 });
 </script>

@@ -2,26 +2,24 @@ import { defineStore } from 'pinia';
 import { useCollection } from 'vuefire';
 import { collection, doc, setDoc, updateDoc, query, where, Timestamp, getDoc, documentId } from 'firebase/firestore';
 import { ref, computed, watch } from 'vue';
-import { db } from '../firebase'; // Ajusta esto a la ruta real de tu instancia de Firebase
-import { Empresa, empresaConverter } from '../models/Empresa'
+import { db } from '../firebase';
+import { Empresa, empresaConverter } from '../models/Empresa';
+import type { EmpresaType } from '../models/Empresa';
 import { contactoConverter } from '../models/Contacto';
 
 export const useEmpresaStore = defineStore('empresa', () => {
-  // 1. Ref con converter nativo
   const empresasRef = collection(db, 'empresas').withConverter(empresaConverter);
-  
-  // 2. Parámetros reactivos de consulta
+
   const queryParams = ref<{ role: string | null; empresaId: string | null }>({ role: null, empresaId: null });
 
   function listarEmpresas(role: string, empresaId?: string | null) {
     queryParams.value = { role, empresaId: empresaId || null };
   }
 
-  // 3. Filtro de base de datos protegido por rol
   const empresasQuery = computed(() => {
     if (!queryParams.value.role) return null;
     let q = query(empresasRef, where('deletedAt', '==', null));
-    
+
     if (queryParams.value.role !== 'super_admin') {
       if (!queryParams.value.empresaId) return null;
       q = query(q, where(documentId(), '==', queryParams.value.empresaId));
@@ -29,10 +27,16 @@ export const useEmpresaStore = defineStore('empresa', () => {
     return q;
   });
 
-  // 4. Estado local Reactivo manejado directamente por VueFire
   const empresas = useCollection(empresasQuery);
 
-  // 5. Hidratar la información de contacto de las empresas
+  // Computed helpers para filtrar por tipo
+  const empresasTipo = computed(() =>
+    (empresas.value ?? []).filter(e => e.type === 'empresa')
+  );
+  const congregaciones = computed(() =>
+    (empresas.value ?? []).filter(e => e.type === 'congregacion')
+  );
+
   watch(empresas, async (nuevasEmpresas) => {
     if (!nuevasEmpresas) return;
     for (const emp of nuevasEmpresas) {
@@ -44,8 +48,7 @@ export const useEmpresaStore = defineStore('empresa', () => {
     }
   }, { deep: true });
 
-  // CREATE
-  async function createEmpresa(data: Omit<Empresa, 'id' | 'createdAt' | 'updatedAt' | 'deletedAt'>) {
+  async function createEmpresa(data: { active: boolean; contact_id: string; type: EmpresaType; work_roles: string[]; slug: string }) {
     const docRef = doc(empresasRef);
     const newEmpresa = new Empresa(
       docRef.id,
@@ -55,28 +58,43 @@ export const useEmpresaStore = defineStore('empresa', () => {
       data.work_roles,
       data.slug
     );
-    
     await setDoc(docRef, newEmpresa);
     return docRef.id;
   }
 
-  // UPDATE
-  async function updateEmpresa(id: string, updateData: Partial<Omit<Empresa, 'id' | 'createdAt'>>) {
+  async function updateEmpresa(id: string, updateData: Partial<Omit<Empresa, 'id' | 'createdAt' | 'contacto'>>) {
     const docRef = doc(db, 'empresas', id);
-    await updateDoc(docRef, {
-      ...updateData,
-      updatedAt: Timestamp.now()
-    });
+    await updateDoc(docRef, { ...updateData, updatedAt: Timestamp.now() });
   }
 
-  // SOFT DELETE (Borrado Lógico)
   async function softDeleteEmpresa(id: string) {
     const docRef = doc(db, 'empresas', id);
-    await updateDoc(docRef, {
-      active: false,
-      deletedAt: Timestamp.now()
-    });
+    await updateDoc(docRef, { active: false, deletedAt: Timestamp.now() });
   }
 
-  return { empresas, listarEmpresas, createEmpresa, updateEmpresa, softDeleteEmpresa };
+  // Gestión de roles de trabajo (solo admin/super_admin)
+  async function addWorkRole(empresaId: string, role: string) {
+    const empresa = empresas.value?.find(e => e.id === empresaId);
+    if (!empresa) return;
+    const updated = [...new Set([...empresa.work_roles, role])];
+    await updateEmpresa(empresaId, { work_roles: updated });
+  }
+
+  async function removeWorkRole(empresaId: string, role: string) {
+    const empresa = empresas.value?.find(e => e.id === empresaId);
+    if (!empresa) return;
+    await updateEmpresa(empresaId, { work_roles: empresa.work_roles.filter(r => r !== role) });
+  }
+
+  return {
+    empresas,
+    empresasTipo,
+    congregaciones,
+    listarEmpresas,
+    createEmpresa,
+    updateEmpresa,
+    softDeleteEmpresa,
+    addWorkRole,
+    removeWorkRole,
+  };
 });

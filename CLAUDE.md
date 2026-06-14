@@ -34,7 +34,7 @@ El proyecto nació como una solución para una congregación (Lauca), pero escal
 # Modelo de Datos Base (Colecciones en Firestore)
 La base de datos sigue una estructura jerárquica para aislar los datos de cada cliente:
 
-* **`empresas`**: El inquilino principal (Tenant).
+* **`empresas`**: El inquilino/cliente principal (Tenant).
     * Campos clave: `id`, `nombre`, `fecha_registro`, `estado`.
 * **`ubicaciones`**: Espacios físicos o áreas lógicas vinculadas a una empresa.
     * Campos clave: `id`, `empresa_id`, `nombre`, `direccion`.
@@ -62,8 +62,8 @@ El nivel más alto de la jerarquía. Define a los "inquilinos" o clientes de tu 
 - id: string uuid.
 - active: boolean.
 - contact_id: string (referencia al contacto relacionado).
-- type: string (empresa, pyme, personal, otros).
-- work_roles: array de strings (cocinero, publicador, cajero, supervisor, asistente, gerente, encargado, etc) (editale solo por el usuario system_role = admin o super_admin).
+- type: string (empresa o congregacion).
+- work_roles: array de strings (cocinero, publicador, cajero, supervisor, asistente, gerente, encargado, etc) (personalizable solo por el usuario system_role = admin o super_admin).
 - timestamps y softdeletes
 
 ### Colección "usuarios"
@@ -94,11 +94,25 @@ Esta colección se encargara de manejar las sesiones de los diferentes usuarios 
 Define los puntos de reunión fijos físicos (como el carrito) y los horarios establecidos.
 #### Campos
 - id: uuid string.
-- empresa_id: string (Referencia a la empresa dueña).
+- company_id: string (Referencia a la empresa dueña).
+- zone_id: string|null (para relacionar sucursales con una zona. En congregaciones sera null).
+- category: string (sucursal, territorio, stand, etc).
+- manager_id: string|null (establece al encargado de sucursal o al capitan de grupo).
 - name: string (ej: "Bertin Soto", "Agro Santa María").
 - address: string.
 - active: boolean.
 - turnos: array de objetos tipo "turno".
+- timestamps y softdeletes
+
+### Colección "zonas"
+Esta colección resuelve el problema de los gerentes que supervisan múltiples sucursales. Las congregaciones simplemente no utilizarán esta colección.
+#### Campos
+- id: uuid string.
+- empresa_id: string (dueño)
+- name: string
+- manager_id: string|null (referencia al id en coleccion 'personal', actua como gerente de zona).
+- active: boolean.
+- required_role: lista de roles aceptados para ser asignados (esto considera que los roles de trabajo son personalizados).
 - timestamps y softdeletes
 
 ### Objeto "turno"
@@ -168,6 +182,18 @@ Aquí es donde se guarda el resultado del calendario generado por tu algoritmo, 
 - status: string ('draft' | 'published').
 - timestamps y softdeletes
 
-## Arquitectura de Estado y Base de Datos (Patrón ORM)
+## Explicaciones del modelo de datos
 
-Para el manejo del estado global y la comunicación con la base de datos, la aplicación **NO** utiliza ORMs externos de terceros (como `pinia-orm`). [cite_start]La arquitectura estandarizada utiliza la solución nativa: **Firestore Data Converters (`withConverter`) + VueFire + Pinia**[cite: 239, 258]. 
+### Roles de Sistema vs Roles de Trabajo
+Recuerda mantener intacta la separación de permisos que diseñamos:
+- Gestión en la App (system_role en colección usuarios): Si el "Gerente de Zona" o el "Encargado de Sucursal" necesitan entrar a la plataforma web para armar los calendarios, se les crea un usuario con el rol de admin o asistente.
+- Asignación de Turnos (work_role en colección personal): El "Capitán de grupo" no necesita armar el calendario general, solo necesita ver a dónde le toca ir. A él se le asigna el rol de visitante en el sistema, pero su work_role dice "Capitán" para que el algoritmo lo posicione como líder de grupo.
+- A las zonas y sucursales podran asignarsele un encargado, la asignacion se basara en el rol de trabajo, o sea, se debe seleccionar el rol de encargado, dentro de la lista de roles de la empresa, al momento de crear la zona o sucursal.
+
+### Colección asignaciones y el Objeto turno (El manejo de Liderazgo)
+Para el caso de la congregación y los 'Capitanes de Grupo' (rol personalizado), la solución más limpia no es alterar la ubicación, sino el Turno.
+Como ya definiste que cada turno tiene required_roles, resolver a los capitanes es automático: 
+- Si la ubicación es un 'stand', su turno pedirá: required_roles: ['publicador', 'publicador']. 
+- Si la ubicación es un 'territorio', su turno pedirá: required_roles: ['capitan_grupo'].
+El algoritmo de asignación simplemente buscará en la colección personal a un hermano que tenga el work_role de "capitán_grupo" y lo colocará a cargo de esa asignación de territorio específica.
+Algo similar ocurrira con las zonas y sucursales, habra un campo admin_role que se definira como encargado y tambien habra una relacion con el encargado manager_id de la sucursal o zona que estara limitado a 1 solo. 
