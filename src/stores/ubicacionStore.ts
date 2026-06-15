@@ -36,7 +36,7 @@ export const useUbicacionStore = defineStore('ubicacion', () => {
 
   const ubicaciones = useCollection(ubicacionesQuery);
 
-  async function createUbicacion(data: Omit<Ubicacion, 'id' | 'createdAt' | 'updatedAt' | 'deletedAt'>) {
+  async function createUbicacion(data: Omit<Ubicacion, 'id' | 'createdAt' | 'updatedAt' | 'deletedAt' | 'hasZone' | 'activeTurnos'>) {
     const docRef = doc(ubicacionesRef);
     const newUbicacion = new Ubicacion(
       docRef.id,
