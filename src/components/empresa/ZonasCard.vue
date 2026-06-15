@@ -53,7 +53,7 @@
                   inactiva
                 </span>
                 <span v-if="zona.required_role.length" class="text-xs text-gray-400 dark:text-gray-500">
-                  {{ zona.required_role.join(', ') }}
+                  {{ zona.required_role.map(slug => empresa.work_roles.find(r => r.slug === slug)?.nombre ?? slug).join(', ') }}
                 </span>
               </div>
             </div>
@@ -90,6 +90,7 @@ import { ref, watch, defineComponent, h } from 'vue';
 import { useZonaStore } from '../../stores/zonaStore';
 import type { Empresa } from '../../models/Empresa';
 import type { Zona } from '../../models/Zona';
+import type { Role } from '../../models/Role';
 
 const props = defineProps<{ empresa: Empresa; canManage: boolean }>();
 
@@ -167,7 +168,7 @@ export type ZonaFormData = {
 const ZonaForm = defineComponent({
   props: {
     initial:   { type: Object as () => Zona | null,  default: null },
-    workRoles: { type: Array  as () => string[],      required: true },
+    workRoles: { type: Array  as () => Role[],        required: true },
     saving:    { type: Boolean,                        default: false },
   },
   emits: ['save', 'cancel'],
@@ -180,9 +181,9 @@ const ZonaForm = defineComponent({
     });
     const error = ref('');
 
-    function toggleRole(role: string) {
-      const idx = form.value.required_role.indexOf(role);
-      if (idx === -1) form.value.required_role.push(role);
+    function toggleRole(slug: string) {
+      const idx = form.value.required_role.indexOf(slug);
+      if (idx === -1) form.value.required_role.push(slug);
       else form.value.required_role.splice(idx, 1);
     }
 
@@ -252,17 +253,17 @@ const ZonaForm = defineComponent({
         props.workRoles.length
           ? h('div', { class: 'flex flex-wrap gap-2' },
               props.workRoles.map(role => {
-                const active = form.value.required_role.includes(role);
+                const active = form.value.required_role.includes(role.slug);
                 return h('button', {
                   type: 'button',
-                  onClick: () => toggleRole(role),
+                  onClick: () => toggleRole(role.slug),
                   class: [
                     'px-3 py-1 rounded-full text-sm font-medium border transition-all',
                     active
                       ? 'bg-indigo-600 border-indigo-600 text-white'
                       : 'bg-white dark:bg-gray-700 border-gray-200 dark:border-gray-600 text-gray-600 dark:text-gray-300 hover:border-indigo-400',
                   ],
-                }, role);
+                }, role.nombre);
               })
             )
           : h('p', { class: 'text-xs text-gray-400 dark:text-gray-500 italic' },

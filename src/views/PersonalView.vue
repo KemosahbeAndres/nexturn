@@ -39,7 +39,7 @@
         class="px-3 py-2 text-sm rounded-lg border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
       >
         <option value="">Todos los roles</option>
-        <option v-for="rol in rolesDisponibles" :key="rol" :value="rol">{{ rol }}</option>
+        <option v-for="rol in rolesDisponibles" :key="rol.id" :value="rol.slug">{{ rol.nombre }}</option>
       </select>
     </div>
 
@@ -320,7 +320,7 @@
                 <select v-model="form.work_role" required
                   class="w-full px-3 py-2 text-sm rounded-lg border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500">
                   <option value="" disabled>Seleccionar rol...</option>
-                  <option v-for="rol in rolesDisponibles" :key="rol" :value="rol">{{ rol }}</option>
+                  <option v-for="rol in rolesDisponibles" :key="rol.id" :value="rol.slug">{{ rol.nombre }}</option>
                 </select>
               </div>
 
@@ -432,7 +432,7 @@
                     <select v-model="rolPorUbicacion[ub.id]"
                       class="w-full px-2 py-1.5 text-xs rounded-lg border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500">
                       <option value="">Mismo rol ({{ empleadoAsignar?.work_role }})</option>
-                      <option v-for="rol in rolesDisponibles" :key="rol" :value="rol">{{ rol }}</option>
+                      <option v-for="rol in rolesDisponibles" :key="rol.id" :value="rol.slug">{{ rol.nombre }}</option>
                     </select>
                   </div>
                 </div>

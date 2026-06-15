@@ -192,7 +192,7 @@
               <select v-model="form.required_role" required @change="form.manager_id = ''"
                 class="w-full px-3 py-2 text-sm rounded-lg border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500">
                 <option value="" disabled>Seleccionar rol que se asignará aquí...</option>
-                <option v-for="rol in rolesDisponibles" :key="rol" :value="rol">{{ rol }}</option>
+                <option v-for="rol in rolesDisponibles" :key="rol.id" :value="rol.slug">{{ rol.nombre }}</option>
               </select>
               <p class="mt-1 text-xs text-gray-400 dark:text-gray-500">Define qué tipo de personal puede ser asignado en esta ubicación.</p>
             </div>
@@ -256,6 +256,7 @@ import { useUbicacionStore } from '../stores/ubicacionStore';
 import { useZonaStore } from '../stores/zonaStore';
 import { useEmpleadoStore } from '../stores/empleadoStore';
 import type { Ubicacion, UbicacionCategory } from '../models/Ubicacion';
+import type { Role } from '../models/Role';
 
 const route = useRoute();
 const sessionStore = useSessionStore();
@@ -274,7 +275,7 @@ const activeCompany = computed(() =>
   empresaStore.empresas?.find(e => e.id === activeCompanyId.value) ?? null
 );
 
-const rolesDisponibles = computed(() => activeCompany.value?.work_roles ?? []);
+const rolesDisponibles = computed<Role[]>(() => activeCompany.value?.work_roles ?? []);
 
 onMounted(() => {
   if (activeCompanyId.value) {

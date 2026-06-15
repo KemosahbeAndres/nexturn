@@ -1,6 +1,7 @@
 import { Timestamp } from 'firebase/firestore';
 import type { DocumentData, FirestoreDataConverter, QueryDocumentSnapshot, SnapshotOptions } from 'firebase/firestore';
 import { Contacto } from './Contacto';
+import { Role, roleFromFirestore, roleToFirestore } from './Role';
 
 export type EmpresaType = 'empresa' | 'congregacion';
 
@@ -12,7 +13,7 @@ export class Empresa {
     public active: boolean,
     public contact_id: string,
     public type: EmpresaType,
-    public work_roles: string[],
+    public work_roles: Role[],
     public slug: string,
     public createdAt: Date = new Date(),
     public updatedAt: Date = new Date(),
@@ -38,7 +39,7 @@ export const empresaConverter: FirestoreDataConverter<Empresa> = {
       active: empresa.active,
       contact_id: empresa.contact_id,
       type: empresa.type,
-      work_roles: empresa.work_roles,
+      work_roles: empresa.work_roles.map(roleToFirestore),
       slug: empresa.slug,
       createdAt: empresa.createdAt ? Timestamp.fromDate(empresa.createdAt) : Timestamp.now(),
       updatedAt: Timestamp.now(),
@@ -52,7 +53,7 @@ export const empresaConverter: FirestoreDataConverter<Empresa> = {
       data.active,
       data.contact_id,
       data.type as EmpresaType,
-      data.work_roles || [],
+      (data.work_roles || []).map(roleFromFirestore),
       data.slug || '',
       data.createdAt?.toDate() || new Date(),
       data.updatedAt?.toDate() || new Date(),

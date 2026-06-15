@@ -1,11 +1,12 @@
 import { defineStore } from 'pinia';
 import { useCollection } from 'vuefire';
-import { collection, doc, setDoc, updateDoc, query, where, Timestamp, getDoc, documentId } from 'firebase/firestore';
+import { collection, doc, setDoc, updateDoc, query, where, Timestamp, getDoc, getDocs, documentId } from 'firebase/firestore';
 import { ref, computed, watch } from 'vue';
 import { db } from '../firebase';
 import { Empresa, empresaConverter } from '../models/Empresa';
 import type { EmpresaType } from '../models/Empresa';
 import { contactoConverter } from '../models/Contacto';
+import { Role, roleToFirestore } from '../models/Role';
 
 export const useEmpresaStore = defineStore('empresa', () => {
   const empresasRef = collection(db, 'empresas').withConverter(empresaConverter);
@@ -48,7 +49,7 @@ export const useEmpresaStore = defineStore('empresa', () => {
     }
   }, { deep: true });
 
-  async function createEmpresa(data: { active: boolean; contact_id: string; type: EmpresaType; work_roles: string[]; slug: string }) {
+  async function createEmpresa(data: { active: boolean; contact_id: string; type: EmpresaType; work_roles: Role[]; slug: string }) {
     const docRef = doc(empresasRef);
     const newEmpresa = new Empresa(
       docRef.id,
@@ -64,7 +65,11 @@ export const useEmpresaStore = defineStore('empresa', () => {
 
   async function updateEmpresa(id: string, updateData: Partial<Omit<Empresa, 'id' | 'createdAt' | 'contacto'>>) {
     const docRef = doc(db, 'empresas', id);
-    await updateDoc(docRef, { ...updateData, updatedAt: Timestamp.now() });
+    const payload: Record<string, unknown> = { ...updateData, updatedAt: Timestamp.now() };
+    if (payload.work_roles) {
+      payload.work_roles = (payload.work_roles as Role[]).map(roleToFirestore);
+    }
+    await updateDoc(docRef, payload);
   }
 
   async function softDeleteEmpresa(id: string) {
@@ -73,17 +78,44 @@ export const useEmpresaStore = defineStore('empresa', () => {
   }
 
   // Gestión de roles de trabajo (solo admin/super_admin)
-  async function addWorkRole(empresaId: string, role: string) {
+  async function addWorkRole(empresaId: string, data: { nombre: string; slug: string; parent_role?: string | null }) {
     const empresa = empresas.value?.find(e => e.id === empresaId);
     if (!empresa) return;
-    const updated = [...new Set([...empresa.work_roles, role])];
-    await updateEmpresa(empresaId, { work_roles: updated });
+    if (empresa.work_roles.some(r => r.slug === data.slug)) {
+      throw new Error(`Ya existe un rol con el slug "${data.slug}".`);
+    }
+    const parentId = data.parent_role ?? null;
+    if (parentId && !empresa.work_roles.some(r => r.id === parentId)) {
+      throw new Error('El rol padre no existe en esta empresa.');
+    }
+    const newRole = new Role(crypto.randomUUID(), data.nombre, data.slug, parentId);
+    await updateEmpresa(empresaId, { work_roles: [...empresa.work_roles, newRole] });
   }
 
-  async function removeWorkRole(empresaId: string, role: string) {
+  async function removeWorkRole(empresaId: string, roleId: string) {
     const empresa = empresas.value?.find(e => e.id === empresaId);
     if (!empresa) return;
-    await updateEmpresa(empresaId, { work_roles: empresa.work_roles.filter(r => r !== role) });
+    const role = empresa.work_roles.find(r => r.id === roleId);
+    if (!role) return;
+
+    const hasChildren = empresa.work_roles.some(r => r.parent_role === roleId);
+    if (hasChildren) {
+      throw new Error(`No se puede eliminar el rol "${role.nombre}" porque otros roles dependen de él en la jerarquía.`);
+    }
+
+    const empleadosSnap = await getDocs(
+      query(
+        collection(db, 'empleados'),
+        where('company_id', '==', empresaId),
+        where('work_role', '==', role.slug),
+        where('deletedAt', '==', null)
+      )
+    );
+    if (!empleadosSnap.empty) {
+      throw new Error(`No se puede eliminar el rol "${role.nombre}" porque hay empleados que lo tienen asignado.`);
+    }
+
+    await updateEmpresa(empresaId, { work_roles: empresa.work_roles.filter(r => r.id !== roleId) });
   }
 
   return {
