@@ -66,11 +66,24 @@ const router = createRouter({
           meta: { title: 'Usuarios' },
           component: () => import('../views/UsersView.vue') // Reutilizado
         },
-        { path: 'personal', name: 'empresa-personal', component: () => import('../views/PersonalView.vue') },
         { path: 'sucursales', name: 'empresa-sucursales', component: () => import('../views/SucursalesView.vue') },
-        { path: 'turnos', name: 'empresa-turnos', component: () => import('../views/TurnosView.vue') },
         { path: 'calendario', name: 'empresa-calendario', component: () => import('../views/CalendarioView.vue') },
-        { path: 'perfil', name: 'empresa-perfil', meta: { title: 'Mi perfil' }, component: () => import('../views/PerfilView.vue') }
+        { path: 'perfil', name: 'empresa-perfil', meta: { title: 'Mi perfil' }, component: () => import('../views/PerfilView.vue') },
+        {
+          path: 'empresa-config',
+          component: () => import('../layouts/AjustesLayout.vue'),
+          children: [
+            { path: '', name: 'empresa-ajustes', redirect: { name: 'empresa-ajustes-empresa' } },
+            { path: 'empresa', name: 'empresa-ajustes-empresa', meta: { title: 'Empresa' }, component: () => import('../views/ajustes/AjustesEmpresaView.vue') },
+            { path: 'usuarios', name: 'empresa-ajustes-usuarios', meta: { title: 'Usuarios' }, component: () => import('../views/ajustes/AjustesUsuariosView.vue') },
+            { path: 'personal', name: 'empresa-ajustes-personal', meta: { title: 'Personal' }, component: () => import('../views/PersonalView.vue') },
+            { path: 'turnos', name: 'empresa-ajustes-turnos', meta: { title: 'Turnos' }, component: () => import('../views/TurnosView.vue') },
+            { path: 'excepciones', name: 'empresa-ajustes-excepciones', meta: { title: 'Excepciones' }, component: () => import('../views/ajustes/AjustesExcepcionesView.vue') },
+            { path: 'cargos', name: 'empresa-ajustes-cargos', meta: { title: 'Cargos' }, component: () => import('../views/ajustes/AjustesRolesView.vue') },
+            { path: 'estructura', name: 'empresa-ajustes-estructura', meta: { title: 'Estructura' }, component: () => import('../views/ajustes/AjustesEstructuraView.vue') },
+            { path: 'habilidades', name: 'empresa-ajustes-habilidades', meta: { title: 'Habilidades' }, component: () => import('../views/ajustes/AjustesHabilidadesView.vue') },
+          ]
+        }
       ]
     }
   ]

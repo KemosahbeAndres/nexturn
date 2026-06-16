@@ -43,7 +43,6 @@ export const useUbicacionStore = defineStore('ubicacion', () => {
       data.company_id,
       data.zone_id,
       data.category,
-      data.manager_id,
       data.name,
       data.address,
       data.active,

@@ -249,7 +249,7 @@ const handleSaveCompany = async (data: any) => {
       if (!empSnap.empty) {
         await empresaStore.updateEmpresa(empSnap.docs[0].id, { type: data.type, active: true, deletedAt: null, slug });
       } else {
-        await empresaStore.createEmpresa({ active: true, contact_id: finalContactId, type: data.type, work_roles: [], slug });
+        await empresaStore.createEmpresa({ active: true, contact_id: finalContactId, type: data.type, cargos: [], slug });
       }
     } else if (selectedCompany.value) {
       if (selectedCompany.value.contact_id) {

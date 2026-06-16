@@ -1,108 +1,100 @@
 <template>
-  <section class="bg-white dark:bg-gray-800 rounded-xl border border-gray-100 dark:border-gray-700 shadow-sm overflow-hidden">
-    <div class="px-6 py-4 border-b border-gray-100 dark:border-gray-700 flex items-center justify-between">
+  <form @submit.prevent="save" class="space-y-4">
+    <p class="text-xs font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-widest">Información de la organización</p>
+
+    <!-- Nombre + Razón social -->
+    <div :class="empresa.isEmpresa ? 'grid grid-cols-1 sm:grid-cols-2 gap-4' : ''">
       <div>
-        <h2 class="text-sm font-semibold text-gray-900 dark:text-white">
-          {{ empresa.isCongregacion ? 'Congregación' : 'Empresa' }}
-        </h2>
-        <p class="text-xs text-gray-500 dark:text-gray-400 mt-0.5">Datos generales de la organización.</p>
+        <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+          {{ empresa.isEmpresa ? 'Nombre comercial' : 'Nombre' }}
+        </label>
+        <input v-model="form.first_name" type="text" required
+          class="w-full px-3 py-2 text-sm bg-gray-50 dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 dark:text-white transition-colors">
       </div>
-      <div v-if="isDirty" class="flex items-center gap-2">
-        <button type="button" @click="reset"
-          class="px-3 py-1.5 text-xs text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition-colors">
-          Deshacer
-        </button>
-        <button type="button" @click="save" :disabled="saving"
-          class="px-3 py-1.5 text-xs bg-blue-600 hover:bg-blue-700 disabled:opacity-60 text-white font-medium rounded-lg transition-colors">
-          {{ saving ? 'Guardando…' : 'Guardar' }}
-        </button>
+      <div v-if="empresa.isEmpresa">
+        <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Razón social</label>
+        <input v-model="form.last_name" type="text"
+          class="w-full px-3 py-2 text-sm bg-gray-50 dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 dark:text-white transition-colors">
       </div>
     </div>
 
-    <form @submit.prevent="save" class="p-6 space-y-4">
-      <!-- Nombre + Razón social -->
-      <div :class="empresa.isEmpresa ? 'grid grid-cols-2 gap-4' : ''">
-        <div>
-          <label class="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">
-            {{ empresa.isEmpresa ? 'Nombre comercial' : 'Nombre' }}
-          </label>
-          <input v-model="form.first_name" type="text" required
-            class="w-full px-3 py-2 text-sm bg-gray-50 dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 dark:text-white">
-        </div>
-        <div v-if="empresa.isEmpresa">
-          <label class="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Razón social</label>
-          <input v-model="form.last_name" type="text"
-            class="w-full px-3 py-2 text-sm bg-gray-50 dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 dark:text-white">
-        </div>
-      </div>
-
-      <!-- RUT + Correo (empresa) -->
-      <div v-if="empresa.isEmpresa" class="grid grid-cols-2 gap-4">
-        <div>
-          <label class="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">RUT</label>
-          <input v-model="form.rut" type="text"
-            class="w-full px-3 py-2 text-sm bg-gray-50 dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 dark:text-white font-mono">
-        </div>
-        <div>
-          <label class="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Correo</label>
-          <input v-model="form.email" type="email"
-            class="w-full px-3 py-2 text-sm bg-gray-50 dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 dark:text-white">
-        </div>
-      </div>
-
-      <!-- Correo opcional (congregacion) -->
-      <div v-if="empresa.isCongregacion">
-        <label class="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">
-          Correo de contacto <span class="font-normal text-gray-400">(opcional)</span>
-        </label>
-        <input v-model="form.email" type="email"
-          class="w-full px-3 py-2 text-sm bg-gray-50 dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 dark:text-white">
-      </div>
-
-      <!-- Teléfono + Dirección -->
-      <div class="grid grid-cols-2 gap-4">
-        <div>
-          <label class="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Teléfono</label>
-          <input v-model="form.phone" type="text"
-            class="w-full px-3 py-2 text-sm bg-gray-50 dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 dark:text-white">
-        </div>
-        <div>
-          <label class="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Dirección</label>
-          <input v-model="form.address" type="text"
-            class="w-full px-3 py-2 text-sm bg-gray-50 dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 dark:text-white">
-        </div>
-      </div>
-
-      <!-- Slug -->
+    <!-- RUT + Correo (empresa) -->
+    <div v-if="empresa.isEmpresa" class="grid grid-cols-1 sm:grid-cols-2 gap-4">
       <div>
-        <label class="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Slug</label>
-        <div class="flex rounded-lg shadow-sm">
-          <span class="inline-flex items-center px-3 rounded-l-lg border border-r-0 border-gray-200 dark:border-gray-600 bg-gray-100 dark:bg-gray-600 text-gray-500 dark:text-gray-300 text-xs">
-            nexturn.com/
-          </span>
-          <input v-model="form.slug" type="text"
-            class="flex-1 min-w-0 px-3 py-2 text-sm bg-gray-50 dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded-none rounded-r-lg focus:outline-none focus:ring-2 focus:ring-blue-500 dark:text-white font-mono">
-        </div>
+        <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">RUT</label>
+        <input v-model="form.rut" type="text"
+          class="w-full px-3 py-2 text-sm bg-gray-50 dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 dark:text-white font-mono transition-colors">
       </div>
+      <div>
+        <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Correo</label>
+        <input v-model="form.email" type="email"
+          class="w-full px-3 py-2 text-sm bg-gray-50 dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 dark:text-white transition-colors">
+      </div>
+    </div>
 
-      <!-- Tipo + Estado (solo lectura) -->
-      <div class="grid grid-cols-2 gap-4">
-        <div>
-          <label class="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Tipo</label>
-          <p class="px-3 py-2 text-sm bg-gray-100 dark:bg-gray-700/60 border border-gray-200 dark:border-gray-600 rounded-lg text-gray-500 dark:text-gray-400">
-            {{ empresa.isCongregacion ? 'Congregación' : 'Empresa' }}
-          </p>
-        </div>
-        <div>
-          <label class="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Estado</label>
-          <p class="px-3 py-2 text-sm bg-gray-100 dark:bg-gray-700/60 border border-gray-200 dark:border-gray-600 rounded-lg"
-            :class="empresa.active ? 'text-green-600 dark:text-green-400' : 'text-red-500 dark:text-red-400'">
-            {{ empresa.active ? 'Activa' : 'Inactiva' }}
-          </p>
-        </div>
+    <!-- Correo opcional (congregacion) -->
+    <div v-if="empresa.isCongregacion">
+      <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+        Correo de contacto <span class="font-normal text-gray-400">(opcional)</span>
+      </label>
+      <input v-model="form.email" type="email"
+        class="w-full px-3 py-2 text-sm bg-gray-50 dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 dark:text-white transition-colors">
+    </div>
+
+    <!-- Teléfono + Dirección -->
+    <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+      <div>
+        <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Teléfono</label>
+        <input v-model="form.phone" type="text"
+          class="w-full px-3 py-2 text-sm bg-gray-50 dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 dark:text-white transition-colors">
       </div>
-    </form>
-  </section>
+      <div>
+        <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Dirección</label>
+        <input v-model="form.address" type="text"
+          class="w-full px-3 py-2 text-sm bg-gray-50 dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 dark:text-white transition-colors">
+      </div>
+    </div>
+
+    <!-- Slug -->
+    <div>
+      <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Slug</label>
+      <div class="flex rounded-lg overflow-hidden border border-gray-200 dark:border-gray-600 focus-within:ring-2 focus-within:ring-blue-500 transition-colors">
+        <span class="inline-flex items-center px-3 bg-gray-100 dark:bg-gray-600 text-gray-500 dark:text-gray-300 text-sm border-r border-gray-200 dark:border-gray-600 shrink-0">
+          nexturn.com/
+        </span>
+        <input v-model="form.slug" type="text"
+          class="flex-1 min-w-0 px-3 py-2 text-sm bg-gray-50 dark:bg-gray-700 dark:text-white font-mono focus:outline-none">
+      </div>
+    </div>
+
+    <!-- Tipo + Estado (solo lectura) -->
+    <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+      <div>
+        <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Tipo</label>
+        <p class="px-3 py-2 text-sm bg-gray-100 dark:bg-gray-700/60 border border-gray-200 dark:border-gray-600 rounded-lg text-gray-500 dark:text-gray-400">
+          {{ empresa.isCongregacion ? 'Congregación' : 'Empresa' }}
+        </p>
+      </div>
+      <div>
+        <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Estado</label>
+        <p class="px-3 py-2 text-sm bg-gray-100 dark:bg-gray-700/60 border border-gray-200 dark:border-gray-600 rounded-lg"
+          :class="empresa.active ? 'text-green-600 dark:text-green-400' : 'text-red-500 dark:text-red-400'">
+          {{ empresa.active ? 'Activa' : 'Inactiva' }}
+        </p>
+      </div>
+    </div>
+
+    <div class="flex justify-end gap-2">
+      <button v-if="isDirty" type="button" @click="reset"
+        class="px-4 py-2 text-sm text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition-colors">
+        Deshacer
+      </button>
+      <button type="submit" :disabled="!isDirty || saving"
+        class="px-5 py-2 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white text-sm font-medium rounded-lg transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500">
+        {{ saving ? 'Guardando…' : 'Guardar cambios' }}
+      </button>
+    </div>
+  </form>
 </template>
 
 <script setup lang="ts">

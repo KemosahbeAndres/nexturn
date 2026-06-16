@@ -1,12 +1,12 @@
 import { Timestamp } from 'firebase/firestore';
 import type { DocumentData, FirestoreDataConverter, QueryDocumentSnapshot, SnapshotOptions } from 'firebase/firestore';
 
-export class Zona {
+export class Habilidad {
   constructor(
     public id: string,
     public empresa_id: string,
-    public name: string,
-    public manager_id: string | null,
+    public nombre: string,
+    public descripcion: string,
     public active: boolean,
     public createdAt: Date = new Date(),
     public updatedAt: Date = new Date(),
@@ -14,25 +14,25 @@ export class Zona {
   ) {}
 }
 
-export const zonaConverter: FirestoreDataConverter<Zona> = {
-  toFirestore(zona: Zona): DocumentData {
+export const habilidadConverter: FirestoreDataConverter<Habilidad> = {
+  toFirestore(h: Habilidad): DocumentData {
     return {
-      empresa_id: zona.empresa_id,
-      name: zona.name,
-      manager_id: zona.manager_id,
-      active: zona.active,
-      createdAt: zona.createdAt ? Timestamp.fromDate(zona.createdAt) : Timestamp.now(),
+      empresa_id: h.empresa_id,
+      nombre: h.nombre,
+      descripcion: h.descripcion,
+      active: h.active,
+      createdAt: h.createdAt ? Timestamp.fromDate(h.createdAt) : Timestamp.now(),
       updatedAt: Timestamp.now(),
-      deletedAt: zona.deletedAt ? Timestamp.fromDate(zona.deletedAt) : null,
+      deletedAt: h.deletedAt ? Timestamp.fromDate(h.deletedAt) : null,
     };
   },
-  fromFirestore(snapshot: QueryDocumentSnapshot, options?: SnapshotOptions): Zona {
+  fromFirestore(snapshot: QueryDocumentSnapshot, options?: SnapshotOptions): Habilidad {
     const data = snapshot.data(options)!;
-    return new Zona(
+    return new Habilidad(
       snapshot.id,
       data.empresa_id,
-      data.name || '',
-      data.manager_id ?? null,
+      data.nombre || '',
+      data.descripcion || '',
       data.active ?? true,
       data.createdAt?.toDate() || new Date(),
       data.updatedAt?.toDate() || new Date(),

@@ -1,6 +1,6 @@
 import { defineStore } from 'pinia';
 import { useCollection } from 'vuefire';
-import { collection, doc, setDoc, updateDoc, query, where, Timestamp, getDoc, getDocs, documentId } from 'firebase/firestore';
+import { collection, doc, setDoc, updateDoc, query, where, Timestamp, getDoc, documentId } from 'firebase/firestore';
 import { ref, computed, watch } from 'vue';
 import { db } from '../firebase';
 import { Empresa, empresaConverter } from '../models/Empresa';
@@ -49,14 +49,14 @@ export const useEmpresaStore = defineStore('empresa', () => {
     }
   }, { deep: true });
 
-  async function createEmpresa(data: { active: boolean; contact_id: string; type: EmpresaType; work_roles: Role[]; slug: string }) {
+  async function createEmpresa(data: { active: boolean; contact_id: string; type: EmpresaType; cargos: Role[]; slug: string }) {
     const docRef = doc(empresasRef);
     const newEmpresa = new Empresa(
       docRef.id,
       data.active,
       data.contact_id,
       data.type,
-      data.work_roles,
+      data.cargos,
       data.slug
     );
     await setDoc(docRef, newEmpresa);
@@ -66,8 +66,8 @@ export const useEmpresaStore = defineStore('empresa', () => {
   async function updateEmpresa(id: string, updateData: Partial<Omit<Empresa, 'id' | 'createdAt' | 'contacto'>>) {
     const docRef = doc(db, 'empresas', id);
     const payload: Record<string, unknown> = { ...updateData, updatedAt: Timestamp.now() };
-    if (payload.work_roles) {
-      payload.work_roles = (payload.work_roles as Role[]).map(roleToFirestore);
+    if (payload.cargos) {
+      payload.cargos = (payload.cargos as Role[]).map(roleToFirestore);
     }
     await updateDoc(docRef, payload);
   }
@@ -81,41 +81,43 @@ export const useEmpresaStore = defineStore('empresa', () => {
   async function addWorkRole(empresaId: string, data: { nombre: string; slug: string; parent_role?: string | null }) {
     const empresa = empresas.value?.find(e => e.id === empresaId);
     if (!empresa) return;
-    if (empresa.work_roles.some(r => r.slug === data.slug)) {
+    if (empresa.cargos.some(r => r.slug === data.slug)) {
       throw new Error(`Ya existe un rol con el slug "${data.slug}".`);
     }
     const parentId = data.parent_role ?? null;
-    if (parentId && !empresa.work_roles.some(r => r.id === parentId)) {
+    if (parentId && !empresa.cargos.some(r => r.id === parentId)) {
       throw new Error('El rol padre no existe en esta empresa.');
     }
     const newRole = new Role(crypto.randomUUID(), data.nombre, data.slug, parentId);
-    await updateEmpresa(empresaId, { work_roles: [...empresa.work_roles, newRole] });
+    await updateEmpresa(empresaId, { cargos: [...empresa.cargos, newRole] });
   }
 
   async function removeWorkRole(empresaId: string, roleId: string) {
     const empresa = empresas.value?.find(e => e.id === empresaId);
     if (!empresa) return;
-    const role = empresa.work_roles.find(r => r.id === roleId);
+    const role = empresa.cargos.find(r => r.id === roleId);
     if (!role) return;
 
-    const hasChildren = empresa.work_roles.some(r => r.parent_role === roleId);
+    const hasChildren = empresa.cargos.some(r => r.parent_role === roleId);
     if (hasChildren) {
       throw new Error(`No se puede eliminar el rol "${role.nombre}" porque otros roles dependen de él en la jerarquía.`);
     }
 
-    const empleadosSnap = await getDocs(
-      query(
-        collection(db, 'empleados'),
-        where('company_id', '==', empresaId),
-        where('work_role', '==', role.slug),
-        where('deletedAt', '==', null)
-      )
-    );
-    if (!empleadosSnap.empty) {
-      throw new Error(`No se puede eliminar el rol "${role.nombre}" porque hay empleados que lo tienen asignado.`);
-    }
+    await updateEmpresa(empresaId, { cargos: empresa.cargos.filter(r => r.id !== roleId) });
+  }
 
-    await updateEmpresa(empresaId, { work_roles: empresa.work_roles.filter(r => r.id !== roleId) });
+  async function updateWorkRole(empresaId: string, roleId: string, data: { nombre: string; slug: string; parent_role: string | null }) {
+    const empresa = empresas.value?.find(e => e.id === empresaId);
+    if (!empresa) return;
+    const slugConflict = empresa.cargos.some(r => r.slug === data.slug && r.id !== roleId);
+    if (slugConflict) throw new Error(`Ya existe un rol con el slug "${data.slug}".`);
+    if (data.parent_role && !empresa.cargos.some(r => r.id === data.parent_role)) {
+      throw new Error('El rol padre no existe en esta empresa.');
+    }
+    const updatedRoles = empresa.cargos.map(r =>
+      r.id === roleId ? new Role(r.id, data.nombre, data.slug, data.parent_role, r.createdAt, new Date(), r.deletedAt) : r
+    );
+    await updateEmpresa(empresaId, { cargos: updatedRoles });
   }
 
   return {
@@ -127,6 +129,7 @@ export const useEmpresaStore = defineStore('empresa', () => {
     updateEmpresa,
     softDeleteEmpresa,
     addWorkRole,
+    updateWorkRole,
     removeWorkRole,
   };
 });

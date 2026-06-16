@@ -5,6 +5,7 @@ import { ref, computed, watch } from 'vue';
 import { db } from '../firebase';
 import { Empleado, empleadoConverter } from '../models/Empleado';
 import { contactoConverter } from '../models/Contacto';
+import { Contrato, contratoToPlain } from '../models/Contrato';
 
 export const useEmpleadoStore = defineStore('empleado', () => {
   const empleadosRef = collection(db, 'empleados').withConverter(empleadoConverter);
@@ -26,7 +27,6 @@ export const useEmpleadoStore = defineStore('empleado', () => {
 
   const empleados = useCollection(empleadosQuery);
 
-  // Hidratar contacto automáticamente cuando llegan nuevos empleados
   watch(empleados, async (lista) => {
     if (!lista) return;
     for (const emp of lista) {
@@ -44,18 +44,51 @@ export const useEmpleadoStore = defineStore('empleado', () => {
 
   const empleadosActivos = computed(() => empleados.value?.filter(e => e.active) ?? []);
 
-  async function createEmpleado(data: Omit<Empleado, 'id' | 'createdAt' | 'updatedAt' | 'deletedAt' | 'contacto' | 'displayName' | 'initials'>) {
+  async function createEmpleado(data: Omit<Empleado, 'id' | 'createdAt' | 'updatedAt' | 'deletedAt' | 'contacto' | 'habilidades' | 'displayName' | 'initials'>) {
     const docRef = doc(empleadosRef);
     const nuevo = new Empleado(
       docRef.id,
       data.company_id,
       data.contact_id,
       data.active,
-      data.work_role,
+      data.skill_ids ?? [],
+      data.contratos ?? [],
       data.disponibilidad ?? null
     );
     await setDoc(docRef, nuevo);
     return docRef.id;
+  }
+
+  async function addContrato(empleadoId: string, contrato: Omit<Contrato, 'id' | 'createdAt' | 'updatedAt' | 'deletedAt'>) {
+    const emp = empleados.value?.find(e => e.id === empleadoId);
+    if (!emp) return;
+    const nuevo = new Contrato(
+      crypto.randomUUID(),
+      empleadoId,
+      contrato.ubicacion_id,
+      contrato.cargo_id,
+      contrato.active ?? true
+    );
+    const updatedContratos = [...(emp.contratos ?? []), nuevo].map(contratoToPlain);
+    await updateDoc(doc(db, 'empleados', empleadoId), { contratos: updatedContratos, updatedAt: Timestamp.now() });
+  }
+
+  async function removeContrato(empleadoId: string, contratoId: string) {
+    const emp = empleados.value?.find(e => e.id === empleadoId);
+    if (!emp) return;
+    const updatedContratos = (emp.contratos ?? [])
+      .filter(c => c.id !== contratoId)
+      .map(contratoToPlain);
+    await updateDoc(doc(db, 'empleados', empleadoId), { contratos: updatedContratos, updatedAt: Timestamp.now() });
+  }
+
+  async function updateContrato(empleadoId: string, contratoId: string, data: Partial<Pick<Contrato, 'cargo_id' | 'ubicacion_id' | 'active'>>) {
+    const emp = empleados.value?.find(e => e.id === empleadoId);
+    if (!emp) return;
+    const updatedContratos = (emp.contratos ?? []).map(c =>
+      c.id === contratoId ? { ...c, ...data } : c
+    ).map(contratoToPlain);
+    await updateDoc(doc(db, 'empleados', empleadoId), { contratos: updatedContratos, updatedAt: Timestamp.now() });
   }
 
   async function updateEmpleado(id: string, data: Partial<Omit<Empleado, 'id' | 'createdAt'>>) {
@@ -75,5 +108,8 @@ export const useEmpleadoStore = defineStore('empleado', () => {
     createEmpleado,
     updateEmpleado,
     softDeleteEmpleado,
+    addContrato,
+    removeContrato,
+    updateContrato,
   };
 });

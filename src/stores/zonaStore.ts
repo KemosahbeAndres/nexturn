@@ -32,8 +32,7 @@ export const useZonaStore = defineStore('zona', () => {
       data.empresa_id,
       data.name,
       data.manager_id,
-      data.active,
-      data.required_role
+      data.active
     );
     await setDoc(docRef, newZona);
     return docRef.id;

@@ -38,12 +38,12 @@
 import { computed } from 'vue';
 import type { Role } from '../../models/Role';
 
-const props = defineProps<{
+const props = withDefaults(defineProps<{
   role: Role;
   allRoles: Role[];
   canManage: boolean;
   depth?: number;
-}>();
+}>(), { depth: 0 });
 
 defineEmits<{ remove: [role: Role] }>();
 

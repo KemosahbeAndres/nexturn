@@ -111,7 +111,7 @@
               <p class="text-xs text-gray-400 dark:text-gray-500">
                 {{ empresa.isEmpresa ? 'Empresa' : 'Congregación' }}
                 <span class="mx-1">·</span>
-                {{ empresa.work_roles.length }} roles
+                {{ empresa.cargos.length }} roles
               </p>
             </div>
 
