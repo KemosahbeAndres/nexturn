@@ -36,7 +36,15 @@ export const useUbicacionStore = defineStore('ubicacion', () => {
 
   const ubicaciones = useCollection(ubicacionesQuery);
 
-  async function createUbicacion(data: Omit<Ubicacion, 'id' | 'createdAt' | 'updatedAt' | 'deletedAt' | 'hasZone' | 'activeTurnos'>) {
+  function slugify(text: string): string {
+    return text
+      .toLowerCase()
+      .normalize('NFD').replace(/[̀-ͯ]/g, '')
+      .replace(/[^a-z0-9]+/g, '-')
+      .replace(/^-+|-+$/g, '');
+  }
+
+  async function createUbicacion(data: Omit<Ubicacion, 'id' | 'slug' | 'createdAt' | 'updatedAt' | 'deletedAt' | 'hasZone' | 'activeTurnos'>) {
     const docRef = doc(ubicacionesRef);
     const newUbicacion = new Ubicacion(
       docRef.id,
@@ -46,7 +54,9 @@ export const useUbicacionStore = defineStore('ubicacion', () => {
       data.name,
       data.address,
       data.active,
-      data.turnos
+      data.turnos,
+      data.manager_id ?? null,
+      slugify(data.name)
     );
     await setDoc(docRef, newUbicacion);
     return docRef.id;
@@ -54,7 +64,9 @@ export const useUbicacionStore = defineStore('ubicacion', () => {
 
   async function updateUbicacion(id: string, updateData: Partial<Omit<Ubicacion, 'id' | 'createdAt'>>) {
     const docRef = doc(db, 'ubicaciones', id);
-    await updateDoc(docRef, { ...updateData, updatedAt: Timestamp.now() });
+    const payload: Record<string, unknown> = { ...updateData, updatedAt: Timestamp.now() };
+    if (updateData.name) payload.slug = slugify(updateData.name);
+    await updateDoc(docRef, payload);
   }
 
   async function softDeleteUbicacion(id: string) {

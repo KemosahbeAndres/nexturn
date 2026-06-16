@@ -1,5 +1,5 @@
 <template>
-  <div class="flex h-full min-h-0 overflow-hidden">
+  <div class="flex flex-1 min-h-0 overflow-hidden">
 
     <!-- ── Panel izquierdo: árbol de estructura ─────────────────────── -->
     <div class="w-1/2 flex flex-col border-r border-gray-100 dark:border-gray-700 overflow-y-auto">
@@ -8,7 +8,7 @@
         <!-- Encabezado -->
         <div class="flex items-center justify-between gap-3">
           <div>
-            <p class="text-xs font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-widest">Estructura</p>
+            <p class="text-xs font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-widest">Sucursales</p>
             <p class="text-xs text-gray-500 dark:text-gray-400 mt-1">Zonas y ubicaciones de la organización.</p>
           </div>
           <div class="flex items-center gap-2">
@@ -330,9 +330,18 @@
                 <p class="text-xs text-blue-500 dark:text-blue-400 font-medium">{{ capitalize(selection.ubicacion.category) }}</p>
               </div>
             </div>
-            <button @click="selection = null" class="shrink-0 w-7 h-7 flex items-center justify-center rounded-lg text-gray-400 hover:text-gray-600 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors">
-              <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" class="w-4 h-4"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18 18 6M6 6l12 12" /></svg>
-            </button>
+            <div class="flex items-center gap-2 shrink-0">
+              <router-link
+                :to="{ name: 'sucursal-home', params: { companySlug: route.params.companySlug, ubicacionSlug: ubicacionSlugFor(selection.ubicacion) } }"
+                class="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-blue-600 dark:text-blue-400 border border-blue-200 dark:border-blue-800 rounded-lg hover:bg-blue-50 dark:hover:bg-blue-900/20 transition-colors whitespace-nowrap"
+              >
+                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" class="w-3.5 h-3.5"><path stroke-linecap="round" stroke-linejoin="round" d="M13.5 4.5 21 12m0 0-7.5 7.5M21 12H3" /></svg>
+                Ir al dashboard
+              </router-link>
+              <button @click="selection = null" class="shrink-0 w-7 h-7 flex items-center justify-center rounded-lg text-gray-400 hover:text-gray-600 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors">
+                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" class="w-4 h-4"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18 18 6M6 6l12 12" /></svg>
+              </button>
+            </div>
           </div>
 
           <div class="space-y-3">
@@ -536,6 +545,15 @@ const ubicacionesSinZona = computed(() =>
 
 function empleadoNombre(id: string): string {
   return empleadosActivos.value.find(e => e.id === id)?.displayName ?? '—';
+}
+
+function ubicacionSlugFor(ub: Ubicacion): string {
+  if (ub.slug) return ub.slug;
+  return ub.name
+    .toLowerCase()
+    .normalize('NFD').replace(/[̀-ͯ]/g, '')
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '');
 }
 
 function capitalize(s: string) {

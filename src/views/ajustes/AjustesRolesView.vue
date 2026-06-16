@@ -1,5 +1,5 @@
 <template>
-  <div class="flex h-full min-h-0 overflow-hidden">
+  <div class="flex flex-1 min-h-0 overflow-hidden">
 
     <!-- ── Panel izquierdo: lista de roles ──────────────────────────── -->
     <div class="w-1/2 flex flex-col border-r border-gray-100 dark:border-gray-700 overflow-y-auto">

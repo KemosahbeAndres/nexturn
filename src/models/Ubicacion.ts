@@ -26,6 +26,7 @@ export class Ubicacion {
     public active: boolean,
     public turnos: Turno[],
     public manager_id: string | null = null,
+    public slug: string = '',
     public createdAt: Date = new Date(),
     public updatedAt: Date = new Date(),
     public deletedAt: Date | null = null
@@ -50,6 +51,7 @@ export const ubicacionConverter: FirestoreDataConverter<Ubicacion> = {
       address: ubicacion.address,
       active: ubicacion.active,
       manager_id: ubicacion.manager_id ?? null,
+      slug: ubicacion.slug,
       turnos: ubicacion.turnos.map(t => ({
         ...t,
         createdAt: t.createdAt ? Timestamp.fromDate(t.createdAt) : Timestamp.now(),
@@ -85,6 +87,7 @@ export const ubicacionConverter: FirestoreDataConverter<Ubicacion> = {
       data.active ?? true,
       turnos,
       data.manager_id ?? null,
+      data.slug || '',
       data.createdAt?.toDate() || new Date(),
       data.updatedAt?.toDate() || new Date(),
       data.deletedAt?.toDate() || null
