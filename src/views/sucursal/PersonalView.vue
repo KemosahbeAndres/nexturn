@@ -488,15 +488,15 @@
 import { ref, computed, onMounted, watch, reactive } from 'vue';
 import { useRoute } from 'vue-router';
 import { collection, doc, setDoc, getDocs, query, where, updateDoc, Timestamp } from 'firebase/firestore';
-import { useSessionStore } from '../stores/sessionStore';
-import { useEmpresaStore } from '../stores/empresaStore';
-import { useEmpleadoStore } from '../stores/empleadoStore';
-import { useUbicacionStore } from '../stores/ubicacionStore';
-import { useHabilidadStore } from '../stores/habilidadStore';
-import { useRut } from '../composables/useRut';
-import { db } from '../firebase';
-import { contactoConverter, Contacto } from '../models/Contacto';
-import type { Empleado } from '../models/Empleado';
+import { useSessionStore } from '../../stores/sessionStore';
+import { useEmpresaStore } from '../../stores/empresaStore';
+import { useEmpleadoStore } from '../../stores/empleadoStore';
+import { useUbicacionStore } from '../../stores/ubicacionStore';
+import { useHabilidadStore } from '../../stores/habilidadStore';
+import { useRut } from '../../composables/useRut';
+import { db } from '../../firebase';
+import { contactoConverter, Contacto } from '../../models/Contacto';
+import type { Empleado } from '../../models/Empleado';
 
 const route = useRoute();
 const sessionStore = useSessionStore();

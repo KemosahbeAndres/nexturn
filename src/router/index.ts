@@ -26,26 +26,26 @@ const router = createRouter({
         {
           path: 'dashboard',
           name: 'admin-dashboard',
-          meta: { title: 'Dashboard Admin' },
-          component: () => import('../views/DashboardView.vue')
+          meta: { title: 'Dashboard', subtitle: 'Panel de administración global' },
+          component: () => import('../views/admin/DashboardView.vue')
         },
         {
           path: 'usuarios',
           name: 'admin-usuarios',
-          meta: { title: 'Usuarios Globales' },
-          component: () => import('../views/AdminUsersView.vue')
+          meta: { title: 'Usuarios', subtitle: 'Gestión de usuarios del sistema' },
+          component: () => import('../views/admin/AdminUsersView.vue')
         },
         {
           path: 'empresas',
           name: 'admin-empresas',
-          meta: { title: 'Empresas y Clientes' },
-          component: () => import('../views/CompaniesView.vue')
+          meta: { title: 'Clientes', subtitle: 'Empresas y organizaciones registradas' },
+          component: () => import('../views/admin/CompaniesView.vue')
         },
         {
           path: 'perfil',
           name: 'admin-perfil',
-          meta: { title: 'Mi perfil' },
-          component: () => import('../views/PerfilView.vue')
+          meta: { title: 'Mi perfil', subtitle: 'Configuración de tu cuenta' },
+          component: () => import('../views/shared/PerfilView.vue')
         }
       ]
     },
@@ -61,14 +61,14 @@ const router = createRouter({
         {
           path: 'empresa',
           name: 'empresa-home',
-          meta: { title: 'Empresa' },
-          component: () => import('../views/EmpresaView.vue')
+          meta: { title: 'Panel', subtitle: 'Vista general de la empresa' },
+          component: () => import('../views/empresa/EmpresaView.vue')
         },
-        { path: 'sucursales', name: 'empresa-sucursales', meta: { title: 'Sucursales' }, component: () => import('../views/ajustes/AjustesEstructuraView.vue') },
-        { path: 'perfil', name: 'empresa-perfil', meta: { title: 'Mi perfil' }, component: () => import('../views/PerfilView.vue') },
-        { path: 'empresa-ajustes', name: 'empresa-ajustes-empresa', meta: { title: 'Empresa' }, component: () => import('../views/ajustes/AjustesEmpresaView.vue') },
-        { path: 'usuarios', name: 'empresa-ajustes-usuarios', meta: { title: 'Usuarios' }, component: () => import('../views/ajustes/AjustesUsuariosView.vue') },
-        { path: 'cargos', name: 'empresa-ajustes-cargos', meta: { title: 'Cargos' }, component: () => import('../views/ajustes/AjustesRolesView.vue') },
+        { path: 'sucursales', name: 'empresa-sucursales', meta: { title: 'Sucursales', subtitle: 'Puntos de atención y ubicaciones' }, component: () => import('../views/empresa/AjustesEstructuraView.vue') },
+        { path: 'perfil', name: 'empresa-perfil', meta: { title: 'Mi perfil', subtitle: 'Configuración de tu cuenta' }, component: () => import('../views/shared/PerfilView.vue') },
+        { path: 'empresa-ajustes', name: 'empresa-ajustes-empresa', meta: { title: 'Empresa', subtitle: 'Datos generales de la organización' }, component: () => import('../views/empresa/AjustesEmpresaView.vue') },
+        { path: 'usuarios', name: 'empresa-ajustes-usuarios', meta: { title: 'Usuarios', subtitle: 'Control de acceso y permisos' }, component: () => import('../views/empresa/AjustesUsuariosView.vue') },
+        { path: 'cargos', name: 'empresa-ajustes-cargos', meta: { title: 'Cargos', subtitle: 'Roles de trabajo personalizados' }, component: () => import('../views/empresa/AjustesRolesView.vue') },
       ]
     },
     {
@@ -77,19 +77,19 @@ const router = createRouter({
       meta: { requiresAuth: true, requiresCompany: true, requiresUbicacion: true },
       children: [
         { path: '', name: 'sucursal-home', redirect: { name: 'sucursal-dashboard' } },
-        { path: 'dashboard', name: 'sucursal-dashboard', meta: { title: 'Dashboard' }, component: () => import('../views/sucursal/SucursalDashboardView.vue') },
-        { path: 'turnos', name: 'sucursal-turnos', meta: { title: 'Turnos' }, component: () => import('../views/TurnosView.vue') },
-        { path: 'solicitudes', name: 'sucursal-solicitudes', meta: { title: 'Solicitudes' }, component: () => import('../views/sucursal/SolicitudesView.vue') },
+        { path: 'dashboard', name: 'sucursal-dashboard', meta: { title: 'Centro de control', subtitle: 'Resumen operativo de la sucursal' }, component: () => import('../views/sucursal/SucursalDashboardView.vue') },
+        { path: 'turnos', name: 'sucursal-turnos', meta: { title: 'Turnos', subtitle: 'Gestión de horarios y asignaciones' }, component: () => import('../views/sucursal/TurnosView.vue') },
+        { path: 'solicitudes', name: 'sucursal-solicitudes', meta: { title: 'Solicitudes', subtitle: 'Permisos y ausencias pendientes' }, component: () => import('../views/sucursal/SolicitudesView.vue') },
         {
           path: 'mi-equipo',
           component: () => import('../layouts/MiEquipoLayout.vue'),
           children: [
             { path: '', name: 'sucursal-mi-equipo', redirect: { name: 'sucursal-mi-equipo-personal' } },
-            { path: 'personal', name: 'sucursal-mi-equipo-personal', meta: { title: 'Personal' }, component: () => import('../views/PersonalView.vue') },
-            { path: 'habilidades', name: 'sucursal-mi-equipo-habilidades', meta: { title: 'Habilidades' }, component: () => import('../views/ajustes/AjustesHabilidadesView.vue') },
-            { path: 'disponibilidad', name: 'sucursal-mi-equipo-disponibilidad', meta: { title: 'Disponibilidad' }, component: () => import('../views/ajustes/AjustesDisponibilidadView.vue') },
-            { path: 'excepciones', name: 'sucursal-mi-equipo-excepciones', meta: { title: 'Excepciones' }, component: () => import('../views/ajustes/AjustesExcepcionesView.vue') },
-            { path: 'reglas', name: 'sucursal-mi-equipo-reglas', meta: { title: 'Reglas' }, component: () => import('../views/ajustes/AjustesReglasView.vue') },
+            { path: 'personal', name: 'sucursal-mi-equipo-personal', meta: { title: 'Mi Equipo', subtitle: 'Directorio de personal de la sucursal' }, component: () => import('../views/sucursal/PersonalView.vue') },
+            { path: 'habilidades', name: 'sucursal-mi-equipo-habilidades', meta: { title: 'Habilidades', subtitle: 'Roles y competencias del equipo' }, component: () => import('../views/sucursal/ajustes/AjustesHabilidadesView.vue') },
+            { path: 'disponibilidad', name: 'sucursal-mi-equipo-disponibilidad', meta: { title: 'Disponibilidad', subtitle: 'Reglas base de disponibilidad' }, component: () => import('../views/sucursal/ajustes/AjustesDisponibilidadView.vue') },
+            { path: 'excepciones', name: 'sucursal-mi-equipo-excepciones', meta: { title: 'Excepciones', subtitle: 'Ausencias y días fuera de rutina' }, component: () => import('../views/sucursal/ajustes/AjustesExcepcionesView.vue') },
+            { path: 'reglas', name: 'sucursal-mi-equipo-reglas', meta: { title: 'Reglas', subtitle: 'Preferencias de asignación conjunta' }, component: () => import('../views/sucursal/ajustes/AjustesReglasView.vue') },
           ]
         }
       ]

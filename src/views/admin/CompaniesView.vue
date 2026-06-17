@@ -190,13 +190,13 @@
 import { ref, computed, onMounted, onUnmounted, defineComponent, h } from 'vue';
 import { useRouter } from 'vue-router';
 import { collection, doc, setDoc, updateDoc, Timestamp, query, where, getDocs } from 'firebase/firestore';
-import { db } from '../firebase';
-import { useEmpresaStore } from '../stores/empresaStore';
-import { useSessionStore } from '../stores/sessionStore';
-import { Contacto, contactoConverter } from '../models/Contacto';
-import { useOrgTable } from '../composables/useOrgTable';
-import CompanyModal from '../components/CompanyModal.vue';
-import type { EmpresaType } from '../models/Empresa';
+import { db } from '../../firebase';
+import { useEmpresaStore } from '../../stores/empresaStore';
+import { useSessionStore } from '../../stores/sessionStore';
+import { Contacto, contactoConverter } from '../../models/Contacto';
+import { useOrgTable } from '../../composables/useOrgTable';
+import CompanyModal from '../../components/CompanyModal.vue';
+import type { EmpresaType } from '../../models/Empresa';
 
 const router = useRouter();
 const empresaStore = useEmpresaStore();

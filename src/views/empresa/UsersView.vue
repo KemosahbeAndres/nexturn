@@ -153,12 +153,12 @@ import { collection, doc, setDoc, updateDoc, Timestamp, query, where, getDocs } 
 import { initializeApp, deleteApp } from 'firebase/app';
 import { getAuth, createUserWithEmailAndPassword, sendPasswordResetEmail } from 'firebase/auth';
 import { useRoute } from 'vue-router';
-import { db, firebaseApp } from '../firebase';
-import { useUsuarioStore } from '../stores/usuarioStore';
-import { useSessionStore } from '../stores/sessionStore';
-import { useEmpresaStore } from '../stores/empresaStore';
-import { Contacto, contactoConverter } from '../models/Contacto';
-import UserModal from '../components/UserModal.vue';
+import { db, firebaseApp } from '../../firebase';
+import { useUsuarioStore } from '../../stores/usuarioStore';
+import { useSessionStore } from '../../stores/sessionStore';
+import { useEmpresaStore } from '../../stores/empresaStore';
+import { Contacto, contactoConverter } from '../../models/Contacto';
+import UserModal from '../../components/UserModal.vue';
 
 const usuarioStore = useUsuarioStore();
 const sessionStore = useSessionStore();

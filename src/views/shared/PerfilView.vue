@@ -75,8 +75,8 @@
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue';
 import { doc, updateDoc } from 'firebase/firestore';
-import { db } from '../firebase';
-import { useSessionStore } from '../stores/sessionStore';
+import { db } from '../../firebase';
+import { useSessionStore } from '../../stores/sessionStore';
 
 const sessionStore = useSessionStore();
 

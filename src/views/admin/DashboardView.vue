@@ -139,9 +139,9 @@
 
 <script setup lang="ts">
 import { computed, onMounted } from 'vue';
-import { useEmpresaStore } from '../stores/empresaStore';
-import { useSesionesActivasStore } from '../stores/sesionesActivasStore';
-import type { Usuario } from '../models/Usuario';
+import { useEmpresaStore } from '../../stores/empresaStore';
+import { useSesionesActivasStore } from '../../stores/sesionesActivasStore';
+import type { Usuario } from '../../models/Usuario';
 
 const empresaStore = useEmpresaStore();
 const sesionesStore = useSesionesActivasStore();

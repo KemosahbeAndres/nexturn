@@ -181,10 +181,10 @@
 <script setup lang="ts">
 import { ref, computed, watch, onMounted } from 'vue';
 import { useRoute } from 'vue-router';
-import { useEmpresaStore } from '../../stores/empresaStore';
-import { useSessionStore } from '../../stores/sessionStore';
-import { useHabilidadStore } from '../../stores/habilidadStore';
-import type { Habilidad } from '../../models/Habilidad';
+import { useEmpresaStore } from '../../../stores/empresaStore';
+import { useSessionStore } from '../../../stores/sessionStore';
+import { useHabilidadStore } from '../../../stores/habilidadStore';
+import type { Habilidad } from '../../../models/Habilidad';
 
 const route = useRoute();
 const empresaStore = useEmpresaStore();

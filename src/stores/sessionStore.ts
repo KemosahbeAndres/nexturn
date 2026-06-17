@@ -13,6 +13,7 @@ export const useSessionStore = defineStore('session', () => {
   const currentUser = ref<Usuario | null>(null);
   const currentSession = ref<Sesion | null>(null);
   const activeCompanyId = ref<string | null>(null); // Contexto de la empresa en la que navegamos
+  const activeUbicacionId = ref<string | null>(null); // Contexto de la sucursal en la que navegamos
   
   // Preferencias personales del usuario persistidas en el estado local
   const preferences = ref({
@@ -176,6 +177,7 @@ export const useSessionStore = defineStore('session', () => {
     currentUser.value = null;
     currentSession.value = null;
     activeCompanyId.value = null;
+    activeUbicacionId.value = null;
 
     // Limpiamos el Local Storage
     localStorage.removeItem('session_token');
@@ -272,10 +274,11 @@ export const useSessionStore = defineStore('session', () => {
     }
   }
 
-  return { 
-    currentUser, 
-    currentSession, 
+  return {
+    currentUser,
+    currentSession,
     activeCompanyId,
+    activeUbicacionId,
     preferences, 
     isAuthenticated, 
     userRole, 

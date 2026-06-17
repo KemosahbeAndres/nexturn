@@ -159,9 +159,9 @@
 <script setup lang="ts">
 import { computed, onMounted } from 'vue';
 import { useRoute } from 'vue-router';
-import { useEmpresaStore } from '../stores/empresaStore';
-import { useUbicacionStore } from '../stores/ubicacionStore';
-import { useZonaStore } from '../stores/zonaStore';
+import { useEmpresaStore } from '../../stores/empresaStore';
+import { useUbicacionStore } from '../../stores/ubicacionStore';
+import { useZonaStore } from '../../stores/zonaStore';
 
 const route        = useRoute();
 const empresaStore = useEmpresaStore();
