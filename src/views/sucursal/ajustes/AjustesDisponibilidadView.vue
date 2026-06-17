@@ -196,13 +196,11 @@
 
 <script setup lang="ts">
 import { ref, computed, watch, onMounted } from 'vue';
-import { useRoute } from 'vue-router';
 import { useSessionStore } from '../../../stores/sessionStore';
 import { useEmpleadoStore } from '../../../stores/empleadoStore';
 import { useDisponibilidadStore } from '../../../stores/disponibilidadStore';
 import type { Empleado } from '../../../models/Empleado';
 
-const route = useRoute();
 const sessionStore = useSessionStore();
 const empleadoStore = useEmpleadoStore();
 const disponibilidadStore = useDisponibilidadStore();

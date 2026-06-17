@@ -115,7 +115,7 @@
             >
               <span class="font-medium text-gray-700 dark:text-gray-300">{{ turno.day_of_week }}</span>
               <span class="text-gray-400 dark:text-gray-500">{{ turno.start_time }} – {{ turno.end_time }}</span>
-              <span class="text-gray-400 dark:text-gray-500">{{ turno.slots_available }} pers.</span>
+              <span class="text-gray-400 dark:text-gray-500">{{ turno.requerimientos.reduce((s, r) => s + r.cantidad, 0) }} pers.</span>
             </li>
             <li v-if="ub.activeTurnos.length > 3" class="text-xs text-gray-400 dark:text-gray-500">
               +{{ ub.activeTurnos.length - 3 }} más...
@@ -343,6 +343,7 @@ async function guardar() {
         active: true,
         manager_id: null,
         turnos: [],
+        configuraciones: [],
       });
     }
     cerrarModal();

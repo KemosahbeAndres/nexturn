@@ -412,8 +412,6 @@ function openAdd(type: 'zona' | 'ubicacion') {
   addZonaForm.value = { name: '' };
   addUbForm.value = { name: '', category: 'sucursal' };
   addError.value = '';
-  editMode.value = null;
-  selectedUbicacion.value = null;
 }
 
 function closeAdd() {
@@ -444,6 +442,7 @@ async function submitAdd() {
         manager_id: null,
         active: true,
         turnos: [],
+        configuraciones: [],
       });
     }
     closeAdd();

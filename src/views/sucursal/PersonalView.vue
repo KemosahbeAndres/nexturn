@@ -340,7 +340,7 @@
           <!-- Tabs -->
           <div class="flex bg-gray-100 dark:bg-gray-700 rounded-lg p-0.5 gap-0.5 mx-5 mt-4 shrink-0">
             <button v-for="tab in modalTabs" :key="tab.id" type="button"
-              @click="modalTab = tab.id"
+              @click="modalTab = tab.id as 'buscar' | 'nuevo'"
               class="flex-1 px-3 py-1.5 text-xs font-medium rounded-md transition-colors"
               :class="modalTab === tab.id
                 ? 'bg-white dark:bg-gray-800 text-gray-900 dark:text-white shadow-sm'
@@ -527,8 +527,6 @@ import { useEstacionStore } from '../../stores/estacionStore';
 import { useRut } from '../../composables/useRut';
 import { db } from '../../firebase';
 import { contactoConverter, Contacto } from '../../models/Contacto';
-import { Contrato } from '../../models/Contrato';
-import { v4 as uuidv4 } from 'uuid';
 import type { Empleado } from '../../models/Empleado';
 
 const route = useRoute();
@@ -596,7 +594,6 @@ const hoyMasUnMes = new Date();
 hoyMasUnMes.setMonth(hoyMasUnMes.getMonth() + 1);
 
 function tieneContratoVigente(emp: Empleado): boolean {
-  const hoy = new Date();
   return (emp.contratos ?? []).some(c =>
     c.active &&
     !c.deletedAt &&
