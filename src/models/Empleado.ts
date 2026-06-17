@@ -1,7 +1,6 @@
 import { Timestamp } from 'firebase/firestore';
 import type { DocumentData, FirestoreDataConverter, QueryDocumentSnapshot, SnapshotOptions } from 'firebase/firestore';
 import type { Contacto } from './Contacto';
-import type { Habilidad } from './Habilidad';
 import { Contrato, contratoFromPlain, contratoToPlain } from './Contrato';
 
 export interface Disponibilidad {
@@ -17,14 +16,13 @@ export interface Disponibilidad {
 
 export class Empleado {
   public contacto?: Contacto;
-  public habilidades?: Habilidad[];
 
   constructor(
     public id: string,
     public company_id: string,
     public contact_id: string,
     public active: boolean,
-    public skill_ids: string[],
+    public estacion_ids: string[],
     public contratos: Contrato[],
     public disponibilidad: Disponibilidad | null,
     public createdAt: Date = new Date(),
@@ -52,7 +50,7 @@ export const empleadoConverter: FirestoreDataConverter<Empleado> = {
       company_id: empleado.company_id,
       contact_id: empleado.contact_id,
       active: empleado.active,
-      skill_ids: empleado.skill_ids,
+      estacion_ids: empleado.estacion_ids,
       contratos: (empleado.contratos ?? []).map(contratoToPlain),
       disponibilidad: disp ? {
         ...disp,
@@ -84,7 +82,7 @@ export const empleadoConverter: FirestoreDataConverter<Empleado> = {
       data.company_id || '',
       data.contact_id || '',
       data.active ?? true,
-      data.skill_ids || [],
+      data.estacion_ids || data.skill_ids || [],
       (data.contratos || []).map(contratoFromPlain),
       disponibilidad,
       data.createdAt?.toDate() || new Date(),

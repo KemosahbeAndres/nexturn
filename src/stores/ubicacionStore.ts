@@ -3,7 +3,7 @@ import { useCollection } from 'vuefire';
 import { collection, doc, setDoc, updateDoc, query, where, Timestamp, arrayUnion } from 'firebase/firestore';
 import { ref, computed } from 'vue';
 import { db } from '../firebase';
-import { Ubicacion, ubicacionConverter, type Turno } from '../models/Ubicacion';
+import { Ubicacion, ubicacionConverter, type Turno, type ConfiguracionTurnos } from '../models/Ubicacion';
 
 export const useUbicacionStore = defineStore('ubicacion', () => {
   const ubicacionesRef = collection(db, 'ubicaciones').withConverter(ubicacionConverter);
@@ -22,11 +22,9 @@ export const useUbicacionStore = defineStore('ubicacion', () => {
 
     let q = query(
       ubicacionesRef,
-      where('company_id', '==', queryParams.value.empresaId),
-      where('deletedAt', '==', null)
+      where('company_id', '==', queryParams.value.empresaId)
     );
 
-    // Filtrar por zona si se especifica (null = ubicaciones sin zona / congregaciones)
     if (queryParams.value.zonaId !== undefined) {
       q = query(q, where('zone_id', '==', queryParams.value.zonaId));
     }
@@ -44,7 +42,7 @@ export const useUbicacionStore = defineStore('ubicacion', () => {
       .replace(/^-+|-+$/g, '');
   }
 
-  async function createUbicacion(data: Omit<Ubicacion, 'id' | 'slug' | 'createdAt' | 'updatedAt' | 'deletedAt' | 'hasZone' | 'activeTurnos'>) {
+  async function createUbicacion(data: Omit<Ubicacion, 'id' | 'slug' | 'createdAt' | 'updatedAt' | 'deletedAt' | 'hasZone' | 'activeTurnos' | 'activeConfiguraciones' | 'defaultConfiguracion'>) {
     const docRef = doc(ubicacionesRef);
     const newUbicacion = new Ubicacion(
       docRef.id,
@@ -55,6 +53,7 @@ export const useUbicacionStore = defineStore('ubicacion', () => {
       data.address,
       data.active,
       data.turnos,
+      data.configuraciones ?? [],
       data.manager_id ?? null,
       slugify(data.name)
     );
@@ -74,7 +73,7 @@ export const useUbicacionStore = defineStore('ubicacion', () => {
     await updateDoc(docRef, { active: false, deletedAt: Timestamp.now() });
   }
 
-  // Turno management
+  // Turno management (legado — se mantiene por compatibilidad)
   async function addTurno(ubicacionId: string, turnoData: Omit<Turno, 'id' | 'createdAt' | 'updatedAt' | 'deletedAt'>) {
     const docRef = doc(db, 'ubicaciones', ubicacionId);
     const newTurno: Turno = {
@@ -91,14 +90,10 @@ export const useUbicacionStore = defineStore('ubicacion', () => {
     return newTurno.id;
   }
 
-  // Para editar o hacer soft-delete de un turno se reemplaza el array completo
   async function updateTurnosArray(ubicacionId: string, turnos: Turno[]) {
     const docRef = doc(db, 'ubicaciones', ubicacionId);
     await updateDoc(docRef, {
-      turnos: turnos.map(t => ({
-        ...t,
-        updatedAt: new Date(),
-      })),
+      turnos: turnos.map(serializeTurno),
       updatedAt: Timestamp.now(),
     });
   }
@@ -110,6 +105,118 @@ export const useUbicacionStore = defineStore('ubicacion', () => {
     await updateTurnosArray(ubicacionId, updated);
   }
 
+  // ── Helpers de serialización ──────────────────────────────────────────────────
+
+  function serializeTurno(t: Turno) {
+    return {
+      id: t.id,
+      day_of_week: t.day_of_week,
+      start_time: t.start_time,
+      end_time: t.end_time,
+      requerimientos: t.requerimientos,
+      createdAt: t.createdAt ? Timestamp.fromDate(t.createdAt) : Timestamp.now(),
+      updatedAt: Timestamp.now(),
+      deletedAt: t.deletedAt ? Timestamp.fromDate(t.deletedAt) : null,
+    };
+  }
+
+  function serializeConfiguracion(c: ConfiguracionTurnos) {
+    return {
+      id: c.id,
+      name: c.name,
+      scope: c.scope,
+      month: c.month ?? null,
+      date_start: c.date_start ?? null,
+      date_end: c.date_end ?? null,
+      turnos: c.turnos.map(serializeTurno),
+      createdAt: c.createdAt ? Timestamp.fromDate(c.createdAt) : Timestamp.now(),
+      updatedAt: Timestamp.now(),
+      deletedAt: c.deletedAt ? Timestamp.fromDate(c.deletedAt) : null,
+    };
+  }
+
+  // ── Gestión de ConfiguracionTurnos ───────────────────────────────────────────
+
+  async function addConfiguracion(
+    ubicacionId: string,
+    data: Omit<ConfiguracionTurnos, 'id' | 'turnos' | 'createdAt' | 'updatedAt' | 'deletedAt'>
+  ): Promise<string> {
+    const docRef = doc(db, 'ubicaciones', ubicacionId);
+    const nueva: ConfiguracionTurnos = {
+      id: crypto.randomUUID(),
+      ...data,
+      turnos: [],
+      createdAt: new Date(),
+      updatedAt: new Date(),
+      deletedAt: null,
+    };
+    const ubicacion = ubicaciones.value?.find(u => u.id === ubicacionId);
+    const current = ubicacion?.configuraciones ?? [];
+    await updateDoc(docRef, {
+      configuraciones: [...current, nueva].map(serializeConfiguracion),
+      updatedAt: Timestamp.now(),
+    });
+    return nueva.id;
+  }
+
+  async function updateConfiguracionesArray(ubicacionId: string, configuraciones: ConfiguracionTurnos[]) {
+    const docRef = doc(db, 'ubicaciones', ubicacionId);
+    await updateDoc(docRef, {
+      configuraciones: configuraciones.map(serializeConfiguracion),
+      updatedAt: Timestamp.now(),
+    });
+  }
+
+  async function softDeleteConfiguracion(ubicacionId: string, configId: string, currentConfigs: ConfiguracionTurnos[]) {
+    const updated = currentConfigs.map(c =>
+      c.id === configId ? { ...c, deletedAt: new Date(), updatedAt: new Date() } : c
+    );
+    await updateConfiguracionesArray(ubicacionId, updated);
+  }
+
+  async function addTurnoAConfiguracion(
+    ubicacionId: string,
+    configId: string,
+    turnoData: Omit<Turno, 'id' | 'createdAt' | 'updatedAt' | 'deletedAt'>,
+    currentConfigs: ConfiguracionTurnos[]
+  ): Promise<string> {
+    const turnoId = crypto.randomUUID();
+    const nuevoTurno: Turno = { id: turnoId, ...turnoData, createdAt: new Date(), updatedAt: new Date(), deletedAt: null };
+    const updated = currentConfigs.map(c =>
+      c.id === configId ? { ...c, turnos: [...c.turnos, nuevoTurno], updatedAt: new Date() } : c
+    );
+    await updateConfiguracionesArray(ubicacionId, updated);
+    return turnoId;
+  }
+
+  async function updateTurnoEnConfiguracion(
+    ubicacionId: string,
+    configId: string,
+    turnoActualizado: Turno,
+    currentConfigs: ConfiguracionTurnos[]
+  ) {
+    const updated = currentConfigs.map(c =>
+      c.id === configId
+        ? { ...c, turnos: c.turnos.map(t => t.id === turnoActualizado.id ? { ...turnoActualizado, updatedAt: new Date() } : t), updatedAt: new Date() }
+        : c
+    );
+    await updateConfiguracionesArray(ubicacionId, updated);
+  }
+
+  async function softDeleteTurnoEnConfiguracion(
+    ubicacionId: string,
+    configId: string,
+    turnoId: string,
+    currentConfigs: ConfiguracionTurnos[]
+  ) {
+    const updated = currentConfigs.map(c =>
+      c.id === configId
+        ? { ...c, turnos: c.turnos.map(t => t.id === turnoId ? { ...t, deletedAt: new Date(), updatedAt: new Date() } : t), updatedAt: new Date() }
+        : c
+    );
+    await updateConfiguracionesArray(ubicacionId, updated);
+  }
+
   return {
     ubicaciones,
     listarUbicaciones,
@@ -119,5 +226,11 @@ export const useUbicacionStore = defineStore('ubicacion', () => {
     addTurno,
     updateTurnosArray,
     softDeleteTurno,
+    addConfiguracion,
+    updateConfiguracionesArray,
+    softDeleteConfiguracion,
+    addTurnoAConfiguracion,
+    updateTurnoEnConfiguracion,
+    softDeleteTurnoEnConfiguracion,
   };
 });

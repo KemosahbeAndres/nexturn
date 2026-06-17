@@ -64,7 +64,7 @@ const router = createRouter({
           meta: { title: 'Panel', subtitle: 'Vista general de la empresa' },
           component: () => import('../views/empresa/EmpresaView.vue')
         },
-        { path: 'sucursales', name: 'empresa-sucursales', meta: { title: 'Sucursales', subtitle: 'Puntos de atención y ubicaciones' }, component: () => import('../views/empresa/AjustesEstructuraView.vue') },
+        { path: 'organizacion', name: 'empresa-organizacion', meta: { title: 'Organización', subtitle: 'Zonas y sucursales de la empresa' }, component: () => import('../views/empresa/AjustesEstructuraView.vue') },
         { path: 'perfil', name: 'empresa-perfil', meta: { title: 'Mi perfil', subtitle: 'Configuración de tu cuenta' }, component: () => import('../views/shared/PerfilView.vue') },
         { path: 'empresa-ajustes', name: 'empresa-ajustes-empresa', meta: { title: 'Empresa', subtitle: 'Datos generales de la organización' }, component: () => import('../views/empresa/AjustesEmpresaView.vue') },
         { path: 'usuarios', name: 'empresa-ajustes-usuarios', meta: { title: 'Usuarios', subtitle: 'Control de acceso y permisos' }, component: () => import('../views/empresa/AjustesUsuariosView.vue') },
@@ -86,7 +86,7 @@ const router = createRouter({
           children: [
             { path: '', name: 'sucursal-mi-equipo', redirect: { name: 'sucursal-mi-equipo-personal' } },
             { path: 'personal', name: 'sucursal-mi-equipo-personal', meta: { title: 'Mi Equipo', subtitle: 'Directorio de personal de la sucursal' }, component: () => import('../views/sucursal/PersonalView.vue') },
-            { path: 'habilidades', name: 'sucursal-mi-equipo-habilidades', meta: { title: 'Habilidades', subtitle: 'Roles y competencias del equipo' }, component: () => import('../views/sucursal/ajustes/AjustesHabilidadesView.vue') },
+            { path: 'estaciones', name: 'sucursal-mi-equipo-estaciones', meta: { title: 'Estaciones', subtitle: 'Puestos operativos del equipo' }, component: () => import('../views/sucursal/ajustes/AjustesEstacionesView.vue') },
             { path: 'disponibilidad', name: 'sucursal-mi-equipo-disponibilidad', meta: { title: 'Disponibilidad', subtitle: 'Reglas base de disponibilidad' }, component: () => import('../views/sucursal/ajustes/AjustesDisponibilidadView.vue') },
             { path: 'excepciones', name: 'sucursal-mi-equipo-excepciones', meta: { title: 'Excepciones', subtitle: 'Ausencias y días fuera de rutina' }, component: () => import('../views/sucursal/ajustes/AjustesExcepcionesView.vue') },
             { path: 'reglas', name: 'sucursal-mi-equipo-reglas', meta: { title: 'Reglas', subtitle: 'Preferencias de asignación conjunta' }, component: () => import('../views/sucursal/ajustes/AjustesReglasView.vue') },

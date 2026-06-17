@@ -218,14 +218,14 @@ const roleLabel = computed(() => {
 const menuItems = computed((): MenuItem[] => [
   { name: 'Panel',       routeName: 'empresa-home',             icon: IconDashboard },
   { name: 'Empresa',     routeName: 'empresa-ajustes-empresa',  icon: IconEmpresaConfig },
-  { name: 'Sucursales',  routeName: 'empresa-sucursales',       icon: IconSucursales },
+  { name: 'Organización', routeName: 'empresa-organizacion',     icon: IconSucursales },
   { name: 'Usuarios',    routeName: 'empresa-ajustes-usuarios', icon: IconUsuarios },
   { name: 'Cargos',      routeName: 'empresa-ajustes-cargos',   icon: IconCargos },
 ]);
 
 const bottomItems = computed((): MenuItem[] => [
   { name: 'Panel',       routeName: 'empresa-home',             icon: IconDashboard },
-  { name: 'Sucursales',  routeName: 'empresa-sucursales',       icon: IconSucursales },
+  { name: 'Organización', routeName: 'empresa-organizacion',     icon: IconSucursales },
   { name: 'Usuarios',    routeName: 'empresa-ajustes-usuarios', icon: IconUsuarios },
   { name: 'Cargos',      routeName: 'empresa-ajustes-cargos',   icon: IconCargos },
 ]);

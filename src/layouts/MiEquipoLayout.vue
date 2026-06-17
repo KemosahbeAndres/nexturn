@@ -48,14 +48,14 @@ function icon(paths: string[]) {
 }
 
 const IconPersonal       = icon(['M15.75 6a3.75 3.75 0 1 1-7.5 0 3.75 3.75 0 0 1 7.5 0ZM4.501 20.118a7.5 7.5 0 0 1 14.998 0A17.933 17.933 0 0 1 12 21.75c-2.676 0-5.216-.584-7.499-1.632Z']);
-const IconHabilidades    = icon(['M4.26 10.147a60.438 60.438 0 0 0-.491 6.347A48.62 48.62 0 0 1 12 20.904a48.62 48.62 0 0 1 8.232-4.41 60.46 60.46 0 0 0-.491-6.347m-15.482 0a50.636 50.636 0 0 0-2.658-.813A59.906 59.906 0 0 1 12 3.493a59.903 59.903 0 0 1 10.399 5.84c-.896.248-1.783.52-2.658.814m-15.482 0A50.717 50.717 0 0 1 12 13.489a50.702 50.702 0 0 1 3.741-1.342m-7.483 0a49.974 49.974 0 0 0 1 4.9m3.742-1.558V7.5a1.5 1.5 0 0 1 3 0v4.89m0 0 .001.009']);
+const IconEstaciones     = icon(['M15 10.5a3 3 0 1 1-6 0 3 3 0 0 1 6 0Z', 'M19.5 10.5c0 7.142-7.5 11.25-7.5 11.25S4.5 17.642 4.5 10.5a7.5 7.5 0 1 1 15 0Z']);
 const IconDisponibilidad = icon(['M6.75 3v2.25M17.25 3v2.25M3 18.75V7.5a2.25 2.25 0 0 1 2.25-2.25h13.5A2.25 2.25 0 0 1 21 7.5v11.25m-18 0A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75m-18 0v-7.5A2.25 2.25 0 0 1 5.25 9h13.5A2.25 2.25 0 0 1 21 11.25v7.5']);
 const IconExcepciones    = icon(['M12 9v3.75m9-.75a9 9 0 1 1-18 0 9 9 0 0 1 18 0Zm-9 3.75h.008v.008H12v-.008Z']);
 const IconReglas         = icon(['M9.568 3H5.25A2.25 2.25 0 0 0 3 5.25v4.318c0 .597.237 1.17.659 1.591l9.581 9.581c.699.699 1.78.872 2.607.33a18.095 18.095 0 0 0 5.223-5.223c.542-.827.369-1.908-.33-2.607L11.16 3.66A2.25 2.25 0 0 0 9.568 3Z', 'M6 6h.008v.008H6V6Z']);
 
 const menuItems = [
   { name: 'Personal',       routeName: 'sucursal-mi-equipo-personal',       icon: IconPersonal },
-  { name: 'Habilidades',    routeName: 'sucursal-mi-equipo-habilidades',    icon: IconHabilidades },
+  { name: 'Estaciones',     routeName: 'sucursal-mi-equipo-estaciones',     icon: IconEstaciones },
   { name: 'Disponibilidad', routeName: 'sucursal-mi-equipo-disponibilidad', icon: IconDisponibilidad },
   { name: 'Excepciones',    routeName: 'sucursal-mi-equipo-excepciones',    icon: IconExcepciones },
   { name: 'Reglas',         routeName: 'sucursal-mi-equipo-reglas',         icon: IconReglas },

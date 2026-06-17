@@ -18,8 +18,7 @@ export const useZonaStore = defineStore('zona', () => {
     if (!queryParams.value.empresaId) return null;
     return query(
       zonasRef,
-      where('empresa_id', '==', queryParams.value.empresaId),
-      where('deletedAt', '==', null)
+      where('empresa_id', '==', queryParams.value.empresaId)
     );
   });
 

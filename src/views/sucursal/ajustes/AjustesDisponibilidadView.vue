@@ -1,20 +1,327 @@
 <template>
-  <div class="flex flex-col h-full min-h-0 overflow-y-auto p-6 lg:p-8">
-    <div class="mb-6">
-      <h2 class="text-lg font-semibold text-gray-900 dark:text-white">Disponibilidad</h2>
-      <p class="text-sm text-gray-500 dark:text-gray-400 mt-1">Gestiona las reglas base de disponibilidad del personal.</p>
+  <div class="flex h-full min-h-0 overflow-hidden">
+
+    <!-- ── Panel izquierdo: lista de empleados ──────────────────────── -->
+    <div class="w-1/2 flex flex-col border-r border-gray-100 dark:border-gray-700 overflow-y-auto">
+      <div class="p-4 sm:p-6 space-y-4 flex-1">
+
+        <div>
+          <p class="text-xs font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-widest">Disponibilidad</p>
+          <p class="text-xs text-gray-500 dark:text-gray-400 mt-1">Reglas base de disponibilidad del personal.</p>
+        </div>
+
+        <!-- Búsqueda -->
+        <div class="relative">
+          <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"
+            class="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 dark:text-gray-500 pointer-events-none">
+            <path stroke-linecap="round" stroke-linejoin="round" d="m21 21-5.197-5.197m0 0A7.5 7.5 0 1 0 5.196 5.196a7.5 7.5 0 0 0 10.607 10.607Z" />
+          </svg>
+          <input v-model="search" type="text" placeholder="Buscar empleado…"
+            class="w-full pl-9 pr-3 py-2 text-sm bg-gray-50 dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 dark:text-white" />
+        </div>
+
+        <!-- Lista -->
+        <div class="space-y-0.5">
+          <button
+            v-for="emp in empleadosFiltrados"
+            :key="emp.id"
+            type="button"
+            @click="selectEmpleado(emp)"
+            class="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-left transition-colors group"
+            :class="selected?.id === emp.id
+              ? 'bg-blue-50 dark:bg-blue-900/20'
+              : 'hover:bg-gray-50 dark:hover:bg-gray-700/30'"
+          >
+            <span class="shrink-0 w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold transition-colors"
+              :class="selected?.id === emp.id
+                ? 'bg-blue-100 dark:bg-blue-800/60 text-blue-700 dark:text-blue-200'
+                : 'bg-gray-100 dark:bg-gray-700 text-gray-500 dark:text-gray-400'">
+              {{ emp.initials }}
+            </span>
+            <div class="flex-1 min-w-0">
+              <p class="text-sm font-medium truncate"
+                :class="selected?.id === emp.id ? 'text-blue-700 dark:text-blue-300' : 'text-gray-800 dark:text-gray-200'">
+                {{ emp.displayName }}
+              </p>
+              <p class="text-xs truncate"
+                :class="selected?.id === emp.id ? 'text-blue-400 dark:text-blue-500' : 'text-gray-400 dark:text-gray-500'">
+                {{ emp.disponibilidad ? diasLabel(emp.disponibilidad.days) : 'Sin disponibilidad definida' }}
+              </p>
+            </div>
+            <span v-if="emp.disponibilidad"
+              class="shrink-0 text-[10px] px-1.5 py-0.5 rounded font-medium bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-400">
+              configurada
+            </span>
+            <svg v-if="selected?.id === emp.id"
+              xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2.5" stroke="currentColor"
+              class="w-3.5 h-3.5 shrink-0 text-blue-500">
+              <path stroke-linecap="round" stroke-linejoin="round" d="m8.25 4.5 7.5 7.5-7.5 7.5" />
+            </svg>
+          </button>
+
+          <p v-if="!empleadosFiltrados.length" class="text-sm text-gray-400 dark:text-gray-500 italic py-4">
+            Sin empleados en esta sucursal.
+          </p>
+        </div>
+      </div>
     </div>
 
-    <div class="flex-1 flex items-center justify-center">
-      <div class="text-center">
-        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-12 h-12 mx-auto text-gray-300 dark:text-gray-600 mb-3">
-          <path stroke-linecap="round" stroke-linejoin="round" d="M6.75 3v2.25M17.25 3v2.25M3 18.75V7.5a2.25 2.25 0 0 1 2.25-2.25h13.5A2.25 2.25 0 0 1 21 7.5v11.25m-18 0A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75m-18 0v-7.5A2.25 2.25 0 0 1 5.25 9h13.5A2.25 2.25 0 0 1 21 11.25v7.5" />
-        </svg>
-        <p class="text-sm text-gray-400 dark:text-gray-500">Esta sección está en construcción.</p>
+    <!-- ── Panel derecho: editor de disponibilidad ──────────────────── -->
+    <div class="w-1/2 overflow-y-auto">
+
+      <!-- Vacío -->
+      <div v-if="!selected" class="flex flex-col items-center justify-center h-full gap-3 text-center p-8">
+        <div class="w-12 h-12 rounded-xl bg-gray-100 dark:bg-gray-700 flex items-center justify-center">
+          <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-6 h-6 text-gray-400 dark:text-gray-500">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M6.75 3v2.25M17.25 3v2.25M3 18.75V7.5a2.25 2.25 0 0 1 2.25-2.25h13.5A2.25 2.25 0 0 1 21 7.5v11.25m-18 0A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75m-18 0v-7.5A2.25 2.25 0 0 1 5.25 9h13.5A2.25 2.25 0 0 1 21 11.25v7.5m-9-6h.008v.008H12v-.008ZM12 15h.008v.008H12V15Zm0 2.25h.008v.008H12v-.008ZM9.75 15h.008v.008H9.75V15Zm0 2.25h.008v.008H9.75v-.008ZM7.5 15h.008v.008H7.5V15Zm0 2.25h.008v.008H7.5v-.008Zm6.75-4.5h.008v.008h-.008v-.008Zm0 2.25h.008v.008h-.008V15Zm0 2.25h.008v.008h-.008v-.008Zm2.25-4.5h.008v.008H16.5v-.008Zm0 2.25h.008v.008H16.5V15Z" />
+          </svg>
+        </div>
+        <p class="text-sm font-medium text-gray-500 dark:text-gray-400">Selecciona un empleado</p>
+        <p class="text-xs text-gray-400 dark:text-gray-500">Elige un empleado de la lista para configurar su disponibilidad.</p>
+      </div>
+
+      <!-- Editor -->
+      <div v-else class="p-4 sm:p-6 space-y-5">
+
+        <!-- Cabecera -->
+        <div class="flex items-center justify-between gap-3">
+          <div class="flex items-center gap-3 min-w-0">
+            <span class="shrink-0 w-9 h-9 rounded-full bg-blue-100 dark:bg-blue-800/50 flex items-center justify-center text-sm font-bold text-blue-700 dark:text-blue-200">
+              {{ selected.initials }}
+            </span>
+            <div class="min-w-0">
+              <p class="text-sm font-semibold text-gray-900 dark:text-white truncate">{{ selected.displayName }}</p>
+              <p class="text-xs text-blue-500 dark:text-blue-400 font-medium">Disponibilidad</p>
+            </div>
+          </div>
+          <button @click="selected = null" class="shrink-0 w-7 h-7 flex items-center justify-center rounded-lg text-gray-400 hover:text-gray-600 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors">
+            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" class="w-4 h-4">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M6 18 18 6M6 6l12 12" />
+            </svg>
+          </button>
+        </div>
+
+        <!-- Días de la semana -->
+        <div>
+          <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Días disponibles</label>
+          <div class="flex flex-wrap gap-2">
+            <button
+              v-for="dia in diasSemana"
+              :key="dia"
+              type="button"
+              :disabled="!canManage"
+              @click="toggleDia(dia)"
+              class="px-3 py-1.5 text-xs font-medium rounded-lg border transition-colors disabled:cursor-not-allowed"
+              :class="form.days.includes(dia)
+                ? 'bg-blue-600 border-blue-600 text-white'
+                : 'bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-600 text-gray-600 dark:text-gray-400 hover:border-blue-400 hover:text-blue-600'"
+            >
+              {{ dia }}
+            </button>
+          </div>
+        </div>
+
+        <!-- Frecuencia mensual -->
+        <div>
+          <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Frecuencia mensual</label>
+          <p class="text-xs text-gray-400 dark:text-gray-500 mb-2">Semanas al mes que trabaja (0 = todas).</p>
+          <div class="flex gap-2">
+            <button
+              v-for="n in [0, 1, 2, 3, 4]"
+              :key="n"
+              type="button"
+              :disabled="!canManage"
+              @click="form.monthly_frequency = n"
+              class="w-10 h-10 text-sm font-semibold rounded-lg border transition-colors disabled:cursor-not-allowed"
+              :class="form.monthly_frequency === n
+                ? 'bg-blue-600 border-blue-600 text-white'
+                : 'bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-600 text-gray-600 dark:text-gray-400 hover:border-blue-400'"
+            >
+              {{ n === 0 ? '∞' : n }}
+            </button>
+          </div>
+        </div>
+
+        <!-- Frecuencia semanal -->
+        <div>
+          <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Días por semana</label>
+          <p class="text-xs text-gray-400 dark:text-gray-500 mb-2">Cantidad de días que trabaja por semana.</p>
+          <div class="flex gap-2 flex-wrap">
+            <button
+              v-for="n in [1, 2, 3, 4, 5, 6, 7]"
+              :key="n"
+              type="button"
+              :disabled="!canManage"
+              @click="form.weekly_frequency = n"
+              class="w-10 h-10 text-sm font-semibold rounded-lg border transition-colors disabled:cursor-not-allowed"
+              :class="form.weekly_frequency === n
+                ? 'bg-blue-600 border-blue-600 text-white'
+                : 'bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-600 text-gray-600 dark:text-gray-400 hover:border-blue-400'"
+            >
+              {{ n }}
+            </button>
+          </div>
+        </div>
+
+        <!-- Regla especial -->
+        <div>
+          <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Regla especial</label>
+          <input v-model="form.special_rule" type="text" :disabled="!canManage"
+            placeholder="Ej: 3 lunes y 1 miércoles al mes"
+            class="w-full px-3 py-2 text-sm bg-gray-50 dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 dark:text-white disabled:opacity-60 transition-colors" />
+        </div>
+
+        <p v-if="errorMsg" class="text-xs text-red-500 dark:text-red-400">{{ errorMsg }}</p>
+        <p v-if="successMsg" class="text-xs text-emerald-600 dark:text-emerald-400 font-medium">{{ successMsg }}</p>
+
+        <div v-if="canManage" class="flex items-center gap-2 pt-1">
+          <button v-if="selected.disponibilidad" type="button" @click="confirmarBorrar"
+            class="px-3 py-2 text-sm text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 border border-red-200 dark:border-red-800/40 rounded-lg transition-colors">
+            Limpiar
+          </button>
+          <div class="flex-1" />
+          <button type="button" @click="resetForm" :disabled="!isDirty"
+            class="px-4 py-2 text-sm text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition-colors disabled:opacity-40">
+            Deshacer
+          </button>
+          <button type="button" @click="guardar" :disabled="!isDirty || saving"
+            class="px-5 py-2 text-sm bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white font-medium rounded-lg transition-colors">
+            {{ saving ? 'Guardando…' : 'Guardar cambios' }}
+          </button>
+        </div>
       </div>
     </div>
   </div>
 </template>
 
 <script setup lang="ts">
+import { ref, computed, watch, onMounted } from 'vue';
+import { useRoute } from 'vue-router';
+import { useSessionStore } from '../../../stores/sessionStore';
+import { useEmpleadoStore } from '../../../stores/empleadoStore';
+import { useDisponibilidadStore } from '../../../stores/disponibilidadStore';
+import type { Empleado } from '../../../models/Empleado';
+
+const route = useRoute();
+const sessionStore = useSessionStore();
+const empleadoStore = useEmpleadoStore();
+const disponibilidadStore = useDisponibilidadStore();
+
+const canManage = computed(() => ['super_admin', 'admin'].includes(sessionStore.currentUser?.system_role ?? ''));
+
+const diasSemana = ['Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado', 'Domingo'];
+
+onMounted(() => {
+  const companyId = sessionStore.activeCompanyId;
+  if (companyId) empleadoStore.listarEmpleados(companyId);
+});
+
+const ubicacionId = computed(() => sessionStore.activeUbicacionId);
+
+const empleadosDeSucursal = computed(() => {
+  if (!ubicacionId.value) return empleadoStore.empleadosActivos;
+  return empleadoStore.empleadosActivos.filter(e =>
+    e.contratos?.some(c => c.active && c.ubicacion_id === ubicacionId.value)
+  );
+});
+
+const search = ref('');
+
+const empleadosFiltrados = computed(() => {
+  const q = search.value.toLowerCase().trim();
+  if (!q) return empleadosDeSucursal.value;
+  return empleadosDeSucursal.value.filter(e => e.displayName.toLowerCase().includes(q));
+});
+
+const selected = ref<Empleado | null>(null);
+
+type FormState = { days: string[]; monthly_frequency: number; weekly_frequency: number; special_rule: string };
+
+const emptyForm = (): FormState => ({ days: [], monthly_frequency: 0, weekly_frequency: 1, special_rule: '' });
+
+const form = ref<FormState>(emptyForm());
+const snapshot = ref<FormState>(emptyForm());
+
+function selectEmpleado(emp: Empleado) {
+  if (selected.value?.id === emp.id) { selected.value = null; return; }
+  selected.value = emp;
+}
+
+watch(selected, (emp) => {
+  errorMsg.value = '';
+  successMsg.value = '';
+  if (!emp) return;
+  const d = emp.disponibilidad;
+  const f: FormState = d
+    ? { days: [...d.days], monthly_frequency: d.monthly_frequency, weekly_frequency: d.weekly_frequency, special_rule: d.special_rule }
+    : emptyForm();
+  form.value = { ...f };
+  snapshot.value = { ...f, days: [...f.days] };
+});
+
+const isDirty = computed(() =>
+  JSON.stringify(form.value) !== JSON.stringify(snapshot.value)
+);
+
+function resetForm() {
+  form.value = { ...snapshot.value, days: [...snapshot.value.days] };
+}
+
+function toggleDia(dia: string) {
+  const idx = form.value.days.indexOf(dia);
+  if (idx >= 0) form.value.days.splice(idx, 1);
+  else form.value.days.push(dia);
+}
+
+function diasLabel(days: string[]): string {
+  if (!days.length) return 'Sin días configurados';
+  if (days.length <= 3) return days.join(', ');
+  return `${days.slice(0, 2).join(', ')} +${days.length - 2} más`;
+}
+
+const saving = ref(false);
+const errorMsg = ref('');
+const successMsg = ref('');
+
+async function guardar() {
+  if (!selected.value || !isDirty.value) return;
+  saving.value = true;
+  errorMsg.value = '';
+  try {
+    if (selected.value.disponibilidad) {
+      await disponibilidadStore.updateDisponibilidad(selected.value.id, {
+        days: form.value.days,
+        monthly_frequency: form.value.monthly_frequency,
+        weekly_frequency: form.value.weekly_frequency,
+        special_rule: form.value.special_rule,
+      });
+    } else {
+      await disponibilidadStore.setDisponibilidad(selected.value.id, {
+        days: form.value.days,
+        monthly_frequency: form.value.monthly_frequency,
+        weekly_frequency: form.value.weekly_frequency,
+        special_rule: form.value.special_rule,
+      });
+    }
+    snapshot.value = { ...form.value, days: [...form.value.days] };
+    successMsg.value = 'Disponibilidad guardada.';
+    setTimeout(() => { successMsg.value = ''; }, 3000);
+  } catch (e: any) {
+    errorMsg.value = e.message ?? 'Error al guardar.';
+  } finally {
+    saving.value = false;
+  }
+}
+
+async function confirmarBorrar() {
+  if (!selected.value) return;
+  if (!confirm(`¿Limpiar la disponibilidad de ${selected.value.displayName}?`)) return;
+  try {
+    await disponibilidadStore.clearDisponibilidad(selected.value.id);
+    form.value = emptyForm();
+    snapshot.value = emptyForm();
+  } catch (e: any) {
+    errorMsg.value = e.message ?? 'Error al limpiar.';
+  }
+}
 </script>

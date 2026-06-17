@@ -20,8 +20,7 @@ export const useEmpleadoStore = defineStore('empleado', () => {
     if (!queryParams.value.companyId) return null;
     return query(
       empleadosRef,
-      where('company_id', '==', queryParams.value.companyId),
-      where('deletedAt', '==', null)
+      where('company_id', '==', queryParams.value.companyId)
     );
   });
 
@@ -42,16 +41,16 @@ export const useEmpleadoStore = defineStore('empleado', () => {
     }
   }, { deep: true });
 
-  const empleadosActivos = computed(() => empleados.value?.filter(e => e.active) ?? []);
+  const empleadosActivos = computed(() => empleados.value?.filter(e => e.active && !e.deletedAt) ?? []);
 
-  async function createEmpleado(data: Omit<Empleado, 'id' | 'createdAt' | 'updatedAt' | 'deletedAt' | 'contacto' | 'habilidades' | 'displayName' | 'initials'>) {
+  async function createEmpleado(data: Omit<Empleado, 'id' | 'createdAt' | 'updatedAt' | 'deletedAt' | 'contacto' | 'displayName' | 'initials'>) {
     const docRef = doc(empleadosRef);
     const nuevo = new Empleado(
       docRef.id,
       data.company_id,
       data.contact_id,
       data.active,
-      data.skill_ids ?? [],
+      data.estacion_ids ?? [],
       data.contratos ?? [],
       data.disponibilidad ?? null
     );
@@ -67,7 +66,10 @@ export const useEmpleadoStore = defineStore('empleado', () => {
       empleadoId,
       contrato.ubicacion_id,
       contrato.cargo_id,
-      contrato.active ?? true
+      contrato.active ?? true,
+      contrato.limite_horas ?? 0,
+      contrato.fecha_inicio ?? new Date(),
+      contrato.fecha_fin ?? null
     );
     const updatedContratos = [...(emp.contratos ?? []), nuevo].map(contratoToPlain);
     await updateDoc(doc(db, 'empleados', empleadoId), { contratos: updatedContratos, updatedAt: Timestamp.now() });
@@ -82,7 +84,7 @@ export const useEmpleadoStore = defineStore('empleado', () => {
     await updateDoc(doc(db, 'empleados', empleadoId), { contratos: updatedContratos, updatedAt: Timestamp.now() });
   }
 
-  async function updateContrato(empleadoId: string, contratoId: string, data: Partial<Pick<Contrato, 'cargo_id' | 'ubicacion_id' | 'active'>>) {
+  async function updateContrato(empleadoId: string, contratoId: string, data: Partial<Pick<Contrato, 'cargo_id' | 'ubicacion_id' | 'active' | 'limite_horas' | 'fecha_fin'>>) {
     const emp = empleados.value?.find(e => e.id === empleadoId);
     if (!emp) return;
     const updatedContratos = (emp.contratos ?? []).map(c =>

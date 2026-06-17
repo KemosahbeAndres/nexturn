@@ -1,196 +1,427 @@
 <template>
-  <div class="h-full min-h-0 overflow-y-auto">
-  <div class="p-4 sm:p-6 space-y-6">
+  <div class="h-full min-h-0 flex overflow-hidden">
 
-    <!-- Encabezado -->
-    <div class="flex items-center justify-between gap-3">
-      <div>
-        <p class="text-xs font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-widest">Personal</p>
-        <p class="text-xs text-gray-500 dark:text-gray-400 mt-1">
-          {{ empleadosActivos.length }} miembro{{ empleadosActivos.length !== 1 ? 's' : '' }} activo{{ empleadosActivos.length !== 1 ? 's' : '' }}
-        </p>
+    <!-- ══════════════════════ PANEL IZQUIERDO: Lista ══════════════════════ -->
+    <div class="w-2/5 shrink-0 border-r border-gray-200 dark:border-gray-700 flex flex-col min-h-0">
+
+      <!-- Cabecera -->
+      <div class="flex items-center justify-between px-4 pt-5 pb-3 shrink-0">
+        <div>
+          <p class="text-xs font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-widest">Personal</p>
+          <p class="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
+            {{ empleadosActivos.length }} activo{{ empleadosActivos.length !== 1 ? 's' : '' }}
+          </p>
+        </div>
+        <button
+          @click="abrirModalAgregar"
+          class="shrink-0 px-2.5 py-1.5 text-xs bg-blue-600 hover:bg-blue-700 text-white font-medium rounded-lg transition-colors"
+        >
+          + Agregar
+        </button>
       </div>
-      <button
-        @click="abrirModalCrear"
-        class="shrink-0 px-3 py-1.5 text-xs bg-blue-600 hover:bg-blue-700 text-white font-medium rounded-lg transition-colors"
-      >
-        + Agregar
-      </button>
+
+      <!-- Buscador -->
+      <div class="px-3 pb-3 shrink-0">
+        <div class="relative">
+          <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"
+            class="w-3.5 h-3.5 absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none">
+            <path stroke-linecap="round" stroke-linejoin="round" d="m21 21-5.197-5.197m0 0A7.5 7.5 0 1 0 5.196 5.196a7.5 7.5 0 0 0 10.607 10.607Z" />
+          </svg>
+          <input
+            v-model="busqueda"
+            type="search"
+            placeholder="Buscar..."
+            class="w-full pl-8 pr-3 py-1.5 text-xs rounded-lg border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500"
+          />
+        </div>
+      </div>
+
+      <!-- Filtro estaciones -->
+      <div class="px-3 pb-3 shrink-0">
+        <select
+          v-model="filtroEstacion"
+          class="w-full px-2.5 py-1.5 text-xs rounded-lg border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+        >
+          <option value="">Todas las estaciones</option>
+          <option v-for="e in estacionesActivas" :key="e.id" :value="e.id">{{ e.nombre }}</option>
+        </select>
+      </div>
+
+      <!-- Lista scrolleable -->
+      <div class="flex-1 overflow-y-auto min-h-0">
+
+        <!-- Vacío -->
+        <div v-if="empleadosFiltrados.length === 0" class="px-4 py-10 text-center">
+          <p class="text-xs text-gray-400 dark:text-gray-500">
+            {{ busqueda || filtroEstacion ? 'Sin resultados.' : 'No hay personal aún.' }}
+          </p>
+          <button v-if="!busqueda && !filtroEstacion" @click="abrirModalAgregar"
+            class="mt-3 text-xs text-blue-600 dark:text-blue-400 hover:underline">
+            Agregar el primero
+          </button>
+        </div>
+
+        <!-- Items -->
+        <ul v-else class="pb-2">
+          <li
+            v-for="emp in empleadosFiltrados"
+            :key="emp.id"
+            @click="seleccionar(emp)"
+            class="flex items-center gap-2.5 px-3 py-2.5 cursor-pointer transition-colors border-l-2"
+            :class="empleadoSeleccionado?.id === emp.id
+              ? 'bg-blue-50 dark:bg-blue-900/20 border-blue-500'
+              : 'border-transparent hover:bg-gray-50 dark:hover:bg-white/5'"
+          >
+            <div class="w-8 h-8 rounded-full bg-blue-100 dark:bg-blue-900/50 flex items-center justify-center shrink-0">
+              <span class="text-xs font-bold text-blue-600 dark:text-blue-300">{{ emp.initials }}</span>
+            </div>
+            <div class="min-w-0 flex-1">
+              <p class="text-sm font-medium text-gray-900 dark:text-white truncate leading-tight">{{ emp.displayName }}</p>
+              <p class="text-[10px] text-gray-400 dark:text-gray-500 truncate">
+                {{ cargoEmpleado(emp) || emp.contacto?.rut || emp.contacto?.email || '—' }}
+              </p>
+            </div>
+            <span
+              class="w-1.5 h-1.5 rounded-full shrink-0"
+              :class="emp.active ? 'bg-emerald-400' : 'bg-gray-300 dark:bg-gray-600'"
+            />
+          </li>
+        </ul>
+      </div>
     </div>
 
-    <!-- Barra de búsqueda y filtro -->
-    <div class="flex flex-col sm:flex-row gap-3">
-      <div class="relative flex-1">
-        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"
-          class="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none">
-          <path stroke-linecap="round" stroke-linejoin="round" d="m21 21-5.197-5.197m0 0A7.5 7.5 0 1 0 5.196 5.196a7.5 7.5 0 0 0 10.607 10.607Z" />
+    <!-- ══════════════════════ PANEL DERECHO: Detalle / Editor ══════════════════════ -->
+    <div class="flex-1 overflow-y-auto min-h-0">
+
+      <!-- Sin selección -->
+      <div v-if="!empleadoSeleccionado" class="h-full flex flex-col items-center justify-center gap-3 text-center p-8">
+        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1" stroke="currentColor"
+          class="w-12 h-12 text-gray-200 dark:text-gray-700">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M15.75 6a3.75 3.75 0 1 1-7.5 0 3.75 3.75 0 0 1 7.5 0ZM4.501 20.118a7.5 7.5 0 0 1 14.998 0A17.933 17.933 0 0 1 12 21.75c-2.676 0-5.216-.584-7.499-1.632Z" />
         </svg>
-        <input
-          v-model="busqueda"
-          type="search"
-          placeholder="Buscar por nombre o RUT..."
-          class="w-full pl-9 pr-4 py-2 text-sm rounded-lg border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500"
-        />
+        <p class="text-sm text-gray-400 dark:text-gray-500">Selecciona un miembro para ver su detalle</p>
       </div>
-      <select
-        v-model="filtroHabilidad"
-        class="px-3 py-2 text-sm rounded-lg border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
-      >
-        <option value="">Todas las habilidades</option>
-        <option v-for="h in habilidadesActivas" :key="h.id" :value="h.id">{{ h.nombre }}</option>
-      </select>
-    </div>
 
-    <!-- Estado vacío -->
-    <div v-if="empleadosFiltrados.length === 0 && empleadosActivos.length === 0"
-      class="bg-white dark:bg-gray-800 rounded-xl border border-gray-100 dark:border-gray-700 p-12 text-center"
-    >
-      <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1" stroke="currentColor"
-        class="w-12 h-12 mx-auto text-gray-300 dark:text-gray-600 mb-3">
-        <path stroke-linecap="round" stroke-linejoin="round" d="M15.75 6a3.75 3.75 0 1 1-7.5 0 3.75 3.75 0 0 1 7.5 0ZM4.501 20.118a7.5 7.5 0 0 1 14.998 0A17.933 17.933 0 0 1 12 21.75c-2.676 0-5.216-.584-7.499-1.632Z" />
-      </svg>
-      <p class="text-sm font-medium text-gray-500 dark:text-gray-400">
-        {{ busqueda || filtroHabilidad ? 'Sin resultados para la búsqueda.' : 'No hay personal registrado aún.' }}
-      </p>
-      <button v-if="!busqueda && !filtroHabilidad" @click="abrirModalCrear"
-        class="mt-4 px-4 py-2 text-sm font-medium text-blue-600 dark:text-blue-400 hover:underline">
-        Agregar el primero
-      </button>
-    </div>
+      <!-- Detalle -->
+      <div v-else class="p-5 space-y-6 max-w-2xl">
 
-    <!-- Lista / Tabla -->
-    <div v-else class="bg-white dark:bg-gray-800 rounded-xl border border-gray-100 dark:border-gray-700 overflow-hidden">
-
-      <!-- Tabla md+ -->
-      <table class="hidden md:table w-full text-sm">
-        <thead class="bg-gray-50 dark:bg-gray-700/50 border-b border-gray-100 dark:border-gray-700">
-          <tr>
-            <th class="px-5 py-3 text-left text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide">Miembro</th>
-            <th class="px-5 py-3 text-left text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide">Habilidades</th>
-            <th class="px-5 py-3 text-left text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide hidden lg:table-cell">Contacto</th>
-            <th class="px-5 py-3 text-left text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide">Estado</th>
-            <th class="px-5 py-3"></th>
-          </tr>
-        </thead>
-        <tbody class="divide-y divide-gray-50 dark:divide-gray-700/50">
-          <tr v-for="emp in empleadosFiltrados" :key="emp.id" class="hover:bg-gray-50 dark:hover:bg-gray-700/30 transition-colors">
-            <td class="px-5 py-3">
-              <div class="flex items-center gap-3">
-                <div class="w-8 h-8 rounded-full bg-blue-100 dark:bg-blue-900/50 flex items-center justify-center shrink-0">
-                  <span class="text-xs font-bold text-blue-600 dark:text-blue-300">{{ emp.initials }}</span>
-                </div>
-                <div class="min-w-0">
-                  <p class="font-medium text-gray-900 dark:text-white truncate">{{ emp.displayName }}</p>
-                  <p class="text-xs text-gray-400 dark:text-gray-500 truncate">{{ emp.contacto?.rut || '—' }}</p>
-                </div>
-              </div>
-            </td>
-            <td class="px-5 py-3">
-              <div class="flex flex-wrap gap-1">
-                <span v-for="hId in emp.skill_ids" :key="hId"
-                  class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-violet-50 text-violet-700 dark:bg-violet-900/40 dark:text-violet-300">
-                  {{ habilidadNombre(hId) }}
-                </span>
-                <span v-if="!emp.skill_ids.length" class="text-xs text-gray-400 dark:text-gray-500">—</span>
-              </div>
-            </td>
-            <td class="px-5 py-3 hidden lg:table-cell text-gray-500 dark:text-gray-400">
-              <p class="truncate">{{ emp.contacto?.email || '—' }}</p>
-              <p class="text-xs">{{ emp.contacto?.phone || '' }}</p>
-            </td>
-            <td class="px-5 py-3">
-              <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium"
-                :class="emp.active
-                  ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300'
-                  : 'bg-red-100 text-red-600 dark:bg-red-900/40 dark:text-red-300'">
-                {{ emp.active ? 'Activo' : 'Inactivo' }}
-              </span>
-            </td>
-            <td class="px-5 py-3 text-right">
-              <div class="flex items-center justify-end gap-1">
-                <button @click="abrirModalAsignar(emp)"
-                  title="Asignar a ubicación"
-                  class="p-1.5 rounded-lg text-gray-400 hover:text-emerald-600 hover:bg-emerald-50 dark:hover:bg-emerald-900/20 transition-colors">
-                  <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-4 h-4">
-                    <path stroke-linecap="round" stroke-linejoin="round" d="M15 10.5a3 3 0 1 1-6 0 3 3 0 0 1 6 0Z" />
-                    <path stroke-linecap="round" stroke-linejoin="round" d="M19.5 10.5c0 7.142-7.5 11.25-7.5 11.25S4.5 17.642 4.5 10.5a7.5 7.5 0 1 1 15 0Z" />
-                  </svg>
-                </button>
-                <button @click="abrirModalEditar(emp)"
-                  title="Editar"
-                  class="p-1.5 rounded-lg text-gray-400 hover:text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-900/20 transition-colors">
-                  <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-4 h-4">
-                    <path stroke-linecap="round" stroke-linejoin="round" d="m16.862 4.487 1.687-1.688a1.875 1.875 0 1 1 2.652 2.652L10.582 16.07a4.5 4.5 0 0 1-1.897 1.13L6 18l.8-2.685a4.5 4.5 0 0 1 1.13-1.897l8.932-8.931Zm0 0L19.5 7.125" />
-                  </svg>
-                </button>
-              </div>
-            </td>
-          </tr>
-        </tbody>
-      </table>
-
-      <!-- Cards móvil -->
-      <ul class="md:hidden divide-y divide-gray-50 dark:divide-gray-700/50">
-        <li v-for="emp in empleadosFiltrados" :key="emp.id" class="px-4 py-3 flex items-center gap-3">
-          <div class="w-10 h-10 rounded-full bg-blue-100 dark:bg-blue-900/50 flex items-center justify-center shrink-0">
-            <span class="text-sm font-bold text-blue-600 dark:text-blue-300">{{ emp.initials }}</span>
+        <!-- Encabezado del miembro -->
+        <div class="flex items-start gap-4">
+          <div class="w-14 h-14 rounded-full bg-blue-100 dark:bg-blue-900/50 flex items-center justify-center shrink-0">
+            <span class="text-xl font-bold text-blue-600 dark:text-blue-300">{{ empleadoSeleccionado.initials }}</span>
           </div>
-          <div class="min-w-0 flex-1">
-            <p class="text-sm font-semibold text-gray-900 dark:text-white truncate">{{ emp.displayName }}</p>
-            <div class="flex flex-wrap gap-1 mt-0.5">
-              <span v-for="hId in emp.skill_ids.slice(0, 2)" :key="hId"
-                class="inline-flex items-center px-1.5 py-0.5 rounded-full text-[10px] font-medium bg-violet-50 text-violet-700 dark:bg-violet-900/40 dark:text-violet-300">
-                {{ habilidadNombre(hId) }}
-              </span>
-              <span v-if="emp.skill_ids.length > 2" class="text-[10px] text-gray-400">+{{ emp.skill_ids.length - 2 }}</span>
-            </div>
+          <div class="flex-1 min-w-0">
+            <h2 class="text-lg font-semibold text-gray-900 dark:text-white leading-tight">{{ empleadoSeleccionado.displayName }}</h2>
+            <p class="text-sm text-gray-400 dark:text-gray-500">{{ empleadoSeleccionado.contacto?.rut || '—' }}</p>
           </div>
-          <div class="flex flex-col items-end gap-1.5 shrink-0">
-            <span class="inline-flex items-center px-1.5 py-0.5 rounded-full text-[10px] font-medium"
-              :class="emp.active
-                ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300'
-                : 'bg-red-100 text-red-600 dark:bg-red-900/40 dark:text-red-300'">
-              {{ emp.active ? 'Activo' : 'Inactivo' }}
-            </span>
-            <div class="flex gap-1">
-              <button @click="abrirModalAsignar(emp)" class="p-1 rounded text-gray-400 hover:text-emerald-600 transition-colors">
-                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-4 h-4">
-                  <path stroke-linecap="round" stroke-linejoin="round" d="M15 10.5a3 3 0 1 1-6 0 3 3 0 0 1 6 0Z" />
-                  <path stroke-linecap="round" stroke-linejoin="round" d="M19.5 10.5c0 7.142-7.5 11.25-7.5 11.25S4.5 17.642 4.5 10.5a7.5 7.5 0 1 1 15 0Z" />
-                </svg>
-              </button>
-              <button @click="abrirModalEditar(emp)" class="p-1 rounded text-gray-400 hover:text-blue-600 transition-colors">
-                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-4 h-4">
-                  <path stroke-linecap="round" stroke-linejoin="round" d="m16.862 4.487 1.687-1.688a1.875 1.875 0 1 1 2.652 2.652L10.582 16.07a4.5 4.5 0 0 1-1.897 1.13L6 18l.8-2.685a4.5 4.5 0 0 1 1.13-1.897l8.932-8.931Zm0 0L19.5 7.125" />
-                </svg>
+          <button type="button" @click="form.active = !form.active; guardarCampoActivo()"
+            class="relative w-10 h-5 rounded-full transition-colors duration-300 shrink-0 mt-1"
+            :class="form.active ? 'bg-blue-500' : 'bg-gray-300 dark:bg-gray-600'"
+            :title="form.active ? 'Activo — clic para desactivar' : 'Inactivo — clic para activar'"
+          >
+            <span class="absolute top-0.5 left-0.5 w-4 h-4 bg-white rounded-full shadow transition-transform duration-300"
+              :class="form.active ? 'translate-x-5' : 'translate-x-0'" />
+          </button>
+        </div>
+
+        <!-- Sección: Datos de contacto -->
+        <section class="bg-white dark:bg-gray-800 rounded-xl border border-gray-100 dark:border-gray-700 overflow-hidden">
+          <div class="flex items-center justify-between px-4 py-3 border-b border-gray-100 dark:border-gray-700">
+            <p class="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">Datos de contacto</p>
+            <button v-if="!editandoContacto" type="button" @click="editandoContacto = true"
+              class="text-xs text-blue-600 dark:text-blue-400 hover:underline">Editar</button>
+            <div v-else class="flex gap-2">
+              <button type="button" @click="cancelarContacto"
+                class="text-xs text-gray-500 hover:text-gray-700 dark:hover:text-gray-300">Cancelar</button>
+              <button type="button" @click="guardarContacto" :disabled="guardandoContacto"
+                class="text-xs text-blue-600 dark:text-blue-400 font-semibold hover:underline disabled:opacity-50">
+                {{ guardandoContacto ? 'Guardando…' : 'Guardar' }}
               </button>
             </div>
           </div>
-        </li>
-      </ul>
+          <div class="p-4 grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div>
+              <p class="text-[10px] font-medium text-gray-400 dark:text-gray-500 uppercase mb-1">Nombre</p>
+              <input v-if="editandoContacto" v-model="formContacto.first_name" type="text"
+                class="w-full px-2.5 py-1.5 text-sm rounded-lg border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500" />
+              <p v-else class="text-sm text-gray-900 dark:text-white">{{ empleadoSeleccionado.contacto?.first_name || '—' }}</p>
+            </div>
+            <div>
+              <p class="text-[10px] font-medium text-gray-400 dark:text-gray-500 uppercase mb-1">Apellido</p>
+              <input v-if="editandoContacto" v-model="formContacto.last_name" type="text"
+                class="w-full px-2.5 py-1.5 text-sm rounded-lg border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500" />
+              <p v-else class="text-sm text-gray-900 dark:text-white">{{ empleadoSeleccionado.contacto?.last_name || '—' }}</p>
+            </div>
+            <div>
+              <p class="text-[10px] font-medium text-gray-400 dark:text-gray-500 uppercase mb-1">Email</p>
+              <input v-if="editandoContacto" v-model="formContacto.email" type="email"
+                class="w-full px-2.5 py-1.5 text-sm rounded-lg border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500" />
+              <p v-else class="text-sm text-gray-900 dark:text-white">{{ empleadoSeleccionado.contacto?.email || '—' }}</p>
+            </div>
+            <div>
+              <p class="text-[10px] font-medium text-gray-400 dark:text-gray-500 uppercase mb-1">Teléfono</p>
+              <input v-if="editandoContacto" v-model="formContacto.phone" type="tel"
+                class="w-full px-2.5 py-1.5 text-sm rounded-lg border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500" />
+              <p v-else class="text-sm text-gray-900 dark:text-white">{{ empleadoSeleccionado.contacto?.phone || '—' }}</p>
+            </div>
+          </div>
+        </section>
+
+        <!-- Sección: Estaciones -->
+        <section class="bg-white dark:bg-gray-800 rounded-xl border border-gray-100 dark:border-gray-700 overflow-hidden">
+          <div class="flex items-center justify-between px-4 py-3 border-b border-gray-100 dark:border-gray-700">
+            <p class="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">Estaciones que opera</p>
+            <button v-if="estacionesCambiadas" type="button" @click="guardarEstaciones" :disabled="guardandoEstaciones"
+              class="text-xs text-blue-600 dark:text-blue-400 font-semibold hover:underline disabled:opacity-50">
+              {{ guardandoEstaciones ? 'Guardando…' : 'Guardar cambios' }}
+            </button>
+          </div>
+          <div class="p-4">
+            <div v-if="estacionesActivas.length" class="flex flex-wrap gap-2">
+              <button v-for="e in estacionesActivas" :key="e.id" type="button"
+                @click="toggleEstacion(e.id)"
+                class="px-2.5 py-1 rounded-full text-xs font-medium border transition-all"
+                :class="form.estacion_ids.includes(e.id)
+                  ? 'bg-violet-600 border-violet-600 text-white'
+                  : 'bg-white dark:bg-gray-700 border-gray-200 dark:border-gray-600 text-gray-600 dark:text-gray-300 hover:border-violet-400'"
+              >
+                {{ e.nombre }}
+              </button>
+            </div>
+            <p v-else class="text-xs text-gray-400 dark:text-gray-500 italic">
+              Sin estaciones definidas. Agrégalas en Mi Equipo → Estaciones.
+            </p>
+          </div>
+        </section>
+
+        <!-- Sección: Contrato / Ubicaciones -->
+        <section class="bg-white dark:bg-gray-800 rounded-xl border border-gray-100 dark:border-gray-700 overflow-hidden">
+          <div class="px-4 py-3 border-b border-gray-100 dark:border-gray-700">
+            <p class="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">Contratos y ubicaciones</p>
+            <p class="text-[10px] text-gray-400 dark:text-gray-500 mt-0.5">Asigna a qué sucursal pertenece, su cargo y límite horario.</p>
+          </div>
+
+          <!-- Contratos existentes -->
+          <ul v-if="contratosActivos.length" class="divide-y divide-gray-50 dark:divide-gray-700/50">
+            <li v-for="contrato in contratosActivos" :key="contrato.id" class="p-4">
+              <div class="flex items-start justify-between gap-3">
+                <div class="flex-1 min-w-0">
+                  <p class="text-sm font-medium text-gray-900 dark:text-white truncate">
+                    {{ nombreUbicacion(contrato.ubicacion_id) }}
+                  </p>
+                  <p class="text-xs text-gray-400 dark:text-gray-500 mt-0.5">
+                    Cargo: <span class="text-gray-600 dark:text-gray-300">{{ nombreCargo(contrato.cargo_id) || '—' }}</span>
+                    · Desde: <span class="text-gray-600 dark:text-gray-300">{{ formatFecha(contrato.fecha_inicio) }}</span>
+                    <template v-if="contrato.fecha_fin"> · Hasta: <span class="text-amber-600 dark:text-amber-400">{{ formatFecha(contrato.fecha_fin) }}</span></template>
+                    <template v-if="contrato.limite_horas"> · Límite: <span class="text-gray-600 dark:text-gray-300">{{ contrato.limite_horas }}h/sem</span></template>
+                  </p>
+                </div>
+                <button type="button" @click="toggleEditarContrato(contrato.id)"
+                  class="text-xs text-gray-400 hover:text-blue-600 dark:hover:text-blue-400 shrink-0 transition-colors">
+                  {{ editandoContratoId === contrato.id ? 'Cerrar' : 'Editar' }}
+                </button>
+              </div>
+
+              <!-- Mini formulario edición contrato -->
+              <div v-if="editandoContratoId === contrato.id" class="mt-3 grid grid-cols-2 gap-2">
+                <div>
+                  <label class="block text-[10px] font-medium text-gray-500 dark:text-gray-400 mb-1">Cargo</label>
+                  <select v-model="formContrato.cargo_id"
+                    class="w-full px-2 py-1.5 text-xs rounded-lg border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-1 focus:ring-blue-500">
+                    <option value="">Sin cargo</option>
+                    <option v-for="c in cargosEmpresa" :key="c.id" :value="c.id">{{ c.nombre }}</option>
+                  </select>
+                </div>
+                <div>
+                  <label class="block text-[10px] font-medium text-gray-500 dark:text-gray-400 mb-1">Límite horas/sem</label>
+                  <input v-model.number="formContrato.limite_horas" type="number" min="0" max="168" placeholder="0 = sin límite"
+                    class="w-full px-2 py-1.5 text-xs rounded-lg border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-1 focus:ring-blue-500" />
+                </div>
+                <div class="col-span-2">
+                  <label class="block text-[10px] font-medium text-gray-500 dark:text-gray-400 mb-1">Fecha fin de contrato</label>
+                  <input v-model="formContrato.fecha_fin" type="date"
+                    class="w-full px-2 py-1.5 text-xs rounded-lg border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-1 focus:ring-blue-500" />
+                </div>
+                <div class="col-span-2 flex gap-2 justify-end">
+                  <button type="button" @click="editandoContratoId = null"
+                    class="px-3 py-1.5 text-xs text-gray-600 dark:text-gray-300 border border-gray-200 dark:border-gray-600 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors">
+                    Cancelar
+                  </button>
+                  <button type="button" @click="guardarContrato(contrato.id)" :disabled="guardandoContrato"
+                    class="px-3 py-1.5 text-xs text-white bg-blue-600 hover:bg-blue-700 disabled:opacity-60 rounded-lg transition-colors">
+                    {{ guardandoContrato ? 'Guardando…' : 'Guardar' }}
+                  </button>
+                  <button type="button" @click="eliminarContrato(contrato.id)" :disabled="guardandoContrato"
+                    class="px-3 py-1.5 text-xs text-red-600 dark:text-red-400 border border-red-200 dark:border-red-800 rounded-lg hover:bg-red-50 dark:hover:bg-red-900/20 disabled:opacity-60 transition-colors">
+                    Eliminar
+                  </button>
+                </div>
+              </div>
+            </li>
+          </ul>
+
+          <!-- Sin contratos -->
+          <div v-else class="px-4 py-5 text-center">
+            <p class="text-xs text-gray-400 dark:text-gray-500">Sin contratos vigentes en esta sucursal.</p>
+          </div>
+
+          <!-- Añadir contrato -->
+          <div class="px-4 py-3 border-t border-gray-100 dark:border-gray-700">
+            <button v-if="!agregandoContrato" type="button" @click="abrirAgregarContrato"
+              class="text-xs text-blue-600 dark:text-blue-400 hover:underline">
+              + Añadir a otra ubicación
+            </button>
+            <div v-else class="space-y-2">
+              <div class="grid grid-cols-2 gap-2">
+                <div>
+                  <label class="block text-[10px] font-medium text-gray-500 dark:text-gray-400 mb-1">Ubicación <span class="text-red-500">*</span></label>
+                  <select v-model="nuevoContrato.ubicacion_id"
+                    class="w-full px-2 py-1.5 text-xs rounded-lg border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-1 focus:ring-blue-500">
+                    <option value="">Seleccionar…</option>
+                    <option v-for="ub in ubicacionesActivas" :key="ub.id" :value="ub.id">{{ ub.name }}</option>
+                  </select>
+                </div>
+                <div>
+                  <label class="block text-[10px] font-medium text-gray-500 dark:text-gray-400 mb-1">Cargo</label>
+                  <select v-model="nuevoContrato.cargo_id"
+                    class="w-full px-2 py-1.5 text-xs rounded-lg border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-1 focus:ring-blue-500">
+                    <option value="">Sin cargo</option>
+                    <option v-for="c in cargosEmpresa" :key="c.id" :value="c.id">{{ c.nombre }}</option>
+                  </select>
+                </div>
+                <div>
+                  <label class="block text-[10px] font-medium text-gray-500 dark:text-gray-400 mb-1">Límite horas/sem</label>
+                  <input v-model.number="nuevoContrato.limite_horas" type="number" min="0" max="168" placeholder="0 = sin límite"
+                    class="w-full px-2 py-1.5 text-xs rounded-lg border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-1 focus:ring-blue-500" />
+                </div>
+                <div>
+                  <label class="block text-[10px] font-medium text-gray-500 dark:text-gray-400 mb-1">Fecha fin contrato</label>
+                  <input v-model="nuevoContrato.fecha_fin" type="date"
+                    class="w-full px-2 py-1.5 text-xs rounded-lg border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-1 focus:ring-blue-500" />
+                </div>
+              </div>
+              <p v-if="errorContrato" class="text-xs text-red-500">{{ errorContrato }}</p>
+              <div class="flex gap-2 justify-end">
+                <button type="button" @click="agregandoContrato = false"
+                  class="px-3 py-1.5 text-xs text-gray-600 dark:text-gray-300 border border-gray-200 dark:border-gray-600 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors">
+                  Cancelar
+                </button>
+                <button type="button" @click="crearContrato" :disabled="guardandoContrato"
+                  class="px-3 py-1.5 text-xs text-white bg-blue-600 hover:bg-blue-700 disabled:opacity-60 rounded-lg transition-colors">
+                  {{ guardandoContrato ? 'Guardando…' : 'Guardar' }}
+                </button>
+              </div>
+            </div>
+          </div>
+        </section>
+
+      </div>
     </div>
 
-    <!-- ===================== MODAL CREAR/EDITAR ===================== -->
+    <!-- ══════════════════════ MODAL: Agregar personal ══════════════════════ -->
     <Transition name="modal">
-      <div v-if="modalOpen" class="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4">
-        <div class="absolute inset-0 bg-black/40 backdrop-blur-sm" @click="cerrarModal" />
-        <div class="relative w-full sm:max-w-lg bg-white dark:bg-gray-800 rounded-t-2xl sm:rounded-2xl shadow-2xl max-h-[90dvh] overflow-y-auto">
+      <div v-if="modalAgregarOpen" class="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4">
+        <div class="absolute inset-0 bg-black/40 backdrop-blur-sm" @click="cerrarModalAgregar" />
+        <div class="relative w-full sm:max-w-md bg-white dark:bg-gray-800 rounded-t-2xl sm:rounded-2xl shadow-2xl flex flex-col max-h-[85dvh]">
 
-          <div class="flex items-center justify-between px-5 py-4 border-b border-gray-100 dark:border-gray-700 sticky top-0 bg-white dark:bg-gray-800 z-10">
-            <h3 class="text-base font-semibold text-gray-900 dark:text-white">
-              {{ modoEdicion ? 'Editar miembro' : 'Agregar miembro' }}
-            </h3>
-            <button @click="cerrarModal" class="w-8 h-8 flex items-center justify-center rounded-lg text-gray-400 hover:text-gray-600 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors">
+          <!-- Header -->
+          <div class="flex items-center justify-between px-5 py-4 border-b border-gray-100 dark:border-gray-700 shrink-0">
+            <div>
+              <h3 class="text-base font-semibold text-gray-900 dark:text-white">Agregar personal</h3>
+              <p class="text-xs text-gray-400 dark:text-gray-500 mt-0.5">Empleados disponibles para asignar</p>
+            </div>
+            <button @click="cerrarModalAgregar" class="w-8 h-8 flex items-center justify-center rounded-lg text-gray-400 hover:text-gray-600 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors">
               <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" class="w-5 h-5">
                 <path stroke-linecap="round" stroke-linejoin="round" d="M6 18 18 6M6 6l12 12" />
               </svg>
             </button>
           </div>
 
-          <form @submit.prevent="guardar" class="p-5 space-y-4">
+          <!-- Tabs -->
+          <div class="flex bg-gray-100 dark:bg-gray-700 rounded-lg p-0.5 gap-0.5 mx-5 mt-4 shrink-0">
+            <button v-for="tab in modalTabs" :key="tab.id" type="button"
+              @click="modalTab = tab.id"
+              class="flex-1 px-3 py-1.5 text-xs font-medium rounded-md transition-colors"
+              :class="modalTab === tab.id
+                ? 'bg-white dark:bg-gray-800 text-gray-900 dark:text-white shadow-sm'
+                : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200'"
+            >
+              {{ tab.label }}
+            </button>
+          </div>
 
-            <!-- PASO 1: RUT (solo creación) -->
-            <div v-if="!modoEdicion" class="space-y-3">
+          <!-- Tab: Buscar empleado existente -->
+          <template v-if="modalTab === 'buscar'">
+            <!-- Buscador modal -->
+            <div class="px-5 pt-4 pb-2 shrink-0">
+              <div class="relative">
+                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"
+                  class="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none">
+                  <path stroke-linecap="round" stroke-linejoin="round" d="m21 21-5.197-5.197m0 0A7.5 7.5 0 1 0 5.196 5.196a7.5 7.5 0 0 0 10.607 10.607Z" />
+                </svg>
+                <input
+                  v-model="busquedaModal"
+                  type="search"
+                  placeholder="Buscar por nombre o RUT..."
+                  class="w-full pl-9 pr-4 py-2 text-sm rounded-lg border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+              </div>
+            </div>
+
+            <!-- Lista empleados disponibles -->
+            <div class="flex-1 overflow-y-auto min-h-0 px-5 pb-5">
+              <div v-if="empleadosDisponibles.length === 0" class="py-10 text-center">
+                <p class="text-sm text-gray-400 dark:text-gray-500">
+                  {{ busquedaModal ? 'Sin resultados.' : 'Todos los empleados ya tienen contrato vigente.' }}
+                </p>
+              </div>
+              <ul v-else class="space-y-1 mt-1">
+                <li
+                  v-for="emp in empleadosDisponibles"
+                  :key="emp.id"
+                  @click="seleccionarParaAgregar(emp)"
+                  class="flex items-center gap-3 p-3 rounded-lg cursor-pointer border transition-colors"
+                  :class="empleadoParaAgregar?.id === emp.id
+                    ? 'border-blue-400 bg-blue-50 dark:bg-blue-900/20 dark:border-blue-700'
+                    : 'border-transparent hover:bg-gray-50 dark:hover:bg-white/5'"
+                >
+                  <div class="w-9 h-9 rounded-full bg-blue-100 dark:bg-blue-900/50 flex items-center justify-center shrink-0">
+                    <span class="text-xs font-bold text-blue-600 dark:text-blue-300">{{ emp.initials }}</span>
+                  </div>
+                  <div class="flex-1 min-w-0">
+                    <p class="text-sm font-medium text-gray-900 dark:text-white truncate">{{ emp.displayName }}</p>
+                    <p class="text-xs text-gray-400 dark:text-gray-500 truncate">
+                      {{ emp.contacto?.rut || emp.contacto?.email || '—' }}
+                      <template v-if="contratoVenciendo(emp)">
+                        · <span class="text-amber-500">contrato por vencer</span>
+                      </template>
+                    </p>
+                  </div>
+                  <svg v-if="empleadoParaAgregar?.id === emp.id" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2.5" stroke="currentColor" class="w-4 h-4 text-blue-600 shrink-0">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="m4.5 12.75 6 6 9-13.5" />
+                  </svg>
+                </li>
+              </ul>
+            </div>
+
+            <!-- Footer -->
+            <div class="px-5 py-4 border-t border-gray-100 dark:border-gray-700 shrink-0 flex gap-3">
+              <button type="button" @click="cerrarModalAgregar"
+                class="flex-1 px-4 py-2 text-sm font-medium text-gray-700 dark:text-gray-300 border border-gray-200 dark:border-gray-600 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors">
+                Cancelar
+              </button>
+              <button type="button" @click="confirmarAgregarEmpleado" :disabled="!empleadoParaAgregar"
+                class="flex-1 px-4 py-2 text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed rounded-lg transition-colors">
+                Seleccionar
+              </button>
+            </div>
+          </template>
+
+          <!-- Tab: Crear empleado nuevo -->
+          <template v-else>
+            <form @submit.prevent="guardarNuevoEmpleado" class="flex-1 overflow-y-auto p-5 space-y-4">
+
+              <!-- RUT con validación -->
               <div>
                 <label class="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">
                   RUT <span class="text-red-500">*</span>
@@ -225,262 +456,62 @@
                     </svg>
                   </div>
                 </div>
-                <p v-if="rutShowError" class="mt-1 text-xs text-red-500">RUT inválido. Verifica el dígito verificador.</p>
+                <p v-if="rutShowError" class="mt-1 text-xs text-red-500">RUT inválido.</p>
               </div>
 
-              <div v-if="alertaPersonalDuplicado"
-                class="flex gap-3 p-3 rounded-lg bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800">
-                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-5 h-5 text-red-500 shrink-0 mt-0.5">
-                  <path stroke-linecap="round" stroke-linejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126ZM12 15.75h.007v.008H12v-.008Z" />
-                </svg>
-                <div class="text-sm">
-                  <p class="font-semibold text-red-700 dark:text-red-400">Ya es personal de esta empresa</p>
-                  <p class="text-red-600 dark:text-red-300 text-xs mt-0.5">{{ contactoEncontrado?.first_name }} {{ contactoEncontrado?.last_name }} ya está registrado como personal.</p>
-                </div>
+              <!-- Alertas -->
+              <div v-if="alertaPersonalDuplicado" class="flex gap-3 p-3 rounded-lg bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800">
+                <p class="text-xs text-red-600 dark:text-red-300 font-medium">Este RUT ya está registrado como personal de esta empresa.</p>
+              </div>
+              <div v-else-if="alertaContactoOtraEmpresa" class="flex gap-3 p-3 rounded-lg bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800">
+                <p class="text-xs text-blue-600 dark:text-blue-300">Contacto existente: <strong>{{ contactoEncontrado?.first_name }} {{ contactoEncontrado?.last_name }}</strong>. Se vinculará a esta empresa.</p>
               </div>
 
-              <div v-else-if="alertaUsuarioMismaEmpresa"
-                class="flex gap-3 p-3 rounded-lg bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800">
-                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-5 h-5 text-amber-500 shrink-0 mt-0.5">
-                  <path stroke-linecap="round" stroke-linejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126ZM12 15.75h.007v.008H12v-.008Z" />
-                </svg>
-                <div class="text-sm">
-                  <p class="font-semibold text-amber-700 dark:text-amber-400">Este RUT ya tiene un usuario en la empresa</p>
-                  <p class="text-amber-600 dark:text-amber-300 text-xs mt-0.5">Se usará el mismo contacto.</p>
-                </div>
-              </div>
-
-              <div v-else-if="alertaContactoOtraEmpresa"
-                class="flex gap-3 p-3 rounded-lg bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800">
-                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-5 h-5 text-blue-500 shrink-0 mt-0.5">
-                  <path stroke-linecap="round" stroke-linejoin="round" d="m11.25 11.25.041-.02a.75.75 0 0 1 1.063.852l-.708 2.836a.75.75 0 0 0 1.063.853l.041-.021M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0Zm-9-3.75h.008v.008H12V8.25Z" />
-                </svg>
-                <div class="text-sm">
-                  <p class="font-semibold text-blue-700 dark:text-blue-400">Contacto existente encontrado</p>
-                  <p class="text-blue-600 dark:text-blue-300 text-xs mt-0.5">Se vinculará {{ contactoEncontrado?.first_name }} {{ contactoEncontrado?.last_name }} a esta empresa.</p>
-                </div>
-              </div>
-            </div>
-
-            <!-- CAMPOS -->
-            <template v-if="modoEdicion || rutIsValid">
-              <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <div>
-                  <label class="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">Nombre <span class="text-red-500">*</span></label>
-                  <input v-model="form.first_name" type="text" required placeholder="Juan"
-                    :disabled="!!contactoEncontrado && !modoEdicion"
-                    class="w-full px-3 py-2 text-sm rounded-lg border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-60 disabled:cursor-not-allowed" />
+              <!-- Campos (solo si RUT válido) -->
+              <template v-if="rutIsValid && !alertaPersonalDuplicado">
+                <div class="grid grid-cols-2 gap-3">
+                  <div>
+                    <label class="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">Nombre <span class="text-red-500">*</span></label>
+                    <input v-model="formNuevo.first_name" type="text" required :disabled="!!contactoEncontrado"
+                      class="w-full px-3 py-2 text-sm rounded-lg border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-60" />
+                  </div>
+                  <div>
+                    <label class="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">Apellido <span class="text-red-500">*</span></label>
+                    <input v-model="formNuevo.last_name" type="text" required :disabled="!!contactoEncontrado"
+                      class="w-full px-3 py-2 text-sm rounded-lg border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-60" />
+                  </div>
                 </div>
                 <div>
-                  <label class="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">Apellido <span class="text-red-500">*</span></label>
-                  <input v-model="form.last_name" type="text" required placeholder="Pérez"
-                    :disabled="!!contactoEncontrado && !modoEdicion"
-                    class="w-full px-3 py-2 text-sm rounded-lg border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-60 disabled:cursor-not-allowed" />
-                </div>
-              </div>
-
-              <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <div v-if="modoEdicion">
-                  <label class="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">RUT</label>
-                  <input v-model="form.rut" type="text" disabled
-                    class="w-full px-3 py-2 text-sm rounded-lg border border-gray-200 dark:border-gray-600 bg-gray-50 dark:bg-gray-700/50 text-gray-500 dark:text-gray-400 cursor-not-allowed" />
+                  <label class="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">Email</label>
+                  <input v-model="formNuevo.email" type="email" :disabled="!!contactoEncontrado"
+                    class="w-full px-3 py-2 text-sm rounded-lg border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-60" />
                 </div>
                 <div>
                   <label class="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">Teléfono</label>
-                  <input v-model="form.phone" type="tel" placeholder="+56 9 1234 5678"
-                    :disabled="!!contactoEncontrado && !modoEdicion"
-                    class="w-full px-3 py-2 text-sm rounded-lg border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-60 disabled:cursor-not-allowed" />
+                  <input v-model="formNuevo.phone" type="tel" :disabled="!!contactoEncontrado"
+                    class="w-full px-3 py-2 text-sm rounded-lg border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-60" />
                 </div>
-              </div>
+              </template>
 
-              <div>
-                <label class="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">Email</label>
-                <input v-model="form.email" type="email" placeholder="juan@email.com"
-                  :disabled="!!contactoEncontrado && !modoEdicion"
-                  class="w-full px-3 py-2 text-sm rounded-lg border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-60 disabled:cursor-not-allowed" />
-              </div>
+              <p v-if="errorNuevo" class="text-xs text-red-500">{{ errorNuevo }}</p>
 
-              <!-- Habilidades (multi-chip toggle) -->
-              <div>
-                <label class="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-2">
-                  Habilidades / Experiencia
-                </label>
-                <div v-if="habilidadesActivas.length" class="flex flex-wrap gap-2">
-                  <button v-for="h in habilidadesActivas" :key="h.id" type="button"
-                    @click="toggleHabilidad(h.id)"
-                    class="px-2.5 py-1 rounded-full text-xs font-medium border transition-all"
-                    :class="form.skill_ids.includes(h.id)
-                      ? 'bg-violet-600 border-violet-600 text-white'
-                      : 'bg-white dark:bg-gray-700 border-gray-200 dark:border-gray-600 text-gray-600 dark:text-gray-300 hover:border-violet-400'">
-                    {{ h.nombre }}
-                  </button>
-                </div>
-                <p v-else class="text-xs text-gray-400 dark:text-gray-500 italic">
-                  Sin habilidades definidas. Agrega algunas en Ajustes → Habilidades.
-                </p>
-              </div>
-
-              <!-- Asignación a ubicación (opcional, solo creación) -->
-              <div v-if="!modoEdicion">
-                <label class="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">
-                  Ubicación <span class="text-gray-400 font-normal">(opcional)</span>
-                </label>
-                <select v-model="form.ubicacion_id"
-                  class="w-full px-3 py-2 text-sm rounded-lg border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500">
-                  <option value="">Sin asignación</option>
-                  <option v-for="ub in ubicacionesActivas" :key="ub.id" :value="ub.id">
-                    {{ ub.name }}<template v-if="ub.category"> ({{ ub.category }})</template>
-                  </option>
-                </select>
-              </div>
-
-              <div v-if="modoEdicion" class="flex items-center justify-between p-3 rounded-lg bg-gray-50 dark:bg-gray-700/50">
-                <span class="text-sm font-medium text-gray-700 dark:text-gray-300">Miembro activo</span>
-                <button type="button" @click="form.active = !form.active"
-                  class="relative w-10 h-5 rounded-full transition-colors duration-300"
-                  :class="form.active ? 'bg-blue-500' : 'bg-gray-300 dark:bg-gray-600'">
-                  <span class="absolute top-0.5 left-0.5 w-4 h-4 bg-white rounded-full shadow transition-transform duration-300"
-                    :class="form.active ? 'translate-x-5' : 'translate-x-0'" />
+              <div class="flex gap-3 pt-1">
+                <button type="button" @click="cerrarModalAgregar"
+                  class="flex-1 px-4 py-2 text-sm font-medium text-gray-700 dark:text-gray-300 border border-gray-200 dark:border-gray-600 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors">
+                  Cancelar
+                </button>
+                <button v-if="rutIsValid && !alertaPersonalDuplicado" type="submit" :disabled="guardandoNuevo"
+                  class="flex-1 px-4 py-2 text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 disabled:opacity-60 rounded-lg transition-colors">
+                  {{ guardandoNuevo ? 'Guardando…' : 'Crear y agregar' }}
                 </button>
               </div>
-            </template>
+            </form>
+          </template>
 
-            <p v-if="error" class="text-xs text-red-500">{{ error }}</p>
-
-            <div class="flex gap-3 pt-2">
-              <button type="button" @click="cerrarModal"
-                class="flex-1 px-4 py-2 text-sm font-medium text-gray-700 dark:text-gray-300 border border-gray-200 dark:border-gray-600 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors">
-                Cancelar
-              </button>
-              <button
-                v-if="modoEdicion || rutIsValid"
-                type="submit"
-                :disabled="guardando || alertaPersonalDuplicado"
-                class="flex-1 px-4 py-2 text-sm font-medium text-white rounded-lg transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
-                :class="alertaPersonalDuplicado ? 'bg-gray-400 cursor-not-allowed' : 'bg-blue-600 hover:bg-blue-700'"
-              >
-                {{ guardando ? 'Guardando...' : modoEdicion ? 'Guardar cambios' : 'Agregar' }}
-              </button>
-            </div>
-          </form>
         </div>
       </div>
     </Transition>
 
-    <!-- ===================== MODAL ASIGNAR A UBICACIÓN ===================== -->
-    <Transition name="modal">
-      <div v-if="modalAsignarOpen" class="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4">
-        <div class="absolute inset-0 bg-black/40 backdrop-blur-sm" @click="cerrarModalAsignar" />
-        <div class="relative w-full sm:max-w-md bg-white dark:bg-gray-800 rounded-t-2xl sm:rounded-2xl shadow-2xl max-h-[85dvh] overflow-y-auto">
-
-          <div class="flex items-center justify-between px-5 py-4 border-b border-gray-100 dark:border-gray-700 sticky top-0 bg-white dark:bg-gray-800 z-10">
-            <div>
-              <h3 class="text-base font-semibold text-gray-900 dark:text-white">Asignar ubicación</h3>
-              <p class="text-xs text-gray-400 dark:text-gray-500 mt-0.5">{{ empleadoAsignar?.displayName }}</p>
-            </div>
-            <button @click="cerrarModalAsignar" class="w-8 h-8 flex items-center justify-center rounded-lg text-gray-400 hover:text-gray-600 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors">
-              <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" class="w-5 h-5">
-                <path stroke-linecap="round" stroke-linejoin="round" d="M6 18 18 6M6 6l12 12" />
-              </svg>
-            </button>
-          </div>
-
-          <div class="p-5 space-y-4">
-
-            <!-- Tabs -->
-            <div class="flex bg-gray-100 dark:bg-gray-700 rounded-lg p-0.5 gap-0.5">
-              <button
-                v-for="tab in [{ id: 'ubicacion', label: 'Ubicación' }, { id: 'habilidades', label: 'Habilidades' }]"
-                :key="tab.id"
-                type="button"
-                @click="asignarTab = tab.id as 'ubicacion' | 'habilidades'"
-                class="flex-1 px-3 py-1.5 text-xs font-medium rounded-md transition-colors"
-                :class="asignarTab === tab.id
-                  ? 'bg-white dark:bg-gray-800 text-gray-900 dark:text-white shadow-sm'
-                  : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200'"
-              >
-                {{ tab.label }}
-              </button>
-            </div>
-
-            <!-- Tab: Ubicación -->
-            <template v-if="asignarTab === 'ubicacion'">
-              <div class="flex gap-2 p-3 rounded-lg bg-blue-50 dark:bg-blue-900/20 border border-blue-100 dark:border-blue-800">
-                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-4 h-4 text-blue-500 shrink-0 mt-0.5">
-                  <path stroke-linecap="round" stroke-linejoin="round" d="m11.25 11.25.041-.02a.75.75 0 0 1 1.063.852l-.708 2.836a.75.75 0 0 0 1.063.853l.041-.021M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0Zm-9-3.75h.008v.008H12V8.25Z" />
-                </svg>
-                <p class="text-xs text-blue-700 dark:text-blue-300">
-                  Asignar como encargado de una o más ubicaciones. Esto también permite transferirlo entre zonas.
-                </p>
-              </div>
-
-              <div v-if="ubicacionesActivas.length === 0" class="text-center py-6">
-                <p class="text-sm text-gray-500 dark:text-gray-400">No hay ubicaciones activas disponibles.</p>
-              </div>
-
-              <ul v-else class="space-y-2">
-                <li v-for="ub in ubicacionesActivas" :key="ub.id"
-                  class="flex items-start gap-3 p-3 rounded-lg border transition-colors"
-                  :class="asignacionSeleccionada[ub.id]
-                    ? 'border-blue-300 bg-blue-50 dark:border-blue-700 dark:bg-blue-900/20'
-                    : 'border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800'">
-                  <input
-                    type="checkbox"
-                    :id="`ub-${ub.id}`"
-                    v-model="asignacionSeleccionada[ub.id]"
-                    class="mt-0.5 w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
-                  />
-                  <div class="flex-1 min-w-0">
-                    <label :for="`ub-${ub.id}`" class="cursor-pointer">
-                      <p class="text-sm font-medium text-gray-900 dark:text-white">{{ ub.name }}</p>
-                      <p v-if="ub.address" class="text-xs text-gray-400 dark:text-gray-500 truncate">{{ ub.address }}</p>
-                      <span class="inline-flex items-center px-1.5 py-0.5 mt-1 rounded text-[10px] font-medium bg-blue-50 text-blue-600 dark:bg-blue-900/40 dark:text-blue-300 capitalize">
-                        {{ ub.category }}
-                      </span>
-                    </label>
-                  </div>
-                </li>
-              </ul>
-            </template>
-
-            <!-- Tab: Habilidades -->
-            <template v-else>
-              <p class="text-xs text-gray-500 dark:text-gray-400">
-                Selecciona las habilidades y experiencia de <strong>{{ empleadoAsignar?.displayName }}</strong>.
-              </p>
-              <div v-if="habilidadesActivas.length" class="flex flex-wrap gap-2">
-                <button v-for="h in habilidadesActivas" :key="h.id" type="button"
-                  @click="toggleAsignarHabilidad(h.id)"
-                  class="px-2.5 py-1 rounded-full text-xs font-medium border transition-all"
-                  :class="asignarSkillIds.includes(h.id)
-                    ? 'bg-violet-600 border-violet-600 text-white'
-                    : 'bg-white dark:bg-gray-700 border-gray-200 dark:border-gray-600 text-gray-600 dark:text-gray-300 hover:border-violet-400'">
-                  {{ h.nombre }}
-                </button>
-              </div>
-              <p v-else class="text-xs text-gray-400 dark:text-gray-500 italic">
-                Sin habilidades definidas. Agrega en Ajustes → Habilidades.
-              </p>
-            </template>
-
-            <p v-if="errorAsignar" class="text-xs text-red-500">{{ errorAsignar }}</p>
-
-            <div class="flex gap-3 pt-1">
-              <button type="button" @click="cerrarModalAsignar"
-                class="flex-1 px-4 py-2 text-sm font-medium text-gray-700 dark:text-gray-300 border border-gray-200 dark:border-gray-600 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors">
-                Cancelar
-              </button>
-              <button @click="guardarAsignacion" :disabled="guardandoAsignacion"
-                class="flex-1 px-4 py-2 text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 disabled:opacity-60 rounded-lg transition-colors">
-                {{ guardandoAsignacion ? 'Guardando...' : 'Guardar' }}
-              </button>
-            </div>
-          </div>
-        </div>
-      </div>
-    </Transition>
-
-  </div>
   </div>
 </template>
 
@@ -492,10 +523,12 @@ import { useSessionStore } from '../../stores/sessionStore';
 import { useEmpresaStore } from '../../stores/empresaStore';
 import { useEmpleadoStore } from '../../stores/empleadoStore';
 import { useUbicacionStore } from '../../stores/ubicacionStore';
-import { useHabilidadStore } from '../../stores/habilidadStore';
+import { useEstacionStore } from '../../stores/estacionStore';
 import { useRut } from '../../composables/useRut';
 import { db } from '../../firebase';
 import { contactoConverter, Contacto } from '../../models/Contacto';
+import { Contrato } from '../../models/Contrato';
+import { v4 as uuidv4 } from 'uuid';
 import type { Empleado } from '../../models/Empleado';
 
 const route = useRoute();
@@ -503,7 +536,7 @@ const sessionStore = useSessionStore();
 const empresaStore = useEmpresaStore();
 const empleadoStore = useEmpleadoStore();
 const ubicacionStore = useUbicacionStore();
-const habilidadStore = useHabilidadStore();
+const estacionStore = useEstacionStore();
 
 const activeCompanyId = computed(() => {
   if (sessionStore.userRole !== 'super_admin') return sessionStore.activeCompanyId;
@@ -515,32 +548,81 @@ onMounted(() => {
   if (activeCompanyId.value) {
     empleadoStore.listarEmpleados(activeCompanyId.value);
     ubicacionStore.listarUbicaciones(activeCompanyId.value);
-    habilidadStore.listarHabilidades(activeCompanyId.value);
+    estacionStore.listarEstaciones(activeCompanyId.value);
   }
 });
 
-// ── Habilidades ────────────────────────────────────────────────────────────────
+watch(activeCompanyId, (id) => {
+  if (id) {
+    empleadoStore.listarEmpleados(id);
+    ubicacionStore.listarUbicaciones(id);
+    estacionStore.listarEstaciones(id);
+  }
+});
 
-const habilidadesActivas = computed(() => habilidadStore.habilidadesActivas);
+// ── Datos derivados ────────────────────────────────────────────────────────────
 
-function habilidadNombre(id: string): string {
-  return habilidadesActivas.value.find(h => h.id === id)?.nombre ?? id;
+const estacionesActivas = computed(() => estacionStore.estacionesActivas);
+const empleadosActivos  = computed(() => empleadoStore.empleadosActivos);
+const ubicacionesActivas = computed(() => (ubicacionStore.ubicaciones ?? []).filter(u => u.active && !u.deletedAt));
+
+const cargosEmpresa = computed(() => {
+  const empresa = empresaStore.empresas?.find(e => e.id === activeCompanyId.value);
+  return empresa?.cargos?.filter(c => !c.deletedAt) ?? [];
+});
+
+// ── Helpers ────────────────────────────────────────────────────────────────────
+
+function cargoEmpleado(emp: Empleado): string {
+  const contrato = (emp.contratos ?? []).find(c => c.active && !c.deletedAt);
+  if (!contrato?.cargo_id) return '';
+  return nombreCargo(contrato.cargo_id);
 }
 
-// ── Lista y filtros ────────────────────────────────────────────────────────────
+function nombreUbicacion(id: string): string {
+  return ubicacionesActivas.value.find(u => u.id === id)?.name ?? id;
+}
+
+function nombreCargo(id: string): string {
+  return cargosEmpresa.value.find(c => c.id === id)?.nombre ?? '';
+}
+
+function formatFecha(d: Date | null | undefined): string {
+  if (!d) return '—';
+  return new Intl.DateTimeFormat('es-CL', { day: '2-digit', month: 'short', year: 'numeric' }).format(d);
+}
+
+const hoyMasUnMes = new Date();
+hoyMasUnMes.setMonth(hoyMasUnMes.getMonth() + 1);
+
+function tieneContratoVigente(emp: Empleado): boolean {
+  const hoy = new Date();
+  return (emp.contratos ?? []).some(c =>
+    c.active &&
+    !c.deletedAt &&
+    (!c.fecha_fin || c.fecha_fin > hoyMasUnMes)
+  );
+}
+
+function contratoVenciendo(emp: Empleado): boolean {
+  const hoy = new Date();
+  return (emp.contratos ?? []).some(c =>
+    c.active &&
+    !c.deletedAt &&
+    c.fecha_fin &&
+    c.fecha_fin <= hoyMasUnMes &&
+    c.fecha_fin > hoy
+  );
+}
+
+// ── Lista izquierda ────────────────────────────────────────────────────────────
 
 const busqueda = ref('');
-const filtroHabilidad = ref('');
-
-const empleadosActivos = computed(() => empleadoStore.empleadosActivos);
-
-const ubicacionesActivas = computed(() =>
-  (ubicacionStore.ubicaciones ?? []).filter(u => u.active)
-);
+const filtroEstacion = ref('');
 
 const empleadosFiltrados = computed(() => {
-  let lista = empleadoStore.empleados ?? [];
-  if (filtroHabilidad.value) lista = lista.filter(e => e.skill_ids.includes(filtroHabilidad.value));
+  let lista = empleadoStore.empleados?.filter(e => e.active && !e.deletedAt) ?? [];
+  if (filtroEstacion.value) lista = lista.filter(e => e.estacion_ids.includes(filtroEstacion.value));
   if (busqueda.value.trim()) {
     const q = busqueda.value.toLowerCase();
     lista = lista.filter(e =>
@@ -551,59 +633,280 @@ const empleadosFiltrados = computed(() => {
   return lista;
 });
 
-// ── Modal crear/editar ─────────────────────────────────────────────────────────
+// ── Panel derecho ──────────────────────────────────────────────────────────────
 
-const modalOpen = ref(false);
-const modoEdicion = ref(false);
 const empleadoSeleccionado = ref<Empleado | null>(null);
-const guardando = ref(false);
-const error = ref('');
 
-const { rut, isValid: rutIsValid, showError: rutShowError, onInput: onRutInput, onBlur: rutBlur, setRut } = useRut();
+const form = reactive({
+  active: true,
+  estacion_ids: [] as string[],
+});
 
-const buscandoRut = ref(false);
-const contactoEncontrado = ref<Contacto | null>(null);
+function seleccionar(emp: Empleado) {
+  empleadoSeleccionado.value = emp;
+  form.active = emp.active;
+  form.estacion_ids = [...emp.estacion_ids];
+  editandoContacto.value = false;
+  editandoContratoId.value = null;
+  agregandoContrato.value = false;
+  formContacto.first_name = emp.contacto?.first_name ?? '';
+  formContacto.last_name  = emp.contacto?.last_name  ?? '';
+  formContacto.email      = emp.contacto?.email      ?? '';
+  formContacto.phone      = emp.contacto?.phone      ?? '';
+}
+
+// Mantener datos del empleado seleccionado sincronizados si cambia en Firestore
+watch(() => empleadoStore.empleados, (lista) => {
+  if (!empleadoSeleccionado.value || !lista) return;
+  const actualizado = lista.find(e => e.id === empleadoSeleccionado.value!.id);
+  if (actualizado) {
+    empleadoSeleccionado.value = actualizado;
+    if (!editandoContacto.value) {
+      formContacto.first_name = actualizado.contacto?.first_name ?? '';
+      formContacto.last_name  = actualizado.contacto?.last_name  ?? '';
+      formContacto.email      = actualizado.contacto?.email      ?? '';
+      formContacto.phone      = actualizado.contacto?.phone      ?? '';
+    }
+  }
+}, { deep: true });
+
+// Toggle activo
+async function guardarCampoActivo() {
+  if (!empleadoSeleccionado.value) return;
+  await empleadoStore.updateEmpleado(empleadoSeleccionado.value.id, { active: form.active });
+}
+
+// ── Datos de contacto ──────────────────────────────────────────────────────────
+
+const editandoContacto  = ref(false);
+const guardandoContacto = ref(false);
+const formContacto = reactive({ first_name: '', last_name: '', email: '', phone: '' });
+
+function cancelarContacto() {
+  editandoContacto.value = false;
+  const emp = empleadoSeleccionado.value;
+  formContacto.first_name = emp?.contacto?.first_name ?? '';
+  formContacto.last_name  = emp?.contacto?.last_name  ?? '';
+  formContacto.email      = emp?.contacto?.email      ?? '';
+  formContacto.phone      = emp?.contacto?.phone      ?? '';
+}
+
+async function guardarContacto() {
+  if (!empleadoSeleccionado.value?.contact_id) return;
+  guardandoContacto.value = true;
+  try {
+    await updateDoc(doc(db, 'contactos', empleadoSeleccionado.value.contact_id), {
+      first_name: formContacto.first_name,
+      last_name:  formContacto.last_name,
+      email:      formContacto.email,
+      phone:      formContacto.phone,
+      updatedAt:  Timestamp.now(),
+    });
+    editandoContacto.value = false;
+  } finally {
+    guardandoContacto.value = false;
+  }
+}
+
+// ── Estaciones ─────────────────────────────────────────────────────────────────
+
+const guardandoEstaciones = ref(false);
+
+const estacionesCambiadas = computed(() => {
+  const original = empleadoSeleccionado.value?.estacion_ids ?? [];
+  const actual = form.estacion_ids;
+  return original.length !== actual.length || actual.some(id => !original.includes(id));
+});
+
+function toggleEstacion(id: string) {
+  const idx = form.estacion_ids.indexOf(id);
+  if (idx === -1) form.estacion_ids.push(id);
+  else form.estacion_ids.splice(idx, 1);
+}
+
+async function guardarEstaciones() {
+  if (!empleadoSeleccionado.value) return;
+  guardandoEstaciones.value = true;
+  try {
+    await empleadoStore.updateEmpleado(empleadoSeleccionado.value.id, { estacion_ids: [...form.estacion_ids] });
+  } finally {
+    guardandoEstaciones.value = false;
+  }
+}
+
+// ── Contratos ──────────────────────────────────────────────────────────────────
+
+const contratosActivos = computed(() =>
+  (empleadoSeleccionado.value?.contratos ?? []).filter(c => c.active && !c.deletedAt)
+);
+
+const editandoContratoId = ref<string | null>(null);
+const guardandoContrato  = ref(false);
+const errorContrato      = ref('');
+
+const formContrato = reactive({ cargo_id: '', limite_horas: 0, fecha_fin: '' });
+
+function toggleEditarContrato(id: string) {
+  if (editandoContratoId.value === id) { editandoContratoId.value = null; return; }
+  const c = contratosActivos.value.find(x => x.id === id);
+  if (!c) return;
+  formContrato.cargo_id     = c.cargo_id ?? '';
+  formContrato.limite_horas = c.limite_horas ?? 0;
+  formContrato.fecha_fin    = c.fecha_fin ? c.fecha_fin.toISOString().split('T')[0] : '';
+  editandoContratoId.value = id;
+}
+
+async function guardarContrato(id: string) {
+  if (!empleadoSeleccionado.value) return;
+  guardandoContrato.value = true;
+  try {
+    await empleadoStore.updateContrato(empleadoSeleccionado.value.id, id, {
+      cargo_id:     formContrato.cargo_id,
+      limite_horas: formContrato.limite_horas,
+      fecha_fin:    formContrato.fecha_fin ? new Date(formContrato.fecha_fin + 'T00:00:00') : null,
+    });
+    editandoContratoId.value = null;
+  } finally {
+    guardandoContrato.value = false;
+  }
+}
+
+async function eliminarContrato(id: string) {
+  if (!empleadoSeleccionado.value) return;
+  guardandoContrato.value = true;
+  try {
+    await empleadoStore.removeContrato(empleadoSeleccionado.value.id, id);
+    editandoContratoId.value = null;
+  } finally {
+    guardandoContrato.value = false;
+  }
+}
+
+// Añadir contrato
+const agregandoContrato = ref(false);
+const nuevoContrato = reactive({ ubicacion_id: '', cargo_id: '', limite_horas: 0, fecha_fin: '' });
+
+function abrirAgregarContrato() {
+  nuevoContrato.ubicacion_id = '';
+  nuevoContrato.cargo_id     = '';
+  nuevoContrato.limite_horas = 0;
+  nuevoContrato.fecha_fin    = '';
+  errorContrato.value = '';
+  agregandoContrato.value = true;
+}
+
+async function crearContrato() {
+  if (!empleadoSeleccionado.value || !nuevoContrato.ubicacion_id) {
+    errorContrato.value = 'Debes seleccionar una ubicación.';
+    return;
+  }
+  guardandoContrato.value = true;
+  errorContrato.value = '';
+  try {
+    await empleadoStore.addContrato(empleadoSeleccionado.value.id, {
+      empleado_id:  empleadoSeleccionado.value.id,
+      ubicacion_id: nuevoContrato.ubicacion_id,
+      cargo_id:     nuevoContrato.cargo_id,
+      active:       true,
+      limite_horas: nuevoContrato.limite_horas,
+      fecha_inicio: new Date(),
+      fecha_fin:    nuevoContrato.fecha_fin ? new Date(nuevoContrato.fecha_fin + 'T00:00:00') : null,
+    });
+    agregandoContrato.value = false;
+  } catch (e: any) {
+    errorContrato.value = e.message || 'Error al crear el contrato.';
+  } finally {
+    guardandoContrato.value = false;
+  }
+}
+
+// ── Modal agregar personal ─────────────────────────────────────────────────────
+
+const modalAgregarOpen  = ref(false);
+const modalTab          = ref<'buscar' | 'nuevo'>('buscar');
+const modalTabs         = [{ id: 'buscar', label: 'Buscar empleado' }, { id: 'nuevo', label: 'Crear nuevo' }];
+const busquedaModal     = ref('');
+const empleadoParaAgregar = ref<Empleado | null>(null);
+
+// Empleados sin contrato vigente O con contrato por vencer este mes
+const empleadosDisponibles = computed(() => {
+  const q = busquedaModal.value.toLowerCase();
+  return (empleadoStore.empleados ?? [])
+    .filter(e => e.active && !e.deletedAt)
+    .filter(e => !tieneContratoVigente(e) || contratoVenciendo(e))
+    .filter(e => !q ||
+      e.displayName.toLowerCase().includes(q) ||
+      (e.contacto?.rut ?? '').toLowerCase().includes(q)
+    );
+});
+
+function abrirModalAgregar() {
+  busquedaModal.value = '';
+  empleadoParaAgregar.value = null;
+  modalTab.value = 'buscar';
+  resetVerificacion();
+  setRut('');
+  formNuevo.first_name = '';
+  formNuevo.last_name  = '';
+  formNuevo.email      = '';
+  formNuevo.phone      = '';
+  modalAgregarOpen.value = true;
+}
+
+function cerrarModalAgregar() { modalAgregarOpen.value = false; }
+
+function seleccionarParaAgregar(emp: Empleado) {
+  empleadoParaAgregar.value = emp;
+}
+
+function confirmarAgregarEmpleado() {
+  if (!empleadoParaAgregar.value) return;
+  cerrarModalAgregar();
+  seleccionar(empleadoParaAgregar.value);
+}
+
+// ── Crear empleado nuevo (tab "nuevo") ────────────────────────────────────────
+
+const { rut, isValid: rutIsValid, showError: rutShowError, onInput: onRutInput, onBlur: rutBlurFn, setRut } = useRut();
+
+const buscandoRut             = ref(false);
+const contactoEncontrado      = ref<Contacto | null>(null);
 const alertaPersonalDuplicado = ref(false);
-const alertaUsuarioMismaEmpresa = ref(false);
 const alertaContactoOtraEmpresa = ref(false);
 
+const formNuevo = reactive({ first_name: '', last_name: '', email: '', phone: '' });
+const errorNuevo    = ref('');
+const guardandoNuevo = ref(false);
+
+function onRutBlur() { rutBlurFn(); }
+
 function resetVerificacion() {
-  contactoEncontrado.value = null;
-  alertaPersonalDuplicado.value = false;
-  alertaUsuarioMismaEmpresa.value = false;
+  contactoEncontrado.value       = null;
+  alertaPersonalDuplicado.value  = false;
   alertaContactoOtraEmpresa.value = false;
 }
 
 watch(rutIsValid, async (valido) => {
-  if (!valido || modoEdicion.value) { resetVerificacion(); return; }
+  if (!valido) { resetVerificacion(); return; }
   buscandoRut.value = true;
   resetVerificacion();
   try {
     const contactosRef = collection(db, 'contactos').withConverter(contactoConverter);
-    const snap = await getDocs(query(contactosRef,
-      where('rut', '==', rut.value.toUpperCase()),
-      where('deletedAt', '==', null)
-    ));
-    if (snap.empty) { form.value.rut = rut.value.toUpperCase(); return; }
+    const snap = await getDocs(query(contactosRef, where('rut', '==', rut.value.toUpperCase())));
+    if (snap.empty) return;
 
     const contacto = snap.docs[0].data();
     contactoEncontrado.value = contacto;
-    form.value = { ...form.value, first_name: contacto.first_name, last_name: contacto.last_name, rut: contacto.rut, email: contacto.email, phone: contacto.phone };
+    formNuevo.first_name = contacto.first_name;
+    formNuevo.last_name  = contacto.last_name;
+    formNuevo.email      = contacto.email;
+    formNuevo.phone      = contacto.phone;
 
     const empSnap = await getDocs(query(collection(db, 'empleados'),
       where('contact_id', '==', contacto.id),
-      where('company_id', '==', activeCompanyId.value),
-      where('deletedAt', '==', null)
+      where('company_id', '==', activeCompanyId.value)
     ));
     if (!empSnap.empty) { alertaPersonalDuplicado.value = true; return; }
-
-    const usuSnap = await getDocs(query(collection(db, 'usuarios'),
-      where('contact_id', '==', contacto.id),
-      where('empresa_id', '==', activeCompanyId.value),
-      where('deletedAt', '==', null)
-    ));
-    if (!usuSnap.empty) { alertaUsuarioMismaEmpresa.value = true; return; }
-
     alertaContactoOtraEmpresa.value = true;
   } catch (e) {
     console.error('Error verificando RUT:', e);
@@ -612,171 +915,36 @@ watch(rutIsValid, async (valido) => {
   }
 });
 
-function onRutBlur() { rutBlur(); }
-
-const formVacio = () => ({
-  first_name: '',
-  last_name: '',
-  rut: '',
-  email: '',
-  phone: '',
-  skill_ids: [] as string[],
-  active: true,
-  ubicacion_id: '',
-});
-
-const form = ref(formVacio());
-
-function toggleHabilidad(id: string) {
-  const idx = form.value.skill_ids.indexOf(id);
-  if (idx === -1) form.value.skill_ids.push(id);
-  else form.value.skill_ids.splice(idx, 1);
-}
-
-function abrirModalCrear() {
-  form.value = formVacio();
-  modoEdicion.value = false;
-  empleadoSeleccionado.value = null;
-  error.value = '';
-  setRut('');
-  resetVerificacion();
-  modalOpen.value = true;
-}
-
-function abrirModalEditar(emp: Empleado) {
-  form.value = {
-    first_name: emp.contacto?.first_name ?? '',
-    last_name: emp.contacto?.last_name ?? '',
-    rut: emp.contacto?.rut ?? '',
-    email: emp.contacto?.email ?? '',
-    phone: emp.contacto?.phone ?? '',
-    skill_ids: [...emp.skill_ids],
-    active: emp.active,
-    ubicacion_id: '',
-  };
-  modoEdicion.value = true;
-  empleadoSeleccionado.value = emp;
-  error.value = '';
-  resetVerificacion();
-  modalOpen.value = true;
-}
-
-function cerrarModal() { modalOpen.value = false; }
-
-async function guardar() {
+async function guardarNuevoEmpleado() {
   if (!activeCompanyId.value || alertaPersonalDuplicado.value) return;
-  error.value = '';
-  guardando.value = true;
+  errorNuevo.value = '';
+  guardandoNuevo.value = true;
   try {
-    if (modoEdicion.value && empleadoSeleccionado.value) {
-      await updateDoc(doc(db, 'contactos', empleadoSeleccionado.value.contact_id), {
-        first_name: form.value.first_name,
-        last_name: form.value.last_name,
-        email: form.value.email,
-        phone: form.value.phone,
-        updatedAt: Timestamp.now(),
-      });
-      await empleadoStore.updateEmpleado(empleadoSeleccionado.value.id, {
-        skill_ids: form.value.skill_ids,
-        active: form.value.active,
-      });
-
-    } else if (contactoEncontrado.value) {
-      const empleadoId = await empleadoStore.createEmpleado({
-        company_id: activeCompanyId.value,
-        contact_id: contactoEncontrado.value.id,
-        active: true,
-        skill_ids: form.value.skill_ids,
-        contratos: [],
-        disponibilidad: null,
-      });
-      if (form.value.ubicacion_id && empleadoId) {
-        await ubicacionStore.updateUbicacion(form.value.ubicacion_id, { manager_id: empleadoId });
-      }
-
+    let contactId: string;
+    if (contactoEncontrado.value) {
+      contactId = contactoEncontrado.value.id;
     } else {
       const contactosRef = collection(db, 'contactos').withConverter(contactoConverter);
-      const newContactoRef = doc(contactosRef);
-      await setDoc(newContactoRef, new Contacto(
-        newContactoRef.id, form.value.first_name, form.value.last_name,
-        rut.value.toUpperCase(), form.value.email, form.value.phone, '', false, true
+      const newRef = doc(contactosRef);
+      await setDoc(newRef, new Contacto(
+        newRef.id, formNuevo.first_name, formNuevo.last_name,
+        rut.value.toUpperCase(), formNuevo.email, formNuevo.phone, '', false, true
       ));
-      const empleadoId = await empleadoStore.createEmpleado({
-        company_id: activeCompanyId.value,
-        contact_id: newContactoRef.id,
-        active: true,
-        skill_ids: form.value.skill_ids,
-        contratos: [],
-        disponibilidad: null,
-      });
-      if (form.value.ubicacion_id && empleadoId) {
-        await ubicacionStore.updateUbicacion(form.value.ubicacion_id, { manager_id: empleadoId });
-      }
+      contactId = newRef.id;
     }
-    cerrarModal();
+    await empleadoStore.createEmpleado({
+      company_id:   activeCompanyId.value,
+      contact_id:   contactId,
+      active:       true,
+      estacion_ids: [],
+      contratos:    [],
+      disponibilidad: null,
+    });
+    cerrarModalAgregar();
   } catch (e: any) {
-    error.value = e.message || 'Error al guardar.';
+    errorNuevo.value = e.message || 'Error al crear el empleado.';
   } finally {
-    guardando.value = false;
-  }
-}
-
-// ── Modal asignar a ubicación ──────────────────────────────────────────────────
-
-const modalAsignarOpen = ref(false);
-const empleadoAsignar = ref<Empleado | null>(null);
-const asignacionSeleccionada = reactive<Record<string, boolean>>({});
-const asignarSkillIds = ref<string[]>([]);
-const asignarTab = ref<'ubicacion' | 'habilidades'>('ubicacion');
-const guardandoAsignacion = ref(false);
-const errorAsignar = ref('');
-
-function toggleAsignarHabilidad(id: string) {
-  const idx = asignarSkillIds.value.indexOf(id);
-  if (idx === -1) asignarSkillIds.value.push(id);
-  else asignarSkillIds.value.splice(idx, 1);
-}
-
-async function abrirModalAsignar(emp: Empleado) {
-  empleadoAsignar.value = emp;
-  errorAsignar.value = '';
-  asignarTab.value = 'ubicacion';
-  asignarSkillIds.value = [...emp.skill_ids];
-
-  for (const key of Object.keys(asignacionSeleccionada)) delete asignacionSeleccionada[key];
-  for (const ub of ubicacionesActivas.value) {
-    asignacionSeleccionada[ub.id] = ub.manager_id === emp.id;
-  }
-  modalAsignarOpen.value = true;
-}
-
-function cerrarModalAsignar() {
-  modalAsignarOpen.value = false;
-  empleadoAsignar.value = null;
-}
-
-async function guardarAsignacion() {
-  if (!empleadoAsignar.value) return;
-  guardandoAsignacion.value = true;
-  errorAsignar.value = '';
-  try {
-    // Actualizar encargado en ubicaciones
-    for (const ub of ubicacionesActivas.value) {
-      const seleccionado = asignacionSeleccionada[ub.id];
-      const eraManager = ub.manager_id === empleadoAsignar.value!.id;
-      if (seleccionado && !eraManager) {
-        await ubicacionStore.updateUbicacion(ub.id, { manager_id: empleadoAsignar.value!.id });
-      } else if (!seleccionado && eraManager) {
-        await ubicacionStore.updateUbicacion(ub.id, { manager_id: null });
-      }
-    }
-    // Actualizar habilidades del empleado
-    await empleadoStore.updateEmpleado(empleadoAsignar.value!.id, { skill_ids: asignarSkillIds.value });
-    cerrarModalAsignar();
-  } catch (e: any) {
-    errorAsignar.value = e.message || 'Error al guardar la asignación.';
-  } finally {
-    guardandoAsignacion.value = false;
+    guardandoNuevo.value = false;
   }
 }
 </script>
