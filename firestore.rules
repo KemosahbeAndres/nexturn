@@ -3,17 +3,107 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
 
-    // This rule allows anyone with your Firestore database reference to view, edit,
-    // and delete all data in your Firestore database. It is useful for getting
-    // started, but it is configured to expire after 30 days because it
-    // leaves your app open to attackers. At that time, all client
-    // requests to your Firestore database will be denied.
-    //
-    // Make sure to write security rules for your app before that time, or else
-    // all client requests to your Firestore database will be denied until you Update
-    // your rules
+    // ── Helpers ──────────────────────────────────────────────────────────────
+
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    // Lee el doc del usuario autenticado y verifica system_role.
+    // NOTA: request.auth.uid coincide con el id del doc en la colección 'usuarios'
+    // porque Firebase Auth genera el uid que también usamos como id de documento.
+    function isSuperAdmin() {
+      return isSignedIn() &&
+        get(/databases/$(database)/documents/usuarios/$(request.auth.uid)).data.system_role == 'super_admin';
+    }
+
+    // ── clientes ─────────────────────────────────────────────────────────────
+    // Solo el super_admin puede leer/escribir clientes.
+    // Fase 1 añadirá: el owner del cliente también puede leer el suyo.
+    match /clientes/{clienteId} {
+      allow read, write: if isSuperAdmin();
+    }
+
+    // ── empresas ─────────────────────────────────────────────────────────────
+    // Leer: super_admin o usuario cuyo cliente_id coincida con el de la empresa.
+    // Escribir: solo super_admin (Fase 1 abrirá al company_admin con grant).
+    match /empresas/{empresaId} {
+      allow read: if isSuperAdmin() ||
+        (isSignedIn() &&
+          get(/databases/$(database)/documents/usuarios/$(request.auth.uid)).data.cliente_id
+            == resource.data.cliente_id);
+      allow write: if isSuperAdmin();
+    }
+
+    // ── usuarios ─────────────────────────────────────────────────────────────
+    // Cada usuario puede leer y actualizar su propio doc (para guardar preferencias).
+    // El super_admin puede todo. Fase 1 abrirá escritura al users.manage grant.
+    match /usuarios/{userId} {
+      allow read, write: if isSuperAdmin() || (isSignedIn() && request.auth.uid == userId);
+    }
+
+    // ── sesiones ─────────────────────────────────────────────────────────────
+    // El usuario solo puede acceder a sus propias sesiones.
+    match /sesiones/{sesionId} {
+      allow read, write: if isSignedIn() &&
+        (isSuperAdmin() ||
+          resource == null ||   // permite create
+          resource.data.user_id == request.auth.uid);
+    }
+
+    // ── contactos ────────────────────────────────────────────────────────────
+    // Temporal: cualquier usuario autenticado puede leer/escribir.
+    // Fase 1 restringirá por cliente_id / grant.
+    match /contactos/{contactoId} {
+      allow read, write: if isSignedIn();
+    }
+
+    // ── empleados ─────────────────────────────────────────────────────────────
+    // Temporal: cualquier usuario autenticado puede leer/escribir.
+    // Fase 1 restringirá por company_id + grant.
+    match /empleados/{empleadoId} {
+      allow read, write: if isSignedIn();
+    }
+
+    // ── ubicaciones ───────────────────────────────────────────────────────────
+    match /ubicaciones/{ubicacionId} {
+      allow read, write: if isSignedIn();
+    }
+
+    // ── zonas ─────────────────────────────────────────────────────────────────
+    match /zonas/{zonaId} {
+      allow read, write: if isSignedIn();
+    }
+
+    // ── estaciones ────────────────────────────────────────────────────────────
+    match /estaciones/{estacionId} {
+      allow read, write: if isSignedIn();
+    }
+
+    // ── habilidades ───────────────────────────────────────────────────────────
+    match /habilidades/{habilidadId} {
+      allow read, write: if isSignedIn();
+    }
+
+    // ── asignaciones ──────────────────────────────────────────────────────────
+    match /asignaciones/{asignacionId} {
+      allow read, write: if isSignedIn();
+    }
+
+    // ── excepciones ───────────────────────────────────────────────────────────
+    match /excepciones/{excepcionId} {
+      allow read, write: if isSignedIn();
+    }
+
+    // ── reglas_asignacion ─────────────────────────────────────────────────────
+    match /reglas_asignacion/{reglaId} {
+      allow read, write: if isSignedIn();
+    }
+
+    // ── Denegación por defecto ────────────────────────────────────────────────
+    // Cualquier colección no listada queda bloqueada para todos.
     match /{document=**} {
-      allow read, write: if request.time < timestamp.date(2026, 7, 8);
+      allow read, write: if false;
     }
   }
 }

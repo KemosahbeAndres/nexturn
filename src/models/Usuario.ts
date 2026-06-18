@@ -3,6 +3,8 @@ import type { DocumentData, FirestoreDataConverter, QueryDocumentSnapshot, Snaps
 import { Contacto } from './Contacto';
 import { Empresa } from './Empresa';
 
+export type SystemRole = 'super_admin' | 'client_user';
+
 export class Usuario {
   // Propiedades relacionales anidadas (hidratadas localmente al iniciar sesión)
   public contacto?: Contacto;
@@ -10,24 +12,30 @@ export class Usuario {
 
   constructor(
     public id: string,
-    public empresa_id: string | null,
+    public empresa_id: string | null,   // legacy — se mantiene durante Fase 0-1
     public contact_id: string,
-    public system_role: string,
+    public system_role: SystemRole,
     public createdAt: Date = new Date(),
     public updatedAt: Date = new Date(),
     public deletedAt: Date | null = null,
+    public cliente_id: string | null = null,
     public preferences?: {
       theme: string;
       language: string;
       notificationsEnabled: boolean;
     }
   ) {}
+
+  get isSuperAdmin(): boolean {
+    return this.system_role === 'super_admin';
+  }
 }
 
 export const usuarioConverter: FirestoreDataConverter<Usuario> = {
   toFirestore(usuario: Usuario): DocumentData {
     return {
       empresa_id: usuario.empresa_id,
+      cliente_id: usuario.cliente_id,
       contact_id: usuario.contact_id,
       system_role: usuario.system_role,
       createdAt: usuario.createdAt ? Timestamp.fromDate(usuario.createdAt) : Timestamp.now(),
@@ -40,12 +48,13 @@ export const usuarioConverter: FirestoreDataConverter<Usuario> = {
     const data = snapshot.data(options)!;
     return new Usuario(
       snapshot.id,
-      data.empresa_id,
+      data.empresa_id ?? null,
       data.contact_id,
-      data.system_role,
+      (data.system_role as SystemRole) || 'client_user',
       data.createdAt?.toDate() || new Date(),
       data.updatedAt?.toDate() || new Date(),
       data.deletedAt?.toDate() || null,
+      data.cliente_id ?? null,
       data.preferences
     );
   }

@@ -17,7 +17,8 @@ export class Empresa {
     public slug: string,
     public createdAt: Date = new Date(),
     public updatedAt: Date = new Date(),
-    public deletedAt: Date | null = null
+    public deletedAt: Date | null = null,
+    public cliente_id: string | null = null
   ) {}
 
   get isEmpresa(): boolean {
@@ -38,6 +39,7 @@ export const empresaConverter: FirestoreDataConverter<Empresa> = {
     return {
       active: empresa.active,
       contact_id: empresa.contact_id,
+      cliente_id: empresa.cliente_id,
       type: empresa.type,
       cargos: empresa.cargos.map(roleToFirestore),
       slug: empresa.slug,
@@ -57,7 +59,8 @@ export const empresaConverter: FirestoreDataConverter<Empresa> = {
       data.slug || '',
       data.createdAt?.toDate() || new Date(),
       data.updatedAt?.toDate() || new Date(),
-      data.deletedAt?.toDate() || null
+      data.deletedAt?.toDate() || null,
+      data.cliente_id ?? null
     );
   }
 };

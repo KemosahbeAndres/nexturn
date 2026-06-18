@@ -12,7 +12,8 @@ export const useSessionStore = defineStore('session', () => {
   // 1. STATE (Datos Reactivos)
   const currentUser = ref<Usuario | null>(null);
   const currentSession = ref<Sesion | null>(null);
-  const activeCompanyId = ref<string | null>(null); // Contexto de la empresa en la que navegamos
+  const activeClienteId = ref<string | null>(null);  // Contexto del cliente/cuenta de facturación
+  const activeCompanyId = ref<string | null>(null);  // Contexto de la empresa en la que navegamos
   const activeUbicacionId = ref<string | null>(null); // Contexto de la sucursal en la que navegamos
   
   // Preferencias personales del usuario persistidas en el estado local
@@ -131,11 +132,16 @@ export const useSessionStore = defineStore('session', () => {
       const empresaSnap = await getDoc(empresaRef);
       if (empresaSnap.exists()) {
         usuarioData.empresa = empresaSnap.data();
+        // Propagar cliente_id desde la empresa si el usuario no lo tiene aún
+        if (!usuarioData.cliente_id && usuarioData.empresa.cliente_id) {
+          usuarioData.cliente_id = usuarioData.empresa.cliente_id;
+        }
       }
     }
-    
+
     currentUser.value = usuarioData;
     activeCompanyId.value = usuarioData.empresa_id || null;
+    activeClienteId.value = usuarioData.cliente_id || null;
 
     // 3.4.1. Cargar preferencias del usuario si existen
     if (usuarioData.preferences) {
@@ -176,6 +182,7 @@ export const useSessionStore = defineStore('session', () => {
     // Resetear el estado local
     currentUser.value = null;
     currentSession.value = null;
+    activeClienteId.value = null;
     activeCompanyId.value = null;
     activeUbicacionId.value = null;
 
@@ -252,13 +259,19 @@ export const useSessionStore = defineStore('session', () => {
       if (usuarioData.system_role !== 'super_admin' && usuarioData.empresa_id) {
         const empresaRef = doc(db, 'empresas', usuarioData.empresa_id).withConverter(empresaConverter);
         const empresaSnap = await getDoc(empresaRef);
-        if (empresaSnap.exists()) usuarioData.empresa = empresaSnap.data();
+        if (empresaSnap.exists()) {
+          usuarioData.empresa = empresaSnap.data();
+          if (!usuarioData.cliente_id && usuarioData.empresa.cliente_id) {
+            usuarioData.cliente_id = usuarioData.empresa.cliente_id;
+          }
+        }
       }
 
       // 5. Rehidratar estado en memoria
       currentUser.value = usuarioData;
       currentSession.value = sessionData;
       activeCompanyId.value = usuarioData.empresa_id || null;
+      activeClienteId.value = usuarioData.cliente_id || null;
 
       // Cargar preferencias del usuario si existen
       if (usuarioData.preferences) {
@@ -277,6 +290,7 @@ export const useSessionStore = defineStore('session', () => {
   return {
     currentUser,
     currentSession,
+    activeClienteId,
     activeCompanyId,
     activeUbicacionId,
     preferences, 

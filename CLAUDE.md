@@ -1,199 +1,434 @@
-# Contexto General del Proyecto
-Esta es una Plataforma SaaS (Software as a Service) multi-empresa (multi-tenant) para la gestión general de calendarios, turnos y personal. El sistema permite a diferentes empresas u organizaciones (clientes) administrar sus propias ubicaciones, roles y horarios de manera aislada y segura.
+# CLAUDE.md — Plataforma de gestión operativa de turnos
 
-El proyecto nació como una solución para una congregación (Lauca), pero escaló a una arquitectura B2B generalizada.
+> Documento de referencia del proyecto. Es la **fuente de verdad** para arquitectura, modelo de datos y convenciones. Cualquier refactor debe respetar lo aquí descrito.
 
-# Stack Tecnológico
-* **Framework Core:** Vue 3 (Single Page Application - SPA)
-* **Build Tool:** Vite
-* **Lenguaje:** TypeScript (Tipado estricto)
-* **Estilos y Maquetación:** Tailwind CSS (Uso exclusivo de clases utilitarias, sin frameworks de UI restrictivos)
-* **Enrutamiento:** Vue Router
-* **Manejo de Estado Global:** Pinia
-* **Backend / Base de Datos:** Firebase (Firestore y Authentication)
-* **Integración Firebase/Vue:** VueFire
+---
 
-# Reglas de Arquitectura y Desarrollo frontend
-1.  **Cero Componentes Móviles Nativos:** El proyecto es una SPA web. **NO** utilices etiquetas de Ionic (como `<ion-page>`, `<ion-content>`, `<ion-button>`). Utiliza HTML5 semántico (`<main>`, `<section>`, `<div>`, `<button>`).
-2.  **Estilos con Tailwind:** Todos los estilos visuales deben aplicarse mediante clases de Tailwind CSS. No se deben crear archivos `.css` o `<style scoped>` separados a menos que sea estrictamente para animaciones complejas o directivas específicas que Tailwind no cubra.
-3.  **Composition API:** Todo componente de Vue debe utilizar la sintaxis `<script setup lang="ts">`.
-4.  **Orientación a Objetos en Modelos:** Los datos traídos de Firestore deben mapearse a clases de TypeScript (ej. `new Personal(data)`) para garantizar consistencia y encapsulamiento de métodos antes de llegar a la vista.
+## 1. Visión del proyecto
 
-# Entorno del Desarrollador
-* Sistema Operativo: Fedora 44.
-* IDE: Visual Studio Code instalado mediante Flatpak.
-* *Nota para la IA sobre comandos de terminal:* Si me vas a sugerir comandos que deban interactuar con Node, npm o git desde la terminal integrada de VS Code, recuerda anteponer `flatpak-spawn --host` para salir del sandbox (ej. `flatpak-spawn --host npm install`).
+Plataforma web **multiempresa (multi-tenant)** para la **gestión operativa de turnos** de dos tipos de organización:
 
-# Instrucciones para la IA (Cómo debes responderme)
-* Proporciona código directamente en Vue 3 con `<script setup lang="ts">`.
-* Asume siempre que Tailwind CSS está completamente configurado.
-* Cuando me des ejemplos de Pinia, usa la sintaxis Setup Store (con ref y computed) en lugar de Options Store.
-* Estructura la información para escaneabilidad rápida: usa encabezados, listas y bloques de código claros.
-* Mantén presente la regla de oro: El `empresa_id` es el filtro absoluto para cualquier consulta (query) a Firestore. Ningún usuario debe ver datos que no pertenezcan al `empresa_id` de su sesión activa.
+- **Empresas comerciales**: turnos con rotación de estaciones, colación y cobertura continua (caso de referencia del proyecto).
+- **Congregaciones**: asignación de publicadores/capitanes a territorios y stands (caso degenerado, sin rotación).
 
-# Modelo de Datos Base (Colecciones en Firestore)
-La base de datos sigue una estructura jerárquica para aislar los datos de cada cliente:
+El núcleo es un **algoritmo de asignación** que casa la *demanda* (qué puestos cubrir y cuándo) con la *oferta* (qué persona está disponible y calificada), respetando reglas de convivencia y carga.
 
-* **`empresas`**: El inquilino/cliente principal (Tenant).
-    * Campos clave: `id`, `nombre`, `fecha_registro`, `estado`.
-* **`ubicaciones`**: Espacios físicos o áreas lógicas vinculadas a una empresa.
-    * Campos clave: `id`, `empresa_id`, `nombre`, `direccion`.
-* **`personal`**: Trabajadores o miembros pertenecientes a una empresa.
-    * Campos clave: `id`, `empresa_id`, `nombre`, `email`, `rol_sistema` (super_admin, admin_empresa, usuario), `roles_trabajo` (array con cargos específicos de la empresa).
-* **`asignaciones`**: El registro de turnos o eventos en el calendario.
-    * Campos clave: `id`, `empresa_id`, `ubicacion_id`, `personal_id` (o array si hay más de uno), `fecha_inicio` (Timestamp), `fecha_fin` (Timestamp), `estado` (confirmado, pendiente, cancelado).
+---
 
-### Colección "contactos"
-Esta colección manejara los datos de contacto de los usuarios, empresas y personal. Eso significa que un usuario puede compartir el contacto con un empleado. Pero una empresa no compartira contacto con nadie mas porque es una empresa.
-#### Campos
-- id: string uuid.
-- first_name: string.
-- last_name: string.
-- rut: string.
-- email: string.
-- phone: string.
-- address: string
-- is_company: boolean (solo en caso que sea una empresa).
-- active: boolean.
-- timestamps y softdeletes
+## 2. Stack tecnológico
 
-### Colección "empresas"
-El nivel más alto de la jerarquía. Define a los "inquilinos" o clientes de tu sistema (ej. Congregación Lauca, Burger King Chile).
-- id: string uuid.
-- active: boolean.
-- contact_id: string (referencia al contacto relacionado).
-- type: string (empresa o congregacion).
-- work_roles: array de strings (cocinero, publicador, cajero, supervisor, asistente, gerente, encargado, etc) (personalizable solo por el usuario system_role = admin o super_admin).
-- timestamps y softdeletes
+| Capa | Tecnología |
+|---|---|
+| Framework | Vue 3 (`<script setup>`) + TypeScript |
+| Estado | Pinia |
+| Routing | Vue Router — organizado por **scope** |
+| Backend | Firebase **Firestore** (plan Blaze) |
+| Binding reactivo | VueFire (`useCollection`) |
+| Auth/sesión | Sesión propia (colección `sesiones` + token) |
+| Funciones servidor | **Cloud Functions** (webhooks de MercadoPago, validaciones críticas) |
+| Pagos | **MercadoPago** — Suscripciones (preapproval), moneda CLP |
+| UI | Tailwind (dark mode), layouts por scope |
 
-### Colección "usuarios"
-Esta colección maneja exclusivamente a las personas que inician sesión en la plataforma de gestión.
-#### Campos
-- id: string uuid.
-- empresa_id: string | null (Referencia a la empresa dueña, sera null en caso del super administrador).
-- contact_id: string (referencia al contacto relacionado).
-- password: string (obligatorio).
-- system_role: string. Define los permisos de visualización y edición.
-  1. super_admin: Mira todas las empresas.
-  2. admin: Solo ve suempresa, gestiona usuarios, roles, personal y turnos (todo dentro de la empresa).
-  3. user: Solo gestiona personal, horarios/turnos y excepciones de su empresa.
-  4. visitor: Solo lectura de personal y calendarios de su empresa.
-- timestamps y softdeletes. 
+### Convenciones de código (obligatorias)
+- Cada modelo es una **clase** con su `FirestoreDataConverter` (`toFirestore`/`fromFirestore`).
+- **Soft delete** en todas las colecciones: `active: boolean` + `deletedAt: Date | null`.
+- **Timestamps** en todas: `createdAt`, `updatedAt`.
+- IDs: `string` (UUID o id de Firestore).
+- Navegación **por `name`**, nunca por path literal (los prefijos de URL pueden cambiar sin romper links).
 
-### Colección "sesiones"
-Esta colección se encargara de manejar las sesiones de los diferentes usuarios del sistema para mantener la seguridad.
-#### Campos
-- id: string uuid de firebase.
-- user_id: string (Referencia al usuario relacionado).
-- browser_agent: string (Agente del navegador, para tener seguridad sobre la ubicacion del usuario).
-- token: string (token de session que se le entrega a cada cliente por separado).
-- duration: number (duracion en minutos del token, 0 significa duracion infinita).
-- timestamps.
+---
 
-### Colección "ubicaciones"
-Define los puntos de reunión fijos físicos (como el carrito) y los horarios establecidos.
-#### Campos
-- id: uuid string.
-- company_id: string (Referencia a la empresa dueña).
-- zone_id: string|null (para relacionar sucursales con una zona. En congregaciones sera null).
-- category: string (sucursal, territorio, stand, etc).
-- manager_id: string|null (establece al encargado de sucursal o al capitan de grupo).
-- name: string (ej: "Bertin Soto", "Agro Santa María").
-- address: string.
-- active: boolean.
-- turnos: array de objetos tipo "turno".
-- timestamps y softdeletes
+## 3. Arquitectura multinivel (scopes)
 
-### Colección "zonas"
-Esta colección resuelve el problema de los gerentes que supervisan múltiples sucursales. Las congregaciones simplemente no utilizarán esta colección.
-#### Campos
-- id: uuid string.
-- empresa_id: string (dueño)
-- name: string
-- manager_id: string|null (referencia al id en coleccion 'personal', actua como gerente de zona).
-- active: boolean.
-- required_role: lista de roles aceptados para ser asignados (esto considera que los roles de trabajo son personalizados).
-- timestamps y softdeletes
+La jerarquía de recursos tiene **5 niveles**. Las rutas se organizan por **scope** (no por rol), con **prefijos de recurso explícitos** para evitar ambigüedad (estilo GitHub/Vercel).
 
-### Objeto "turno"
-Define el día y horario disponible para asignar personas y la cantidad de personas que se necesitan.
-#### Campos
-- id: uuid string
-- day_of_week: string (ej: "Lunes", "Sábado").
-- start_time: string (ej: "09:00").
-- end_time: string (ej: "12:00" o "15:00").
-- slots_available: number (por defecto 2 personas por turno).
-- required_roles: array de strings (cajero, supervisor, publicador, etc).
-- timestamps y softdeletes
+```
+Plataforma (super_admin)
+  └─ Cliente / Cuenta        ← entidad de facturación
+       └─ Empresa (tenant)
+            └─ Zona
+                 └─ Sucursal
+```
 
-### Colección "empleado" 
-Almacena la información personal de los empleados y sus reglas base de disponibilidad.
-#### Campos
-- id: string (UUID).
-- company_id: string (Referencia a la colección empresas).
-- contact_id: string (referencia al contacto relacionado).
-- active: boolean.
-- work_role: string (publicador, cajero, supervisor, asistente, gerente, encargado, etc).
-- disponibilidad: objeto tipo "disponibilidad".
-- timestamps y softdeletes
+### Mapa de rutas
 
-### Objeto "disponibilidad"
-Objeto que define su rutina base de trabajo y sus frecuencias.
-#### Campos
-- id: uuid string.
-- days: array de strings (ej: ['Lunes', 'Miercoles', 'Viernes']).
-- monthly_frequency: number (ej: 1, 2, 3 o 0 para "todas las semanas del mes").
-- weekly_frecuency: number (ej: 1, 2, 3, 4, 5, 6, 7 (todos los días de la semana)).
-- special_rule: string (ej: "3 lunes y 1 miercoles", "2 lunes al mes").
-- timestamps y softdeletes
+| Scope | Path | Layout |
+|---|---|---|
+| Global | `/` | `MainLayout` |
+| Cliente | `/c/:clienteSlug` | `ClienteLayout` (selector de empresas, facturación) |
+| Empresa | `/:companySlug` | `EmpresaLayout` |
+| Zona | `/:companySlug/zonas/:zonaSlug` | `ZonaLayout` |
+| Sucursal | `/:companySlug/sucursales/:ubicacionSlug` | `SucursalLayout` |
 
-### Colección "excepciones"
-Esta colección sobrescribe la regla general de disponibilidad para casos como vacaciones, enfermedad o un día libre extra.
-#### Campos
-- id: uuid string.
-- active: boolean.
-- employee_id: string (Referencia al ID en la colección personal).
-- date: string (Formato ISO YYYY-MM-DD).
-- time_start: string (Formato HH:MM).
-- time_end: string (Formato HH:MM).
-- reason: string (Motivo de la excepción)
-- type: string (feriado legal, día administrativo, emergencia, otro)
-- timestamps y softdeletes
+- Los bloques de ruta son **hermanos** (no un árbol anidado): cada layout reemplaza el shell completo.
+- Los prefijos `zonas/` y `sucursales/` eliminan la colisión `/:companySlug/:slug`.
+- **Refactor pendiente:** extraer un `AppShell.vue` único (sidebar/topbar/bottombar/tema/logout) parametrizado por `navItems` + slots, para eliminar la duplicación entre los 4 layouts.
 
+---
 
-### Colección "reglas_asignacion"
-Define qué personas deben o prefieren salir juntas, lo cual es especialmente útil para los turnos de fin de semana.
-#### Campos
-- id: uuid string.
-- person_uno_id: string (Referencia al ID en la colección voluntarios).
-- person_dos_id: string (Referencia al ID en la colección voluntarios).
-- is_strict: boolean (Si es true, el algoritmo DEBE asignarlos juntos obligatoriamente, como en el caso de los matrimonios).
-- type: string (juntos, nunca_juntos)
-- timestamps y softdeletes
+## 4. Modelo de autorización — RBAC con scope (grants + permisos)
 
-### 4. Colección "asignaciones"
-Aquí es donde se guarda el resultado del calendario generado por tu algoritmo, almacenando tanto los borradores como las versiones publicadas.
-#### Campos
-- id: string.
-- location_id: string (referencia a la ubicación asignada).
-- date: string (Formato ISO YYYY-MM-DD). Indica la fecha de asignación.
-- turn: Objeto tipo "turno".
-- assigned_staff: array de strings (Contiene los IDs de los voluntarios asignados a ese turno exacto).
-- status: string ('draft' | 'published').
-- timestamps y softdeletes
+**Tres ejes ortogonales que NUNCA se mezclan:**
 
-## Explicaciones del modelo de datos
+1. **Identidad**: `contacto` + `usuario`.
+2. **Autorización**: `(usuario, rol, scope)` vía colección **`grants`**, donde el rol es un *bundle* de **permisos atómicos**.
+3. **Negocio**: `cargo` (puesto contractual) y `estación` (competencia operativa).
 
-### Roles de Sistema vs Roles de Trabajo
-Recuerda mantener intacta la separación de permisos que diseñamos:
-- Gestión en la App (system_role en colección usuarios): Si el "Gerente de Zona" o el "Encargado de Sucursal" necesitan entrar a la plataforma web para armar los calendarios, se les crea un usuario con el rol de admin o asistente.
-- Asignación de Turnos (work_role en colección personal): El "Capitán de grupo" no necesita armar el calendario general, solo necesita ver a dónde le toca ir. A él se le asigna el rol de visitante en el sistema, pero su work_role dice "Capitán" para que el algoritmo lo posicione como líder de grupo.
-- A las zonas y sucursales podran asignarsele un encargado, la asignacion se basara en el rol de trabajo, o sea, se debe seleccionar el rol de encargado, dentro de la lista de roles de la empresa, al momento de crear la zona o sucursal.
+> El cargo **no** codifica acceso. El acceso a una zona/sucursal es un **grant**, no un cargo ni un contrato.
 
-### Colección asignaciones y el Objeto turno (El manejo de Liderazgo)
-Para el caso de la congregación y los 'Capitanes de Grupo' (rol personalizado), la solución más limpia no es alterar la ubicación, sino el Turno.
-Como ya definiste que cada turno tiene required_roles, resolver a los capitanes es automático: 
-- Si la ubicación es un 'stand', su turno pedirá: required_roles: ['publicador', 'publicador']. 
-- Si la ubicación es un 'territorio', su turno pedirá: required_roles: ['capitan_grupo'].
-El algoritmo de asignación simplemente buscará en la colección personal a un hermano que tenga el work_role de "capitán_grupo" y lo colocará a cargo de esa asignación de territorio específica.
-Algo similar ocurrira con las zonas y sucursales, habra un campo admin_role que se definira como encargado y tambien habra una relacion con el encargado manager_id de la sucursal o zona que estara limitado a 1 solo. 
+### `system_role` (coarse, en `usuarios`)
+Solo distingue staff de plataforma vs cliente:
+- `super_admin`: plataforma (tú). `cliente_id = null`.
+- `client_user`: todos los demás. Sus poderes vienen **exclusivamente de sus grants**.
+
+### Roles de grant (bundles de permisos)
+| Rol | Permisos (resumen) |
+|---|---|
+| `owner` | Todo dentro del cliente, incluida **facturación** y creación de empresas |
+| `company_admin` | Gestión total de una empresa (usuarios, cargos, personal, turnos) |
+| `zone_manager` | Lectura/gestión de su zona y de las sucursales que contiene |
+| `branch_manager` | Gestión de su sucursal (personal, turnos, asignaciones) |
+| `member` | Operación acotada de su sucursal |
+| `viewer` | Solo lectura |
+
+### Permisos atómicos (chequear permiso, no rol)
+`billing.manage`, `company.manage`, `users.manage`, `cargos.manage`, `zone.read`, `zone.manage`, `branch.read`, `branch.manage`, `employees.write`, `stations.manage`, `coverage.manage`, `schedule.write`, `schedule.publish`, `requests.manage`.
+
+El mapa `rol → permisos[]` vive como **constante en código** (`src/auth/permissions.ts`). Door abierta a roles personalizados por cliente en el futuro (colección `roles`).
+
+### Resolución jerárquica de scope
+Un grant sobre una **zona** cubre automáticamente las **sucursales** cuyo `zone_id` coincida. No se emite un grant por sucursal.
+
+```ts
+// src/auth/access.ts (esquema)
+function puedeAcceder(
+  user: Usuario, grants: Grant[],
+  scopeType: ScopeType, scopeId: string,
+  ctx?: { zonaDeLaSucursal?: string; companyId?: string },
+): boolean {
+  if (user.system_role === 'super_admin') return true;
+  return grants.some(g =>
+    (g.scope_type === 'client') ||
+    (g.scope_type === 'company' && g.scope_id === ctx?.companyId) ||
+    (g.scope_type === scopeType && g.scope_id === scopeId) ||
+    (scopeType === 'branch' && g.scope_type === 'zone' && g.scope_id === ctx?.zonaDeLaSucursal)
+  );
+}
+```
+
+> El guard de Vue Router usa esto para **UX**. La seguridad real vive en **Firestore Security Rules** (ver §9).
+
+---
+
+## 4-bis. Persona, Empleado y Usuario (facetas del contacto)
+
+El **`contacto` es la identidad canónica** de la persona. `empleado` y `usuario` son **dos facetas opcionales e independientes** del mismo contacto, vinculadas por `contact_id`:
+
+- **Empleado sin usuario:** lo normal para un operario que no inicia sesión. Existe en el algoritmo y los turnos, pero no tiene acceso a la plataforma.
+- **Empleado con usuario:** gerentes, supervisores, asistentes que sí entran a gestionar. Dentro de una empresa habrá **varios** empleados-usuario.
+- **Usuario sin empleado:** p.ej. el `owner` del cliente (dueño de la cuenta) que no es personal operativo.
+
+### Provisión de cuenta de acceso
+Crear el `usuario` de un empleado puede ser:
+1. **Automático al crear el empleado** — flag `crear_acceso: boolean` en el formulario de alta. Si es `true`, se provisiona el usuario en el acto (con clave temporal / invitación por email).
+2. **Diferido** — acción "Invitar a la plataforma" sobre un empleado existente.
+
+Al provisionar, **opcionalmente** se crean los `grants` según el `scope_role_template` del cargo del empleado (acción sugerida, confirmable por el admin — ver §6).
+
+### Integridad
+- A lo más **un `usuario` por `contacto` por cliente**.
+- El vínculo es `usuario.contact_id === empleado.contact_id` (misma persona). No se duplica identidad.
+- La empresa/scope del empleado-usuario se resuelve por sus **grants**, no por un campo plano en `usuario`.
+
+---
+
+## 5. Modelo de datos (colecciones Firestore)
+
+### `clientes` *(entidad de facturación)*
+```
+id, contact_id (dueño),
+mp_preapproval_id|null, mp_preapproval_plan_id|null, mp_payer_email|null,
+plan: 'free'|'pro'|'business'|'enterprise',
+subscription_status: 'active'|'paused'|'past_due'|'canceled'|'pending',
+entitlements: { max_empleados, max_sucursales, multiempresa: bool, features: string[] },
+slug, active, createdAt, updatedAt, deletedAt
+```
+
+### `empresas` *(tenant)*
+```
+id, cliente_id, contact_id, type: 'empresa'|'congregacion',
+cargos: Cargo[] (catálogo dinámico, ver §6),
+slug, active, createdAt, updatedAt, deletedAt
+```
+
+### `usuarios` *(login — faceta de acceso del contacto)*
+```
+id, cliente_id|null, contact_id, password,
+system_role: 'super_admin'|'client_user',
+estado: 'invitado'|'activo'|'suspendido',
+active, createdAt, updatedAt, deletedAt
+```
+
+### `grants` *(autorización con scope)*
+```
+id, user_id, cliente_id (denormalizado p/ rules),
+company_id|null (denormalizado p/ rules),
+scope_type: 'client'|'company'|'zone'|'branch',
+scope_id, role, active, createdAt, updatedAt, deletedAt
+```
+Índices: `(user_id, active)`, `(company_id, scope_type)`, `(scope_type, scope_id)`.
+
+### `contactos`
+```
+id, first_name, last_name, rut, email, phone, address,
+is_company?, active, timestamps, deletedAt
+```
+
+### `zonas`
+```
+id, empresa_id, name, slug, manager_id|null (→ empleado, hecho de negocio),
+required_cargos: string[] (cargos elegibles como encargado),
+active, timestamps, deletedAt
+```
+
+### `ubicaciones` *(sucursales / territorios / stands)*
+```
+id, company_id, zone_id|null, category, name, address, slug,
+manager_id|null, required_cargos: string[],
+configuraciones: ConfiguracionTurnos[] (scope default/month/range),
+bloques_cobertura: BloqueCobertura[] (ver §7),
+active, timestamps, deletedAt
+```
+
+### `empleados` *(personal — faceta operativa del contacto)*
+```
+id, company_id, contact_id, active,
+estacion_ids: string[] (competencias / calificación),
+contratos: Contrato[],
+disponibilidad: Disponibilidad|null,
+timestamps, deletedAt
+```
+> El alta acepta un flag transitorio `crear_acceso` (no se persiste en el doc): dispara la provisión del `usuario` asociado (§4-bis).
+
+### `Contrato` *(embebido en empleado — relación de empleo)*
+```
+id, empleado_id, ubicacion_id, cargo_id, active,
+limite_horas, fecha_inicio, fecha_fin, timestamps, deletedAt
+```
+
+### `estaciones` *(competencias / puestos operativos)*
+```
+id, empresa_id, nombre, descripcion,
+intensidad: 'alta'|'media'|'baja',
+max_continuo_min: number|null (tope de minutos seguidos),
+active, timestamps, deletedAt
+```
+
+### `excepciones`, `reglas_asignacion`, `sesiones`
+Se mantienen (vacaciones/ausencias; juntos/nunca_juntos; tokens de sesión).
+
+### `asignaciones`, `presencias`, `segmentos` *(ver §7)*
+
+---
+
+## 6. Cargos dinámicos
+
+Cada **empresa define su propio catálogo** de cargos. Nada hardcodeado. El `Cargo` es un árbol (`parent_role` = herencia de capacidades para el algoritmo, **no** línea de reporte).
+
+### Modelo `Cargo`
+```ts
+interface Cargo {
+  id: string;
+  nombre: string;
+  slug: string;
+  parent_role: string | null;                 // herencia de capacidades
+  scope_role_template: 'zone_manager' | 'branch_manager' | 'member' | null; // grant sugerido
+  elegible_encargado: boolean;                 // puede ser manager_id de zona/sucursal
+  estaciones_default?: string[];               // competencias sugeridas
+  timestamps...
+}
+```
+
+### Mapeo de los cargos reales (ejemplo por defecto, editable por la empresa)
+| Cargo | `scope_role_template` | `elegible_encargado` | Scope típico |
+|---|---|---|---|
+| supervisor | `zone_manager` | sí | Zona (varias sucursales) |
+| gerente | `branch_manager` | sí | Sucursal |
+| asistente (subgerente) | `branch_manager` | sí | Sucursal |
+| operario | `member` / `null` | no | — |
+
+> El `scope_role_template` es una **plantilla sugerida**, no una provisión automática. Al darle acceso a un empleado (§4-bis), el admin confirma el `grant`. Cargo (negocio) y grant (auth) se vinculan por la **misma persona** (`contact_id`), pero son independientes.
+
+---
+
+## 7. Estaciones y scheduling (modelo de 3 capas)
+
+El solape de turnos es **intencional** (cobertura escalonada con rotación), no un conflicto. Se separan tres objetos:
+
+### Capa 1 — Demanda de cobertura (`BloqueCobertura`, en `ubicacion`)
+```ts
+interface BloqueCobertura {
+  id: string;
+  estacion_id: string;
+  day_of_week: string;
+  start_time: string;   // "09:00"
+  end_time: string;     // "18:00"
+  cantidad: number;     // personas requeridas en ese intervalo
+}
+```
+Bloques **solapados se suman** (caja base 1 todo el día + 1 extra en peak 12–14).
+
+### Capa 2 — Presencia del empleado (`presencias`)
+```ts
+interface Presencia {
+  id: string; empresa_id: string; ubicacion_id: string; empleado_id: string;
+  date: string;          // YYYY-MM-DD
+  start: number;         // minutos desde medianoche
+  end: number;
+  colacion?: { start: number; end: number };
+  timestamps...
+}
+```
+Las presencias **se solapan a propósito** entre empleados (handover de caja).
+
+### Capa 3 — Segmento de asignación (`segmentos` — salida del algoritmo)
+```ts
+interface Segmento {
+  id: string; empresa_id: string; ubicacion_id: string; empleado_id: string;
+  date: string;          // YYYY-MM-DD
+  estacion_id: string | null;          // null = colación/descanso
+  tipo: 'estacion' | 'colacion' | 'descanso';
+  start: number; end: number;          // minutos desde medianoche
+  asignacion_id: string;               // agrupador (publish unit)
+  status: 'draft' | 'published';
+  timestamps...
+}
+```
+Índice obligatorio: **`(empleado_id, date)`** — detección de solape por persona en O(n) sobre su día.
+
+### `asignaciones` (agrupador / unidad de publicación)
+```
+id, empresa_id, ubicacion_id, date, status: 'draft'|'published', timestamps
+```
+
+### Invariante dura única
+Los **segmentos de un mismo empleado no se solapan** entre sí (ni entre sucursales — nadie está en dos lugares a la vez):
+```ts
+const solapan = (a, b) => a.start < b.end && b.start < a.end;
+```
+
+### Restricciones blandas (optimización del algoritmo)
+- Cobertura: por cada bucket (p.ej. 15 min), Σ segmentos activos por estación ≥ demanda.
+- Calificación: `estacion_id ∈ empleado.estacion_ids`.
+- Anti-saturación: respetar `estacion.max_continuo_min`; tras `intensidad: 'alta'`, rotar a menor.
+- Colación: insertar segmento `colacion`; al volver, preferir estación de baja intensidad.
+- Convivencia: `reglas_asignacion` (juntos / nunca_juntos, `is_strict`).
+
+### Caso congregación (degenerado)
+Un empleado = **un solo segmento** = toda su presencia en una estación. Sin rotación ni colación. El modelo rico colapsa al simple; **no se mantienen dos sistemas**.
+
+---
+
+## 8. Planes y facturación (MercadoPago)
+
+### Dónde vive
+La **suscripción se ancla en el `cliente`**. Un medio de pago, una cuenta, aunque gestione varias empresas. **Límites pooled a nivel cliente** (no por empresa).
+
+### Modelo de cobro con MercadoPago
+MercadoPago cobra mediante **preapproval** (suscripción) sobre un **`preapproval_plan`**, con `auto_recurring` de **monto fijo** (`transaction_amount`, CLP) por frecuencia. Implicaciones:
+
+- **No hay facturación por uso/por-asiento nativa** (a diferencia de Stripe). Por lo tanto:
+  - **Cada tier = un `preapproval_plan`** con monto fijo en CLP.
+  - La métrica "empleados activos" **no se factura al gateway**: determina **en qué tier debe estar** el cliente y se **enforcea vía `entitlements`** (lado servidor).
+  - Upgrade/downgrade = actualizar el preapproval (`PUT /preapproval/:id`) o cancelar + recrear.
+- **Checkout:** redirección al `init_point` que devuelve MercadoPago al crear el preapproval.
+- **Campos en `cliente`:** `mp_preapproval_id`, `mp_preapproval_plan_id`, `mp_payer_email`.
+
+### Métrica de valor (gating, no metering)
+- **Primaria:** empleados activos (pooled) → define el tier.
+- **Secundaria (guardrail):** nº de sucursales/ubicaciones.
+- **Multiempresa = feature de tier**, NO eje de precio.
+
+### Tiers (referencia)
+| Tier | Empleados (pooled) | Empresas | Features |
+|---|---|---|---|
+| Free / Congregación | ~15 | 1 | Turnos, personal, sin zonas, sin algoritmo avanzado |
+| Pro | ~75 | 1 | + zonas, algoritmo, reglas de asignación |
+| Business | ~300 | Multiempresa | + multiempresa, exportaciones, roles finos |
+| Enterprise | ilimitado | Multiempresa | + SSO, API, soporte |
+
+- `empresa.type = 'congregacion'` → tier **gratuito/non-profit** (voluntarios, no empleados).
+
+### Sincronización (Cloud Functions)
+- **Webhooks de MercadoPago** → Cloud Function: notificaciones tipo `subscription_preapproval` (estado de la suscripción) y `subscription_authorized_payment` (cobro recurrente exitoso/fallido).
+- La function obtiene el preapproval (`GET /preapproval/:id`), mapea su `status` (`pending`/`authorized`/`paused`/`cancelled`) a `clientes.subscription_status` y actualiza `entitlements` según el plan.
+- Feature gating en la app lee `entitlements` (no consulta MercadoPago en runtime).
+- **Security Rules** validan límites del lado servidor (rechazar empleado #16 en Free).
+- UX multiempresa: tras login, si el cliente tiene **1 empresa → redirect directo**; varias → selector.
+
+---
+
+## 9. Requisitos técnicos y seguridad
+
+### Reglas de oro (invariantes)
+1. **Aislamiento por tenant:** toda query lleva filtro por `cliente_id`/`company_id`. Nadie ve datos fuera de su scope.
+2. **El filtro `empresa_id` ya no basta:** dentro de una empresa, el acceso a zona/sucursal se valida contra `grants`.
+3. **Seguridad en servidor:** el guard de Vue es UX. **Firestore Security Rules** reflejan la resolución de scope (`grants`) y los `entitlements`.
+4. **Soft delete + timestamps** en todo.
+5. **Navegación por `name`.**
+6. **Identidad única:** un `contacto` por persona; `empleado`/`usuario` la referencian, no la duplican.
+
+### Security Rules (lineamientos)
+- Helper que resuelve si la sesión tiene un grant que cubra el doc (por `company_id`/`zone_id`/`ubicacion_id`).
+- Validar `entitlements` en `create` de `empleados`/`ubicaciones` contra los límites del plan.
+- Negar lectura cross-tenant siempre.
+
+---
+
+## 10. Plan de trabajo (por fases)
+
+> Cada fase: (a) migración si aplica, (b) modelos + converters, (c) stores, (d) UI, (e) Security Rules, (f) verificación.
+
+**Fase 0 — Fundaciones** *(en curso)*
+- Crear colección `clientes`. Migrar `empresas` añadiendo `cliente_id`.
+- Definir `src/auth/permissions.ts` (mapa rol→permisos).
+
+**Fase 1 — Autorización + provisión de cuentas**
+- Colección `grants` + modelo/converter. Helpers `puedeAcceder()` / `can()`.
+- Refactor de `beforeEach` (resolución de scope).
+- **Provisión de usuario desde empleado**: flag `crear_acceso` + acción "Invitar"; estado `invitado/activo`; creación opcional de grants desde el cargo.
+- Security Rules base con grants.
+
+**Fase 2 — Routing por scope**
+- Prefijos `sucursales/` y `zonas/`. Nuevo `ZonaLayout` + `views/zona/*`.
+- Extraer `AppShell.vue` compartido.
+
+**Fase 3 — Cargos dinámicos**
+- Extender `Cargo` (`scope_role_template`, `elegible_encargado`, `estaciones_default`).
+- UI catálogo por empresa. Provisión de grant desde cargo (acción explícita).
+
+**Fase 4 — Estaciones + scheduling**
+- `Estacion`: `intensidad`, `max_continuo_min`.
+- `BloqueCobertura` en `ubicacion`. Colecciones `presencias` y `segmentos`.
+- Refactor `asignaciones` (de `assigned_staff[]` a segmentos). Algoritmo (cobertura + rotación + colación + convivencia).
+
+**Fase 5 — Facturación (MercadoPago)**
+- `preapproval_plan` por tier. Checkout vía `init_point`. Cloud Functions (webhooks `subscription_preapproval` / `subscription_authorized_payment`). `entitlements` + feature gating. Security Rules de límites.
+
+**Fase 6 — Multiempresa UX**
+- `ClienteLayout`, selector de empresa, default si hay una sola.
+
+---
+
+## 11. Glosario rápido
+
+- **Cliente/Cuenta:** quien paga; agrupa empresas; entidad de facturación.
+- **Empresa:** tenant operativo.
+- **Contacto:** identidad canónica de la persona.
+- **Empleado / Usuario:** facetas opcionales del contacto (operativa / acceso).
+- **Grant:** `(usuario, rol, scope)` — autorización.
+- **Cargo:** puesto contractual/jerárquico (negocio).
+- **Estación:** competencia/puesto operativo de un turno (scheduling).
+- **BloqueCobertura:** demanda de personal por estación e intervalo.
+- **Presencia:** ventana en que un empleado está en el local.
+- **Segmento:** estación asignada a un empleado en un sub-intervalo (salida del algoritmo).
