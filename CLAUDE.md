@@ -8,7 +8,7 @@
 
 Plataforma web **multiempresa (multi-tenant)** para la **gestión operativa de turnos** de dos tipos de organización:
 
-- **Empresas comerciales**: turnos con rotación de estaciones, colación y cobertura continua (caso de referencia del proyecto).
+- **Empresas comerciales**: turnos con rotación de estaciones y cobertura continua (caso de referencia).
 - **Congregaciones**: asignación de publicadores/capitanes a territorios y stands (caso degenerado, sin rotación).
 
 El núcleo es un **algoritmo de asignación** que casa la *demanda* (qué puestos cubrir y cuándo) con la *oferta* (qué persona está disponible y calificada), respetando reglas de convivencia y carga.
@@ -23,89 +23,67 @@ El núcleo es un **algoritmo de asignación** que casa la *demanda* (qué puesto
 | Estado | Pinia |
 | Routing | Vue Router — organizado por **scope** |
 | Backend | Firebase **Firestore** (plan Blaze) |
-| Binding reactivo | VueFire (`useCollection`) |
+| Binding reactivo | VueFire (`useCollection`) — **ver §9: lecturas puntuales, no listeners** |
 | Auth/sesión | Sesión propia (colección `sesiones` + token) |
-| Funciones servidor | **Cloud Functions** (webhooks de MercadoPago, validaciones críticas) |
-| Pagos | **MercadoPago** — Suscripciones (preapproval), moneda CLP |
+| Funciones servidor | **Cloud Functions** (algoritmo, webhooks MercadoPago, emisión DTE, validaciones) |
+| Pagos | **MercadoPago** — Suscripciones (preapproval), CLP |
+| Facturación (DTE) | **Dual**: OpenFactura (API, automático) **o** SII gratuito (manual + upload). A elección del super_admin |
+| Almacenamiento | **Firebase Storage** — PDF/XML de los DTE |
 | UI | Tailwind (dark mode), layouts por scope |
 
 ### Convenciones de código (obligatorias)
-- Cada modelo es una **clase** con su `FirestoreDataConverter` (`toFirestore`/`fromFirestore`).
-- **Soft delete** en todas las colecciones: `active: boolean` + `deletedAt: Date | null`.
-- **Timestamps** en todas: `createdAt`, `updatedAt`.
-- IDs: `string` (UUID o id de Firestore).
-- Navegación **por `name`**, nunca por path literal (los prefijos de URL pueden cambiar sin romper links).
+- Cada modelo es una **clase** con su `FirestoreDataConverter`.
+- **Soft delete** (`active` + `deletedAt`) y **timestamps** (`createdAt`, `updatedAt`) en todo.
+- IDs: `string`. Navegación **por `name`**, nunca por path literal.
 
 ---
 
 ## 3. Arquitectura multinivel (scopes)
 
-La jerarquía de recursos tiene **5 niveles**. Las rutas se organizan por **scope** (no por rol), con **prefijos de recurso explícitos** para evitar ambigüedad (estilo GitHub/Vercel).
-
 ```
 Plataforma (super_admin)
-  └─ Cliente / Cuenta        ← entidad de facturación
-       └─ Empresa (tenant)
+  └─ Cliente / Cuenta        ← administrador (login). NO es la entidad facturada.
+       └─ Empresa (tenant)   ← entidad tributaria independiente (RUT propio). Se factura aquí.
             └─ Zona
                  └─ Sucursal
 ```
 
-### Mapa de rutas
+### Mapa de rutas (prefijos de recurso explícitos)
 
 | Scope | Path | Layout |
 |---|---|---|
 | Global | `/` | `MainLayout` |
-| Cliente | `/c/:clienteSlug` | `ClienteLayout` (selector de empresas, facturación) |
-| Empresa | `/:companySlug` | `EmpresaLayout` |
+| Cliente | `/c/:clienteSlug` | `ClienteLayout` (selector de empresas) |
+| Empresa | `/:companySlug` | `EmpresaLayout` (incl. ajustes de facturación de ESA empresa) |
 | Zona | `/:companySlug/zonas/:zonaSlug` | `ZonaLayout` |
 | Sucursal | `/:companySlug/sucursales/:ubicacionSlug` | `SucursalLayout` |
 
-- Los bloques de ruta son **hermanos** (no un árbol anidado): cada layout reemplaza el shell completo.
-- Los prefijos `zonas/` y `sucursales/` eliminan la colisión `/:companySlug/:slug`.
-- **Refactor pendiente:** extraer un `AppShell.vue` único (sidebar/topbar/bottombar/tema/logout) parametrizado por `navItems` + slots, para eliminar la duplicación entre los 4 layouts.
+- Bloques de ruta **hermanos**; cada layout reemplaza el shell completo.
+- **Refactor pendiente:** extraer `AppShell.vue` único parametrizado por `navItems` + slots.
 
 ---
 
-## 4. Modelo de autorización — RBAC con scope (grants + permisos)
+## 4. Autorización — RBAC con scope (grants + permisos) · Opción B
 
-**Tres ejes ortogonales que NUNCA se mezclan:**
+**Tres ejes ortogonales que NUNCA se mezclan:** identidad (`contacto`/`usuario`) · autorización (`grants`) · negocio (`cargo`/`estación`).
 
-1. **Identidad**: `contacto` + `usuario`.
-2. **Autorización**: `(usuario, rol, scope)` vía colección **`grants`**, donde el rol es un *bundle* de **permisos atómicos**.
-3. **Negocio**: `cargo` (puesto contractual) y `estación` (competencia operativa).
-
-> El cargo **no** codifica acceso. El acceso a una zona/sucursal es un **grant**, no un cargo ni un contrato.
+> El cargo no codifica acceso. El acceso es un **grant**.
 
 ### `system_role` (coarse, en `usuarios`)
-Solo distingue staff de plataforma vs cliente:
-- `super_admin`: plataforma (tú). `cliente_id = null`.
-- `client_user`: todos los demás. Sus poderes vienen **exclusivamente de sus grants**.
+- `super_admin`: plataforma. `cliente_id = null`.
+- `client_user`: el resto; sus poderes vienen de sus **grants**.
 
 ### Roles de grant (bundles de permisos)
-| Rol | Permisos (resumen) |
-|---|---|
-| `owner` | Todo dentro del cliente, incluida **facturación** y creación de empresas |
-| `company_admin` | Gestión total de una empresa (usuarios, cargos, personal, turnos) |
-| `zone_manager` | Lectura/gestión de su zona y de las sucursales que contiene |
-| `branch_manager` | Gestión de su sucursal (personal, turnos, asignaciones) |
-| `member` | Operación acotada de su sucursal |
-| `viewer` | Solo lectura |
+`owner` (administra el cliente y la facturación de sus empresas) · `company_admin` · `zone_manager` · `branch_manager` · `member` · `viewer`.
 
 ### Permisos atómicos (chequear permiso, no rol)
-`billing.manage`, `company.manage`, `users.manage`, `cargos.manage`, `zone.read`, `zone.manage`, `branch.read`, `branch.manage`, `employees.write`, `stations.manage`, `coverage.manage`, `schedule.write`, `schedule.publish`, `requests.manage`.
-
-El mapa `rol → permisos[]` vive como **constante en código** (`src/auth/permissions.ts`). Door abierta a roles personalizados por cliente en el futuro (colección `roles`).
+`billing.manage`, `company.manage`, `users.manage`, `cargos.manage`, `zone.read/manage`, `branch.read/manage`, `employees.write`, `stations.manage`, `coverage.manage`, `schedule.write/publish`, `requests.manage`. Mapa `rol→permisos[]` en `src/auth/permissions.ts`.
 
 ### Resolución jerárquica de scope
-Un grant sobre una **zona** cubre automáticamente las **sucursales** cuyo `zone_id` coincida. No se emite un grant por sucursal.
+Un grant sobre una zona cubre las sucursales con ese `zone_id`. No se emite grant por sucursal.
 
 ```ts
-// src/auth/access.ts (esquema)
-function puedeAcceder(
-  user: Usuario, grants: Grant[],
-  scopeType: ScopeType, scopeId: string,
-  ctx?: { zonaDeLaSucursal?: string; companyId?: string },
-): boolean {
+function puedeAcceder(user, grants, scopeType, scopeId, ctx?): boolean {
   if (user.system_role === 'super_admin') return true;
   return grants.some(g =>
     (g.scope_type === 'client') ||
@@ -115,320 +93,285 @@ function puedeAcceder(
   );
 }
 ```
-
-> El guard de Vue Router usa esto para **UX**. La seguridad real vive en **Firestore Security Rules** (ver §9).
+El guard de Vue es **UX**; la seguridad real va en **Security Rules** (§9).
 
 ---
 
 ## 4-bis. Persona, Empleado y Usuario (facetas del contacto)
 
-El **`contacto` es la identidad canónica** de la persona. `empleado` y `usuario` son **dos facetas opcionales e independientes** del mismo contacto, vinculadas por `contact_id`:
+El **`contacto` es la identidad canónica**. `empleado` y `usuario` son **facetas opcionales** unidas por `contact_id`:
 
-- **Empleado sin usuario:** lo normal para un operario que no inicia sesión. Existe en el algoritmo y los turnos, pero no tiene acceso a la plataforma.
-- **Empleado con usuario:** gerentes, supervisores, asistentes que sí entran a gestionar. Dentro de una empresa habrá **varios** empleados-usuario.
-- **Usuario sin empleado:** p.ej. el `owner` del cliente (dueño de la cuenta) que no es personal operativo.
+- **Empleado sin usuario:** operario que no inicia sesión (lo normal).
+- **Empleado con usuario:** gerentes/supervisores/asistentes que gestionan. Habrá **varios** por empresa.
+- **Usuario sin empleado:** el `owner` del cliente.
 
-### Provisión de cuenta de acceso
-Crear el `usuario` de un empleado puede ser:
-1. **Automático al crear el empleado** — flag `crear_acceso: boolean` en el formulario de alta. Si es `true`, se provisiona el usuario en el acto (con clave temporal / invitación por email).
-2. **Diferido** — acción "Invitar a la plataforma" sobre un empleado existente.
+### Provisión de cuenta
+1. **Automática** al crear el empleado (flag `crear_acceso`).
+2. **Diferida** (acción "Invitar"). Estado del usuario: `invitado` → `activo` → `suspendido`.
 
-Al provisionar, **opcionalmente** se crean los `grants` según el `scope_role_template` del cargo del empleado (acción sugerida, confirmable por el admin — ver §6).
-
-### Integridad
-- A lo más **un `usuario` por `contacto` por cliente**.
-- El vínculo es `usuario.contact_id === empleado.contact_id` (misma persona). No se duplica identidad.
-- La empresa/scope del empleado-usuario se resuelve por sus **grants**, no por un campo plano en `usuario`.
+Al provisionar, **opcionalmente** se crean grants según el `scope_role_template` del cargo (confirmable por el admin). A lo más **un usuario por contacto por cliente**.
 
 ---
 
-## 5. Modelo de datos (colecciones Firestore)
+## 5. Modelo de datos (colecciones)
 
-### `clientes` *(entidad de facturación)*
+### `clientes` *(cuenta administradora — NO se factura aquí)*
 ```
-id, contact_id (dueño),
-mp_preapproval_id|null, mp_preapproval_plan_id|null, mp_payer_email|null,
+id, contact_id (dueño/owner), slug,
+default_payer?: { mp_payer_email } (opcional, paga las suscripciones de sus empresas),
+active, createdAt, updatedAt, deletedAt
+```
+
+### `empresas` *(tenant + entidad tributaria + suscripción)*
+```
+id, cliente_id, type: 'empresa'|'congregacion',
+// datos tributarios (para el DTE):
+rut, razon_social, giro, direccion,
+// suscripción (vive AQUÍ, no en el cliente):
 plan: 'free'|'pro'|'business'|'enterprise',
-subscription_status: 'active'|'paused'|'past_due'|'canceled'|'pending',
-entitlements: { max_empleados, max_sucursales, multiempresa: bool, features: string[] },
+facturable: boolean,                       // congregacion = false
+mp_preapproval_id|null, mp_preapproval_plan_id|null,
+subscription_status: 'active'|'trialing'|'paused'|'past_due'|'canceled'|'pending',
+entitlements: { max_empleados, max_sucursales, features: string[] },  // POR empresa, sin pooling
+cargos: Cargo[] (catálogo dinámico §6),
 slug, active, createdAt, updatedAt, deletedAt
 ```
 
-### `empresas` *(tenant)*
-```
-id, cliente_id, contact_id, type: 'empresa'|'congregacion',
-cargos: Cargo[] (catálogo dinámico, ver §6),
-slug, active, createdAt, updatedAt, deletedAt
-```
-
-### `usuarios` *(login — faceta de acceso del contacto)*
+### `usuarios`
 ```
 id, cliente_id|null, contact_id, password,
 system_role: 'super_admin'|'client_user',
 estado: 'invitado'|'activo'|'suspendido',
-active, createdAt, updatedAt, deletedAt
+active, timestamps, deletedAt
 ```
 
-### `grants` *(autorización con scope)*
+### `grants`
 ```
-id, user_id, cliente_id (denormalizado p/ rules),
-company_id|null (denormalizado p/ rules),
-scope_type: 'client'|'company'|'zone'|'branch',
-scope_id, role, active, createdAt, updatedAt, deletedAt
+id, user_id, cliente_id, company_id|null,
+scope_type: 'client'|'company'|'zone'|'branch', scope_id, role,
+active, timestamps, deletedAt
 ```
 Índices: `(user_id, active)`, `(company_id, scope_type)`, `(scope_type, scope_id)`.
 
 ### `contactos`
 ```
-id, first_name, last_name, rut, email, phone, address,
-is_company?, active, timestamps, deletedAt
+id, first_name, last_name, rut, email, phone, address, is_company?, active, timestamps, deletedAt
 ```
 
 ### `zonas`
 ```
-id, empresa_id, name, slug, manager_id|null (→ empleado, hecho de negocio),
-required_cargos: string[] (cargos elegibles como encargado),
+id, empresa_id, name, slug, manager_id|null, required_cargos: string[], active, timestamps, deletedAt
+```
+
+### `ubicaciones`
+```
+id, company_id, zone_id|null, category, name, address, slug, manager_id|null,
+required_cargos: string[],
+configuraciones: ConfiguracionTurnos[] (default/month/range — = demanda de cobertura, §7),
 active, timestamps, deletedAt
 ```
 
-### `ubicaciones` *(sucursales / territorios / stands)*
-```
-id, company_id, zone_id|null, category, name, address, slug,
-manager_id|null, required_cargos: string[],
-configuraciones: ConfiguracionTurnos[] (scope default/month/range),
-bloques_cobertura: BloqueCobertura[] (ver §7),
-active, timestamps, deletedAt
-```
-
-### `empleados` *(personal — faceta operativa del contacto)*
+### `empleados`
 ```
 id, company_id, contact_id, active,
-estacion_ids: string[] (competencias / calificación),
-contratos: Contrato[],
-disponibilidad: Disponibilidad|null,
+estacion_ids: string[] (calificación),
+contratos: Contrato[], disponibilidad: Disponibilidad|null,
 timestamps, deletedAt
-```
-> El alta acepta un flag transitorio `crear_acceso` (no se persiste en el doc): dispara la provisión del `usuario` asociado (§4-bis).
-
-### `Contrato` *(embebido en empleado — relación de empleo)*
-```
-id, empleado_id, ubicacion_id, cargo_id, active,
-limite_horas, fecha_inicio, fecha_fin, timestamps, deletedAt
+// alta acepta flag transitorio `crear_acceso` (§4-bis)
 ```
 
-### `estaciones` *(competencias / puestos operativos)*
+### `Contrato` *(embebido)*
+```
+id, empleado_id, ubicacion_id, cargo_id, active, limite_horas, fecha_inicio, fecha_fin, timestamps, deletedAt
+```
+
+### `estaciones`
 ```
 id, empresa_id, nombre, descripcion,
-intensidad: 'alta'|'media'|'baja',
-max_continuo_min: number|null (tope de minutos seguidos),
+intensidad: 'alta'|'media'|'baja', max_continuo_min: number|null,
 active, timestamps, deletedAt
 ```
 
-### `excepciones`, `reglas_asignacion`, `sesiones`
-Se mantienen (vacaciones/ausencias; juntos/nunca_juntos; tokens de sesión).
+### `presencias` *(presencia del empleado — SIN colación, §7)*
+```
+id, empresa_id, ubicacion_id, empleado_id, date, start, end, timestamps
+```
 
-### `asignaciones`, `presencias`, `segmentos` *(ver §7)*
+### `segmentos` *(salida del algoritmo)*
+```
+id, empresa_id, ubicacion_id, empleado_id, date,
+estacion_id|null, tipo: 'estacion'|'descanso',
+start, end, asignacion_id, status: 'draft'|'published', timestamps
+```
+Índice obligatorio: `(empleado_id, date)`.
+
+### `asignaciones` *(agrupador/publicación)*
+```
+id, empresa_id, ubicacion_id, date, status: 'draft'|'published', timestamps
+```
+
+### `solicitudes` *(antes `excepciones` — flujo con estados, §7)*
+```
+id, empresa_id, empleado_id, sucursal_id,
+tipo: 'licencia_medica'|'feriado_legal'|'emergencia',
+rango: { start_date, end_date },
+estado: 'pendiente'|'aprobada'|'rechazada',
+aprobador_id|null (encargado de sucursal),
+reemplazo?: { empleado_id, rango },        // definido por el encargado al aprobar
+timestamps, deletedAt
+```
+
+### `reglas_asignacion`, `sesiones`
+Se mantienen (juntos/nunca_juntos con `is_strict`; tokens de sesión).
+
+### `documentos_tributarios` *(DTE emitido por cada cobro, §8)*
+```
+id, empresa_id, payment_ref (id de pago MercadoPago), periodo (YYYY-MM),
+tipo_dte: 'boleta'|'factura', monto_neto, iva, monto_total, folio|null,
+origen: 'openfactura'|'sii_manual',
+estado: 'pendiente'|'emitido'|'notificado'|'error',
+archivo_pdf_url|null, archivo_xml_url|null (Firebase Storage),
+emitido_at|null, notificado_at|null, timestamps
+```
 
 ---
 
 ## 6. Cargos dinámicos
 
-Cada **empresa define su propio catálogo** de cargos. Nada hardcodeado. El `Cargo` es un árbol (`parent_role` = herencia de capacidades para el algoritmo, **no** línea de reporte).
+Cada empresa define su catálogo. `Cargo` es un árbol (`parent_role` = herencia de capacidades, no línea de reporte).
 
-### Modelo `Cargo`
 ```ts
 interface Cargo {
-  id: string;
-  nombre: string;
-  slug: string;
-  parent_role: string | null;                 // herencia de capacidades
-  scope_role_template: 'zone_manager' | 'branch_manager' | 'member' | null; // grant sugerido
-  elegible_encargado: boolean;                 // puede ser manager_id de zona/sucursal
-  estaciones_default?: string[];               // competencias sugeridas
-  timestamps...
+  id; nombre; slug; parent_role: string | null;
+  scope_role_template: 'zone_manager'|'branch_manager'|'member'|null; // grant sugerido
+  elegible_encargado: boolean; estaciones_default?: string[];
 }
 ```
 
-### Mapeo de los cargos reales (ejemplo por defecto, editable por la empresa)
-| Cargo | `scope_role_template` | `elegible_encargado` | Scope típico |
+| Cargo (ejemplo) | template | elegible_encargado | scope |
 |---|---|---|---|
-| supervisor | `zone_manager` | sí | Zona (varias sucursales) |
-| gerente | `branch_manager` | sí | Sucursal |
-| asistente (subgerente) | `branch_manager` | sí | Sucursal |
-| operario | `member` / `null` | no | — |
+| supervisor | zone_manager | sí | zona |
+| gerente | branch_manager | sí | sucursal |
+| asistente | branch_manager | sí | sucursal |
+| operario | member/null | no | — |
 
-> El `scope_role_template` es una **plantilla sugerida**, no una provisión automática. Al darle acceso a un empleado (§4-bis), el admin confirma el `grant`. Cargo (negocio) y grant (auth) se vinculan por la **misma persona** (`contact_id`), pero son independientes.
+El `scope_role_template` es plantilla sugerida; la provisión del grant es explícita.
 
 ---
 
-## 7. Estaciones y scheduling (modelo de 3 capas)
+## 7. Estaciones y scheduling
 
-El solape de turnos es **intencional** (cobertura escalonada con rotación), no un conflicto. Se separan tres objetos:
+Tres capas; el solape de turnos es **intencional** (cobertura escalonada + rotación).
 
-### Capa 1 — Demanda de cobertura (`BloqueCobertura`, en `ubicacion`)
-```ts
-interface BloqueCobertura {
-  id: string;
-  estacion_id: string;
-  day_of_week: string;
-  start_time: string;   // "09:00"
-  end_time: string;     // "18:00"
-  cantidad: number;     // personas requeridas en ese intervalo
-}
-```
-Bloques **solapados se suman** (caja base 1 todo el día + 1 extra en peak 12–14).
+1. **Demanda de cobertura** = `ConfiguracionTurnos` de la ubicación, resuelta por precedencia `range > month > default`. Plantilla anual + overrides por mes/semana/caso especial. Bloques `{estacion_id, day_of_week, start, end, cantidad}`; solapados **suman**.
+2. **Presencia** (`presencias`): ventana del empleado. Para empresa se derivan de la configuración; para congregación, de `disponibilidad`. **Sin colación** (no se modela — en terreno no se cumple).
+3. **Segmento** (`segmentos`): estación asignada por sub-intervalo. Rotación incluida.
 
-### Capa 2 — Presencia del empleado (`presencias`)
-```ts
-interface Presencia {
-  id: string; empresa_id: string; ubicacion_id: string; empleado_id: string;
-  date: string;          // YYYY-MM-DD
-  start: number;         // minutos desde medianoche
-  end: number;
-  colacion?: { start: number; end: number };
-  timestamps...
-}
-```
-Las presencias **se solapan a propósito** entre empleados (handover de caja).
+### Algoritmo (Fase 4)
+- **Tipo:** auto-borrador **greedy** + edición manual (no solver). Corre en **Cloud Function** (ambos casos).
+- **Entrada:** demanda (ConfiguracionTurnos) + presencias/disponibilidad + `estacion_ids` + reglas.
+- **Salida:** `segmentos` en `draft`.
+- **Buckets de chequeo:** 30 min. Cobertura por bucket: Σ segmentos activos por estación ≥ demanda.
+- **Invariante dura:** segmentos de un mismo empleado no se solapan (`a.start < b.end && b.start < a.end`), ni entre sucursales.
+- **Anti-saturación:** respetar `max_continuo_min`; tras estación `intensidad: alta`, rotar a una menor.
+- **Convivencia:** `reglas_asignacion` con `is_strict` = **dura**.
+- **Cobertura incumplible:** se marca **hueco visible**, no se inventa gente (restricción dura).
 
-### Capa 3 — Segmento de asignación (`segmentos` — salida del algoritmo)
-```ts
-interface Segmento {
-  id: string; empresa_id: string; ubicacion_id: string; empleado_id: string;
-  date: string;          // YYYY-MM-DD
-  estacion_id: string | null;          // null = colación/descanso
-  tipo: 'estacion' | 'colacion' | 'descanso';
-  start: number; end: number;          // minutos desde medianoche
-  asignacion_id: string;               // agrupador (publish unit)
-  status: 'draft' | 'published';
-  timestamps...
-}
-```
-Índice obligatorio: **`(empleado_id, date)`** — detección de solape por persona en O(n) sobre su día.
+### Publicación, calendario y solicitudes
+- `draft → published`. Editar un publicado genera nueva versión + **notificación** a los empleados afectados.
+- El empleado **ve su calendario** (requiere usuario provisionado). El calendario se carga con **una lectura puntual al abrir la vista**, no con listener en tiempo real (§9).
+- **Excepciones = `solicitudes`** con estados. El empleado solicita (licencia médica / feriado legal / emergencia). El **encargado de sucursal** aprueba/rechaza y, al aprobar, **define el reemplazo** (quién y cuándo). No hay recálculo automático: se alerta y se reasigna a mano.
 
-### `asignaciones` (agrupador / unidad de publicación)
-```
-id, empresa_id, ubicacion_id, date, status: 'draft'|'published', timestamps
-```
-
-### Invariante dura única
-Los **segmentos de un mismo empleado no se solapan** entre sí (ni entre sucursales — nadie está en dos lugares a la vez):
-```ts
-const solapan = (a, b) => a.start < b.end && b.start < a.end;
-```
-
-### Restricciones blandas (optimización del algoritmo)
-- Cobertura: por cada bucket (p.ej. 15 min), Σ segmentos activos por estación ≥ demanda.
-- Calificación: `estacion_id ∈ empleado.estacion_ids`.
-- Anti-saturación: respetar `estacion.max_continuo_min`; tras `intensidad: 'alta'`, rotar a menor.
-- Colación: insertar segmento `colacion`; al volver, preferir estación de baja intensidad.
-- Convivencia: `reglas_asignacion` (juntos / nunca_juntos, `is_strict`).
-
-### Caso congregación (degenerado)
-Un empleado = **un solo segmento** = toda su presencia en una estación. Sin rotación ni colación. El modelo rico colapsa al simple; **no se mantienen dos sistemas**.
+### Caso congregación
+Un empleado = un solo segmento = toda su presencia en una estación. El modelo colapsa al simple.
 
 ---
 
-## 8. Planes y facturación (MercadoPago)
+## 8. Facturación (MercadoPago + OpenFactura) — **por empresa**
 
-### Dónde vive
-La **suscripción se ancla en el `cliente`**. Un medio de pago, una cuenta, aunque gestione varias empresas. **Límites pooled a nivel cliente** (no por empresa).
+> **Cada empresa es una entidad tributaria independiente ante el SII** (RUT propio). La suscripción, el cobro y el DTE son **por empresa**, no por cliente. El cliente solo administra (y puede pagar).
 
-### Modelo de cobro con MercadoPago
-MercadoPago cobra mediante **preapproval** (suscripción) sobre un **`preapproval_plan`**, con `auto_recurring` de **monto fijo** (`transaction_amount`, CLP) por frecuencia. Implicaciones:
+### Modelo de cobro
+- **Una suscripción por empresa** = un `preapproval` de MercadoPago sobre un `preapproval_plan` por tier, monto fijo **neto** en CLP (`auto_recurring`).
+- MercadoPago **no factura por uso**: el tier es un **gate** que se enforcea vía `entitlements` (servidor), no metering.
+- **Pagador:** puede ser el cliente (una tarjeta financia varias empresas), pero el **DTE se emite al RUT de la empresa**.
+- **Checkout:** redirect al `init_point`. **Sin proración** (cambios aplican el próximo ciclo).
 
-- **No hay facturación por uso/por-asiento nativa** (a diferencia de Stripe). Por lo tanto:
-  - **Cada tier = un `preapproval_plan`** con monto fijo en CLP.
-  - La métrica "empleados activos" **no se factura al gateway**: determina **en qué tier debe estar** el cliente y se **enforcea vía `entitlements`** (lado servidor).
-  - Upgrade/downgrade = actualizar el preapproval (`PUT /preapproval/:id`) o cancelar + recrear.
-- **Checkout:** redirección al `init_point` que devuelve MercadoPago al crear el preapproval.
-- **Campos en `cliente`:** `mp_preapproval_id`, `mp_preapproval_plan_id`, `mp_payer_email`.
+### Emisión de DTE — **dual y opcional** (preferencia del super_admin)
+Proveedor de DTE abstracto con dos modos. Default global configurable (`dte_provider_default`), con override por documento. Cada cobro exitoso crea un `documentos_tributarios` en estado `pendiente`.
 
-### Métrica de valor (gating, no metering)
-- **Primaria:** empleados activos (pooled) → define el tier.
-- **Secundaria (guardrail):** nº de sucursales/ubicaciones.
-- **Multiempresa = feature de tier**, NO eje de precio.
+- **`openfactura` (automático):** al recibir el webhook `subscription_authorized_payment`, una Cloud Function emite el DTE vía **API de OpenFactura** a los datos tributarios de la empresa (`rut`, `razon_social`, `giro`, `direccion`), guarda folio + PDF/XML en Storage → `emitido` → notifica → `notificado`.
+- **`sii_manual` (gratuito):** el documento queda `pendiente`. El super_admin emite en el **portal MIPYME del SII**, sube el **PDF + XML** por una vista admin; al subir → `emitido` → **notifica al cliente y a la empresa** → `notificado`.
 
-### Tiers (referencia)
-| Tier | Empleados (pooled) | Empresas | Features |
+> El XML debe entregarse al cliente, no solo el PDF visual. El portal gratuito del SII tiene límites de elegibilidad/volumen: confirmar con contador.
+
+### Tiers (por empresa, gatillados por dotación). Precios **netos** (+IVA).
+| Tier | Empleados activos* | Precio neto/mes | Notas / Features |
 |---|---|---|---|
-| Free / Congregación | ~15 | 1 | Turnos, personal, sin zonas, sin algoritmo avanzado |
-| Pro | ~75 | 1 | + zonas, algoritmo, reglas de asignación |
-| Business | ~300 | Multiempresa | + multiempresa, exportaciones, roles finos |
-| Enterprise | ilimitado | Multiempresa | + SSO, API, soporte |
+| Basic | ~25 | $10.000 | **7 días de prueba**; turnos, personal, zonas |
+| Pro | ~100 | $30.000 | + algoritmo, reglas, exportaciones |
+| Business | +300 | $100.000 | + roles finos, SSO, API |
 
-- `empresa.type = 'congregacion'` → tier **gratuito/non-profit** (voluntarios, no empleados).
+\* Umbrales de dotación referenciales; ajustables.
 
-### Sincronización (Cloud Functions)
-- **Webhooks de MercadoPago** → Cloud Function: notificaciones tipo `subscription_preapproval` (estado de la suscripción) y `subscription_authorized_payment` (cobro recurrente exitoso/fallido).
-- La function obtiene el preapproval (`GET /preapproval/:id`), mapea su `status` (`pending`/`authorized`/`paused`/`cancelled`) a `clientes.subscription_status` y actualiza `entitlements` según el plan.
-- Feature gating en la app lee `entitlements` (no consulta MercadoPago en runtime).
-- **Security Rules** validan límites del lado servidor (rechazar empleado #16 en Free).
-- UX multiempresa: tras login, si el cliente tiene **1 empresa → redirect directo**; varias → selector.
+- `type: congregacion` → `facturable: false`, gratis, **creada manualmente por super_admin** (no self-serve).
+- Límites **por empresa** (sin pooling). Enforcement = **hard block** en `create` de empleados/sucursales (Security Rules).
+
+### Impago (dunning)
+`past_due` → acceso en **solo lectura** + avisos recurrentes de pago hasta regularizar.
+
+### Economía (referencia)
+- **Costo fijo según modo DTE:** en `sii_manual` ≈ **$0** (ideal con pocos clientes). En `openfactura`: Plan Pyme $360.000/año + IVA (~$30.000/mes neto, 1 razón social propia, DTE ilimitados) + firma (~$1.000/mes). Firebase ~$0 con lectura única.
+- **Costo variable por empresa:** comisión MercadoPago **~3,44%** (2,89% + IVA) del bruto; DTE $0 marginal.
+- **Contribución por empresa:** Basic ~$9.591 · Pro ~$28.772 · Business ~$95.908.
+- **OpenFactura se paga solo** con ~1 cliente Pro o ~3 Basic; antes de eso, conviene `sii_manual`.
+- El IVA cobrado se remite al SII (no es ingreso). Confirmar tratamiento con contador.
 
 ---
 
 ## 9. Requisitos técnicos y seguridad
 
-### Reglas de oro (invariantes)
-1. **Aislamiento por tenant:** toda query lleva filtro por `cliente_id`/`company_id`. Nadie ve datos fuera de su scope.
-2. **El filtro `empresa_id` ya no basta:** dentro de una empresa, el acceso a zona/sucursal se valida contra `grants`.
-3. **Seguridad en servidor:** el guard de Vue es UX. **Firestore Security Rules** reflejan la resolución de scope (`grants`) y los `entitlements`.
-4. **Soft delete + timestamps** en todo.
-5. **Navegación por `name`.**
-6. **Identidad única:** un `contacto` por persona; `empleado`/`usuario` la referencian, no la duplican.
+### Reglas de oro
+1. **Aislamiento por tenant:** toda query filtra por `cliente_id`/`company_id`; nada cross-tenant.
+2. **Acceso intra-empresa por `grants`** (zona/sucursal), no por `empresa_id` solo.
+3. **Seguridad en servidor:** Security Rules reflejan grants + `entitlements`. El guard de Vue es UX.
+4. **Lecturas puntuales:** el calendario y vistas similares usan **lectura única (`getDocs`) al abrir**, NO listeners en tiempo real, para acotar el costo de Firestore. Usar listeners solo donde el tiempo real sea imprescindible.
+5. **Cada empresa = entidad tributaria independiente**; el DTE va a su RUT.
+6. Soft delete + timestamps; navegación por `name`; un `contacto` por persona.
 
 ### Security Rules (lineamientos)
-- Helper que resuelve si la sesión tiene un grant que cubra el doc (por `company_id`/`zone_id`/`ubicacion_id`).
-- Validar `entitlements` en `create` de `empleados`/`ubicaciones` contra los límites del plan.
-- Negar lectura cross-tenant siempre.
+- Resolver grant que cubra el doc (por `company_id`/`zone_id`/`ubicacion_id`).
+- Validar `entitlements` de la empresa en `create` de `empleados`/`ubicaciones`.
+- Webhooks MercadoPago: validar firma `x-signature` + **idempotencia** (eventos duplicados).
 
 ---
 
 ## 10. Plan de trabajo (por fases)
 
-> Cada fase: (a) migración si aplica, (b) modelos + converters, (c) stores, (d) UI, (e) Security Rules, (f) verificación.
+**Fase 0 — Fundaciones** *(en curso)*: colección `clientes`; `empresas.cliente_id`; `src/auth/permissions.ts`.
 
-**Fase 0 — Fundaciones** *(en curso)*
-- Crear colección `clientes`. Migrar `empresas` añadiendo `cliente_id`.
-- Definir `src/auth/permissions.ts` (mapa rol→permisos).
+**Fase 1 — Autorización + cuentas**: `grants` + `puedeAcceder()`; refactor `beforeEach`; provisión de usuario desde empleado (`crear_acceso` / "Invitar"); Security Rules base.
 
-**Fase 1 — Autorización + provisión de cuentas**
-- Colección `grants` + modelo/converter. Helpers `puedeAcceder()` / `can()`.
-- Refactor de `beforeEach` (resolución de scope).
-- **Provisión de usuario desde empleado**: flag `crear_acceso` + acción "Invitar"; estado `invitado/activo`; creación opcional de grants desde el cargo.
-- Security Rules base con grants.
+**Fase 2 — Routing por scope**: prefijos `sucursales/`, `zonas/`; `ZonaLayout` + `views/zona/*`; `AppShell.vue`.
 
-**Fase 2 — Routing por scope**
-- Prefijos `sucursales/` y `zonas/`. Nuevo `ZonaLayout` + `views/zona/*`.
-- Extraer `AppShell.vue` compartido.
+**Fase 3 — Cargos dinámicos**: extender `Cargo`; UI catálogo; provisión de grant desde cargo.
 
-**Fase 3 — Cargos dinámicos**
-- Extender `Cargo` (`scope_role_template`, `elegible_encargado`, `estaciones_default`).
-- UI catálogo por empresa. Provisión de grant desde cargo (acción explícita).
+**Fase 4 — Estaciones + scheduling**: `Estacion` (intensidad/max_continuo); demanda desde `ConfiguracionTurnos`; `presencias`, `segmentos`; refactor `asignaciones`; **algoritmo greedy en Cloud Function**; `solicitudes` con estados + reemplazo; calendario con lectura única + notificaciones.
 
-**Fase 4 — Estaciones + scheduling**
-- `Estacion`: `intensidad`, `max_continuo_min`.
-- `BloqueCobertura` en `ubicacion`. Colecciones `presencias` y `segmentos`.
-- Refactor `asignaciones` (de `assigned_staff[]` a segmentos). Algoritmo (cobertura + rotación + colación + convivencia).
+**Fase 5 — Facturación (por empresa)**: datos tributarios en `empresa`; `preapproval_plan` por tier (Basic con 7 días de prueba → `trialing`); checkout `init_point`; webhooks (`subscription_preapproval`, `subscription_authorized_payment`); **emisión DTE dual** (OpenFactura API automático **o** SII manual con upload de PDF/XML a Storage + notificación), seleccionable por `dte_provider_default`; colección `documentos_tributarios`; `entitlements` + hard block; dunning solo-lectura.
 
-**Fase 5 — Facturación (MercadoPago)**
-- `preapproval_plan` por tier. Checkout vía `init_point`. Cloud Functions (webhooks `subscription_preapproval` / `subscription_authorized_payment`). `entitlements` + feature gating. Security Rules de límites.
-
-**Fase 6 — Multiempresa UX**
-- `ClienteLayout`, selector de empresa, default si hay una sola.
+**Fase 6 — Multiempresa UX**: `ClienteLayout`, selector de empresa, default si hay una sola.
 
 ---
 
-## 11. Glosario rápido
+## 11. Glosario
 
-- **Cliente/Cuenta:** quien paga; agrupa empresas; entidad de facturación.
-- **Empresa:** tenant operativo.
+- **Cliente/Cuenta:** administrador (login) de una o más empresas. No se factura aquí.
+- **Empresa:** tenant + entidad tributaria (RUT propio) + suscripción. **Se factura aquí.**
 - **Contacto:** identidad canónica de la persona.
-- **Empleado / Usuario:** facetas opcionales del contacto (operativa / acceso).
-- **Grant:** `(usuario, rol, scope)` — autorización.
-- **Cargo:** puesto contractual/jerárquico (negocio).
-- **Estación:** competencia/puesto operativo de un turno (scheduling).
-- **BloqueCobertura:** demanda de personal por estación e intervalo.
-- **Presencia:** ventana en que un empleado está en el local.
-- **Segmento:** estación asignada a un empleado en un sub-intervalo (salida del algoritmo).
+- **Empleado / Usuario:** facetas opcionales del contacto.
+- **Grant:** `(usuario, rol, scope)`.
+- **Cargo:** puesto contractual (negocio). **Estación:** competencia operativa (scheduling).
+- **ConfiguracionTurnos:** plantilla de demanda de cobertura (default/month/range).
+- **Presencia:** ventana de un empleado en el local. **Segmento:** estación asignada por sub-intervalo.
+- **Solicitud:** excepción (licencia/feriado/emergencia) con estados y reemplazo.
