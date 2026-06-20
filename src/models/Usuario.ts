@@ -4,6 +4,7 @@ import { Contacto } from './Contacto';
 import { Empresa } from './Empresa';
 
 export type SystemRole = 'super_admin' | 'client_user';
+export type UserEstado = 'invitado' | 'activo' | 'suspendido';
 
 export class Usuario {
   // Propiedades relacionales anidadas (hidratadas localmente al iniciar sesión)
@@ -23,11 +24,19 @@ export class Usuario {
       theme: string;
       language: string;
       notificationsEnabled: boolean;
-    }
+    },
+    public estado: UserEstado = 'activo',
+    // Lista denormalizada de company_ids con grant activo — usada por Security Rules
+    // (no puede hacer query, solo get/exists sobre paths conocidos)
+    public company_ids: string[] = []
   ) {}
 
   get isSuperAdmin(): boolean {
     return this.system_role === 'super_admin';
+  }
+
+  get isActivo(): boolean {
+    return this.estado === 'activo';
   }
 }
 
@@ -38,6 +47,8 @@ export const usuarioConverter: FirestoreDataConverter<Usuario> = {
       cliente_id: usuario.cliente_id,
       contact_id: usuario.contact_id,
       system_role: usuario.system_role,
+      estado: usuario.estado,
+      company_ids: usuario.company_ids,
       createdAt: usuario.createdAt ? Timestamp.fromDate(usuario.createdAt) : Timestamp.now(),
       updatedAt: Timestamp.now(),
       deletedAt: usuario.deletedAt ? Timestamp.fromDate(usuario.deletedAt) : null,
@@ -55,7 +66,9 @@ export const usuarioConverter: FirestoreDataConverter<Usuario> = {
       data.updatedAt?.toDate() || new Date(),
       data.deletedAt?.toDate() || null,
       data.cliente_id ?? null,
-      data.preferences
+      data.preferences,
+      (data.estado as UserEstado) || 'activo',
+      data.company_ids ?? []
     );
   }
 };

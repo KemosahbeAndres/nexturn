@@ -87,69 +87,18 @@
 
       <AlertBox :alert="alertLogin" class="mb-4" />
 
-      <!-- Switch RUT / Correo -->
-      <div class="flex rounded-lg bg-gray-100 dark:bg-gray-700 p-1 mb-4">
-        <button
-          v-for="tab in loginTabs" :key="tab.value" type="button"
-          @click="switchTab(tab.value)"
-          :class="[
-            'flex-1 py-2 text-sm font-medium rounded-md transition-all duration-200',
-            loginTab === tab.value
-              ? 'bg-white dark:bg-gray-600 text-gray-900 dark:text-white shadow-sm'
-              : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200'
-          ]"
-        >
-          {{ tab.label }}
-        </button>
-      </div>
-
       <div class="space-y-4 mb-4">
 
-        <!-- Tab RUT -->
-        <div v-if="loginTab === 'rut'">
-          <label class="block text-sm font-medium mb-1 dark:text-gray-300">RUT</label>
-          <div class="relative">
-            <input
-              :value="loginRut.rut.value"
-              @input="loginRut.onInput($event); onIdInput()"
-              @blur="onRutBlur"
-              type="text" placeholder="12345678-9"
-              :disabled="loadingLogin"
-              :class="[
-                'w-full px-4 h-12 bg-white dark:bg-gray-700 border rounded-lg focus:outline-none focus:ring-2 transition-colors text-gray-900 dark:text-white pr-10',
-                existsState === 'not-found' ? 'border-red-400 focus:ring-red-400'
-                : existsState === 'found'   ? 'border-green-400 focus:ring-green-400'
-                :                             'border-gray-300 dark:border-gray-600 focus:ring-blue-500'
-              ]"
-              @keyup.enter="handleLogin"
-            >
-            <ExistsIndicator :state="existsState" :checking="checkingExists" />
-          </div>
-          <p v-if="loginRut.showError.value && !checkingExists" class="mt-1 text-xs text-red-500">RUT inválido. Verifica el dígito verificador.</p>
-          <p v-else-if="existsState === 'not-found'" class="mt-1 text-xs text-red-500">No encontramos una cuenta con este RUT.</p>
-        </div>
-
-        <!-- Tab Correo -->
-        <div v-else>
+        <!-- Correo electrónico -->
+        <div>
           <label class="block text-sm font-medium mb-1 dark:text-gray-300">Correo electrónico</label>
-          <div class="relative">
-            <input
-              v-model="loginEmail"
-              @input="onIdInput"
-              @blur="onEmailBlur"
-              type="email" placeholder="correo@empresa.com"
-              :disabled="loadingLogin"
-              :class="[
-                'w-full px-4 h-12 bg-white dark:bg-gray-700 border rounded-lg focus:outline-none focus:ring-2 transition-colors text-gray-900 dark:text-white pr-10',
-                existsState === 'not-found' ? 'border-red-400 focus:ring-red-400'
-                : existsState === 'found'   ? 'border-green-400 focus:ring-green-400'
-                :                             'border-gray-300 dark:border-gray-600 focus:ring-blue-500'
-              ]"
-              @keyup.enter="handleLogin"
-            >
-            <ExistsIndicator :state="existsState" :checking="checkingExists" />
-          </div>
-          <p v-if="existsState === 'not-found'" class="mt-1 text-xs text-red-500">No encontramos una cuenta con este correo.</p>
+          <input
+            v-model="loginEmail"
+            type="email" placeholder="correo@empresa.com"
+            :disabled="loadingLogin"
+            class="w-full px-4 h-12 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 transition-colors text-gray-900 dark:text-white"
+            @keyup.enter="handleLogin"
+          >
         </div>
 
         <!-- Contraseña -->
@@ -187,15 +136,12 @@
 <script setup lang="ts">
 import { ref, defineComponent, h, onMounted } from 'vue';
 import { useRouter } from 'vue-router';
-import { collection, query, where, getDocs } from 'firebase/firestore';
-import { db } from '../firebase';
 import { useSessionStore } from '../stores/sessionStore';
 import { useRut } from '../composables/useRut';
 
 // ── Componentes inline ────────────────────────────────────────────────────────
 
 type AlertType = { type: 'error' | 'success'; message: string } | null;
-type ExistsState = 'idle' | 'found' | 'not-found';
 
 const AlertBox = defineComponent({
   props: { alert: { type: Object as () => AlertType, default: null } },
@@ -218,35 +164,6 @@ const AlertBox = defineComponent({
         ]),
         h('span', props.alert.message),
       ]);
-    };
-  },
-});
-
-const ExistsIndicator = defineComponent({
-  props: {
-    state: { type: String as () => ExistsState, default: 'idle' },
-    checking: { type: Boolean, default: false },
-  },
-  setup(props) {
-    return () => {
-      const wrap = (children: any) => h('div', { class: 'absolute right-3 top-1/2 -translate-y-1/2' }, children);
-      if (props.checking) {
-        return wrap(h('svg', { class: 'animate-spin h-4 w-4 text-gray-400', xmlns: 'http://www.w3.org/2000/svg', fill: 'none', viewBox: '0 0 24 24' }, [
-          h('circle', { class: 'opacity-25', cx: '12', cy: '12', r: '10', stroke: 'currentColor', 'stroke-width': '4' }),
-          h('path', { class: 'opacity-75', fill: 'currentColor', d: 'M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z' }),
-        ]));
-      }
-      if (props.state === 'found') {
-        return wrap(h('svg', { xmlns: 'http://www.w3.org/2000/svg', class: 'h-4 w-4 text-green-500', fill: 'none', viewBox: '0 0 24 24', stroke: 'currentColor', 'stroke-width': '2.5' }, [
-          h('path', { 'stroke-linecap': 'round', 'stroke-linejoin': 'round', d: 'M4.5 12.75l6 6 9-13.5' }),
-        ]));
-      }
-      if (props.state === 'not-found') {
-        return wrap(h('svg', { xmlns: 'http://www.w3.org/2000/svg', class: 'h-4 w-4 text-red-500', fill: 'none', viewBox: '0 0 24 24', stroke: 'currentColor', 'stroke-width': '2.5' }, [
-          h('path', { 'stroke-linecap': 'round', 'stroke-linejoin': 'round', d: 'M6 18L18 6M6 6l12 12' }),
-        ]));
-      }
-      return null;
     };
   },
 });
@@ -279,82 +196,13 @@ onMounted(async () => {
   }
 });
 
-// ── Login — tabs ──────────────────────────────────────────────────────────────
+// ── Login — solo por correo ─────────────────────────────────────────────────────
 
-const loginTabs = [
-  { value: 'rut',   label: 'RUT' },
-  { value: 'email', label: 'Correo electrónico' },
-] as const;
-type LoginTab = typeof loginTabs[number]['value'];
-
-const loginTab = ref<LoginTab>('rut');
-const loginRut = useRut();
 const loginEmail = ref('');
 const loginPassword = ref('');
 const stayConnected = ref(false);
 const loadingLogin = ref(false);
 const alertLogin = ref<AlertType>(null);
-
-const existsState = ref<ExistsState>('idle');
-const checkingExists = ref(false);
-
-function switchTab(tab: LoginTab) {
-  loginTab.value = tab;
-  existsState.value = 'idle';
-  alertLogin.value = null;
-  loginRut.setRut('');
-  loginEmail.value = '';
-  loginPassword.value = '';
-}
-
-// Bloquear contraseña mientras no se confirme que el usuario existe
-
-// ── Verificación contra Firestore ─────────────────────────────────────────────
-
-let debounceTimer: ReturnType<typeof setTimeout> | null = null;
-
-function onIdInput() {
-  existsState.value = 'idle';
-  alertLogin.value = null;
-}
-
-async function verificar(campo: 'rut' | 'email', valor: string) {
-  if (!valor) return;
-  checkingExists.value = true;
-  try {
-    const snap = await getDocs(query(
-      collection(db, 'contactos'),
-      where(campo, '==', valor),
-      where('deletedAt', '==', null)
-    ));
-    existsState.value = snap.empty ? 'not-found' : 'found';
-  } catch {
-    existsState.value = 'idle';
-  } finally {
-    checkingExists.value = false;
-  }
-}
-
-// Al perder foco en el input RUT: primero autocompleta el guión (onBlur del composable),
-// luego lanza la verificación con el valor ya formateado
-async function onRutBlur() {
-  loginRut.onBlur();
-  // Esperar un tick para que el ref se actualice con el valor formateado
-  await new Promise(r => setTimeout(r, 0));
-  const val = loginRut.rut.value.trim();
-  if (val && loginRut.isValid.value) {
-    await verificar('rut', val);
-  } else if (val) {
-    existsState.value = 'idle';
-  }
-}
-
-async function onEmailBlur() {
-  const val = loginEmail.value.trim();
-  if (!val) return;
-  if (debounceTimer) clearTimeout(debounceTimer);
-  await verificar('email', val);
-}
 
 // ── Acciones ──────────────────────────────────────────────────────────────────
 
@@ -393,7 +241,7 @@ const handleSetup = async () => {
 };
 
 const handleLogin = async () => {
-  const identificador = loginTab.value === 'rut' ? loginRut.rut.value.trim() : loginEmail.value.trim();
+  const identificador = loginEmail.value.trim();
   if (!identificador || !loginPassword.value) {
     showAlert('login', 'error', 'Por favor, completa todos los campos.');
     return;

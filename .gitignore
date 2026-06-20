@@ -12,6 +12,11 @@ dist
 dist-ssr
 *.local
 
+# Firebase credentials (never commit)
+serviceAccount.json
+migrate-fase0-rollback.json
+/scripts/migrate-fase0.ts
+
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json

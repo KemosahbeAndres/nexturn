@@ -2,9 +2,9 @@ import { createRouter, createWebHistory } from 'vue-router';
 import { collection, getDocs, query, where } from 'firebase/firestore';
 import LoginView from '../views/LoginView.vue';
 import { useSessionStore } from '../stores/sessionStore';
+import { useGrantStore } from '../stores/grantStore';
 import { db } from '../firebase';
 import { ubicacionConverter } from '../models/Ubicacion';
-import { empleadoConverter } from '../models/Empleado';
 
 const router = createRouter({
   history: createWebHistory(import.meta.env.BASE_URL),
@@ -16,12 +16,12 @@ const router = createRouter({
     },
     {
       path: '/',
-      component: () => import('../layouts/MainLayout.vue'), // Layout Principal
-      meta: { requiresAuth: true, requiresSuperAdmin: true }, // Protege esta ruta y a todos sus hijos
+      component: () => import('../layouts/MainLayout.vue'),
+      meta: { requiresAuth: true, requiresSuperAdmin: true },
       children: [
         {
           path: '',
-          redirect: '/dashboard' // Redirige por defecto al dashboard de admin
+          redirect: '/dashboard'
         },
         {
           path: 'dashboard',
@@ -51,7 +51,7 @@ const router = createRouter({
     },
     {
       path: '/:companySlug',
-      component: () => import('../layouts/EmpresaLayout.vue'), // Layout de Empresa
+      component: () => import('../layouts/EmpresaLayout.vue'),
       meta: { requiresAuth: true, requiresCompany: true },
       children: [
         {
@@ -99,81 +99,105 @@ const router = createRouter({
 
 router.beforeEach(async (to, _from) => {
   const sessionStore = useSessionStore();
-  // Validamos si la sesión está activa (ya sea en memoria o en localStorage)
   const isAuthenticated = await sessionStore.validateSession();
 
   if (to.meta.requiresAuth && !isAuthenticated) {
-    return { name: 'login' }; // Redirigir al login si no está autenticado
+    return { name: 'login' };
   }
 
-  if (isAuthenticated) {
-    const isSuperAdmin = sessionStore.userRole === 'super_admin';
-    const companySlug = sessionStore.currentUser?.empresa?.slug || sessionStore.currentUser?.empresa_id;
+  if (!isAuthenticated) return true;
 
-    // Usuario de empresa sin slug resolvible: forzar logout
-    if (!isSuperAdmin && !companySlug) {
-      return { name: 'login' };
-    }
+  const user = sessionStore.currentUser!;
+  const isSuperAdmin = user.isSuperAdmin;
 
-    if (to.name === 'login') {
-      return isSuperAdmin ? { name: 'admin-dashboard' } : { name: 'empresa-home', params: { companySlug } };
-    }
+  // Bloquear usuarios no activos (invitado / suspendido)
+  if (!isSuperAdmin && !user.isActivo && to.name !== 'login') {
+    return { name: 'login' };
+  }
 
-    // Usuarios de empresa intentando acceder al panel super_admin (/dashboard, /usuarios, /empresas)
-    if (to.meta.requiresSuperAdmin && !isSuperAdmin) {
-      return { name: 'empresa-home', params: { companySlug } };
-    }
+  const defaultEmpresaSlug = user.empresa?.slug ?? user.empresa_id ?? '';
 
-    if (to.meta.requiresCompany) {
-      if (!isSuperAdmin) {
-        // Aislamiento por URL: el usuario solo puede navegar por el slug de su propia empresa
-        if (to.params.companySlug !== companySlug) {
-          return { name: 'empresa-home', params: { companySlug } };
-        }
+  if (to.name === 'login') {
+    return isSuperAdmin
+      ? { name: 'admin-dashboard' }
+      : { name: 'empresa-home', params: { companySlug: defaultEmpresaSlug } };
+  }
+
+  // Rutas exclusivas del super_admin
+  if (to.meta.requiresSuperAdmin && !isSuperAdmin) {
+    return { name: 'empresa-home', params: { companySlug: defaultEmpresaSlug } };
+  }
+
+  if (to.meta.requiresCompany) {
+    const companySlug = to.params.companySlug as string;
+
+    if (!isSuperAdmin) {
+      // Resolver slug → id desde el mapa cargado al login
+      const grantStore = useGrantStore();
+      const companyId = grantStore.resolverEmpresaId(companySlug);
+
+      if (!companyId) {
+        // Slug desconocido para este usuario → denegar
+        return { name: 'empresa-home', params: { companySlug: defaultEmpresaSlug } };
       }
 
-      if (to.meta.requiresUbicacion && !isSuperAdmin) {
-        const tieneAcceso = await usuarioPerteneceASucursal(
-          sessionStore.currentUser?.empresa_id ?? null,
-          sessionStore.currentUser?.contact_id ?? null,
-          to.params.ubicacionSlug as string
-        );
-        if (!tieneAcceso) {
-          return { name: 'empresa-home', params: { companySlug } };
+      const tieneAcceso = grantStore.puedeAccederScope(user, 'company', companyId, { companyId });
+      if (!tieneAcceso) {
+        return { name: 'empresa-home', params: { companySlug: defaultEmpresaSlug } };
+      }
+
+      if (to.meta.requiresUbicacion) {
+        const ubicacionSlug = to.params.ubicacionSlug as string;
+        const ubicacion = grantStore.resolverUbicacion(ubicacionSlug);
+
+        if (!ubicacion) {
+          // Slug de sucursal no cacheado: hacer lectura puntual y registrarlo
+          const resolved = await resolverYRegistrarUbicacion(companyId, ubicacionSlug);
+          if (!resolved) {
+            return { name: 'empresa-home', params: { companySlug: defaultEmpresaSlug } };
+          }
+          const tieneAccesoSucursal = grantStore.puedeAccederScope(
+            user, 'branch', resolved.id,
+            { companyId, zonaDeLaSucursal: resolved.zone_id ?? undefined }
+          );
+          if (!tieneAccesoSucursal) {
+            return { name: 'empresa-home', params: { companySlug: defaultEmpresaSlug } };
+          }
+        } else {
+          const tieneAccesoSucursal = grantStore.puedeAccederScope(
+            user, 'branch', ubicacion.id,
+            { companyId, zonaDeLaSucursal: ubicacion.zone_id ?? undefined }
+          );
+          if (!tieneAccesoSucursal) {
+            return { name: 'empresa-home', params: { companySlug: defaultEmpresaSlug } };
+          }
         }
       }
     }
   }
 
-  return true; // Permitir el paso en cualquier otro caso
+  return true;
 });
 
-async function usuarioPerteneceASucursal(empresaId: string | null, contactId: string | null, ubicacionSlug: string): Promise<boolean> {
-  if (!empresaId || !contactId) return false;
-
-  const ubicacionesRef = collection(db, 'ubicaciones').withConverter(ubicacionConverter);
-  const ubicacionSnap = await getDocs(query(
-    ubicacionesRef,
-    where('company_id', '==', empresaId),
-    where('slug', '==', ubicacionSlug),
-    where('deletedAt', '==', null)
-  ));
-  if (ubicacionSnap.empty) return false;
-  const ubicacion = ubicacionSnap.docs[0].data();
-
-  const empleadosRef = collection(db, 'empleados').withConverter(empleadoConverter);
-  const empleadoSnap = await getDocs(query(
-    empleadosRef,
-    where('company_id', '==', empresaId),
-    where('contact_id', '==', contactId),
-    where('deletedAt', '==', null)
-  ));
-  if (empleadoSnap.empty) return false;
-  const empleado = empleadoSnap.docs[0].data();
-
-  if (ubicacion.manager_id === empleado.id) return true;
-
-  return empleado.contratos.some(c => c.active && c.ubicacion_id === ubicacion.id);
+// Resuelve el slug de una ubicación leyendo Firestore UNA vez y lo registra en grantStore para
+// navaciones futuras sin re-lectura. Solo se llama si el slug no está ya cacheado.
+async function resolverYRegistrarUbicacion(
+  companyId: string,
+  ubicacionSlug: string
+): Promise<{ id: string; zone_id: string | null } | null> {
+  const snap = await getDocs(
+    query(
+      collection(db, 'ubicaciones').withConverter(ubicacionConverter),
+      where('company_id', '==', companyId),
+      where('slug', '==', ubicacionSlug),
+      where('deletedAt', '==', null)
+    )
+  );
+  if (snap.empty) return null;
+  const data = snap.docs[0].data();
+  const result = { id: data.id, zone_id: data.zone_id ?? null };
+  useGrantStore().registrarUbicacionSlug(ubicacionSlug, result.id, result.zone_id);
+  return result;
 }
 
 export default router;

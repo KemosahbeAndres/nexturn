@@ -1,12 +1,13 @@
 import { defineStore } from 'pinia';
 import { ref, computed, watch } from 'vue';
-import { collection, doc, setDoc, getDocs, getDoc, updateDoc, query, where, Timestamp, limit } from 'firebase/firestore';
+import { collection, doc, setDoc, getDocs, getDoc, updateDoc, query, where, Timestamp } from 'firebase/firestore';
 import { signInWithEmailAndPassword, signOut, createUserWithEmailAndPassword } from 'firebase/auth';
 import { db, auth } from '../firebase'; // Asegúrate de exportar 'auth' desde la config de tu proyecto
 import { Usuario, usuarioConverter } from '../models/Usuario';
 import { empresaConverter } from '../models/Empresa';
 import { Sesion, sesionConverter } from '../models/Sesion';
 import { Contacto, contactoConverter } from '../models/Contacto';
+import { useGrantStore } from './grantStore';
 
 export const useSessionStore = defineStore('session', () => {
   // 1. STATE (Datos Reactivos)
@@ -41,10 +42,11 @@ export const useSessionStore = defineStore('session', () => {
   // 3. ACTIONS (Lógica de Negocio)
 
   async function checkIfFirstSetup() {
-    const usuariosRef = collection(db, 'usuarios');
-    const q = query(usuariosRef, limit(1));
-    const snap = await getDocs(q);
-    return snap.empty;
+    // No se puede consultar 'usuarios' sin autenticar (las Rules lo niegan).
+    // Se usa un marcador público config/setup escrito al crear el primer super_admin.
+    const setupRef = doc(db, 'config', 'setup');
+    const snap = await getDoc(setupRef);
+    return !snap.exists() || snap.data()?.initialized !== true;
   }
 
   async function registerFirstSuperAdmin(userData: any) {
@@ -54,7 +56,7 @@ export const useSessionStore = defineStore('session', () => {
     }
 
     // 1. Crear el usuario en la autenticación de Firebase
-    await createUserWithEmailAndPassword(auth, userData.email, userData.password);
+    const userCredential = await createUserWithEmailAndPassword(auth, userData.email, userData.password);
 
     // 2. Crear el Contacto asociado
     const contactosRef = collection(db, 'contactos').withConverter(contactoConverter);
@@ -65,66 +67,63 @@ export const useSessionStore = defineStore('session', () => {
     );
     await setDoc(newContactoRef, newContacto);
 
-    // 3. Crear el Usuario administrador
+    // 3. Crear el Usuario administrador usando el UID de Firebase Auth como ID del doc.
+    // Esto es obligatorio: las Security Rules identifican al usuario via request.auth.uid,
+    // que debe coincidir con el ID del doc en 'usuarios' para que isSuperAdmin() funcione.
+    const authUid = userCredential.user.uid;
     const usuariosRef = collection(db, 'usuarios').withConverter(usuarioConverter);
-    const newUsuarioRef = doc(usuariosRef);
+    const newUsuarioRef = doc(usuariosRef, authUid);
     const newUsuario = new Usuario(
-      newUsuarioRef.id,
+      authUid,
       null, // empresa_id (super_admin no pertenece a una empresa)
       newContactoRef.id,
       'super_admin'
     );
     await setDoc(newUsuarioRef, newUsuario);
 
-    // 4. Iniciar sesión automáticamente
+    // 4. Marcar el sistema como inicializado (marcador público para checkIfFirstSetup)
+    await setDoc(doc(db, 'config', 'setup'), { initialized: true, updatedAt: Timestamp.now() });
+
+    // 5. Iniciar sesión automáticamente
     await login(userData.email, userData.password, false);
   }
 
   async function login(identificador: string, pass: string, stayConnected: boolean = false) {
-    let emailForAuth = identificador;
-
-    // Si el identificador no contiene '@', asumimos que es un RUT y buscamos su correo asociado
-    if (!identificador.includes('@')) {
-      const contactosRef = collection(db, 'contactos').withConverter(contactoConverter);
-      const qRut = query(contactosRef, where('rut', '==', identificador), where('deletedAt', '==', null));
-      const rutSnap = await getDocs(qRut);
-      
-      if (rutSnap.empty) {
-        throw new Error('No se encontró información de contacto asociada a este RUT.');
-      }
-      emailForAuth = rutSnap.docs[0].data().email;
+    // El login es solo por correo. El identificador debe ser un email.
+    const emailForAuth = identificador.trim();
+    if (!emailForAuth.includes('@')) {
+      throw new Error('Ingresa un correo electrónico válido.');
     }
 
     // 3.1. Autenticación subyacente con Firebase Auth
     const userCredential = await signInWithEmailAndPassword(auth, emailForAuth, pass);
     const authUser = userCredential.user;
 
-    // 3.2. Buscar el Contacto asociado al correo electrónico
-    const contactosRef = collection(db, 'contactos').withConverter(contactoConverter);
-    const qContact = query(contactosRef, where('email', '==', emailForAuth), where('deletedAt', '==', null));
-    const contactSnap = await getDocs(qContact);
-    
-    if (contactSnap.empty) {
-      await signOut(auth); // Revertir si no existe el contacto asociado
-      throw new Error('No existe información de contacto activa asociada a este correo.');
-    }
-    
-    const contactData = contactSnap.docs[0].data();
+    // 3.2. Descargar el Perfil de Usuario por doc ID = auth.uid (lectura puntual §9).
+    // El doc ID de 'usuarios' SIEMPRE coincide con el UID de Firebase Auth: por eso
+    // se lee por getDoc directo (las Security Rules no permiten query de colección sobre
+    // usuarios/contactos para preservar el aislamiento multi-tenant — ver firestore.rules).
+    const usuarioRef = doc(db, 'usuarios', authUser.uid).withConverter(usuarioConverter);
+    const userSnap = await getDoc(usuarioRef);
 
-    // 3.3. Descargar el Perfil de Usuario desde Firestore mediante contact_id
-    const usuariosRef = collection(db, 'usuarios').withConverter(usuarioConverter);
-    const qUser = query(usuariosRef, where('contact_id', '==', contactData.id), where('deletedAt', '==', null));
-    const userSnap = await getDocs(qUser);
-    
-    if (userSnap.empty) {
-      await signOut(auth); // Revertir si no existe en la base de datos
+    if (!userSnap.exists() || userSnap.data().deletedAt !== null) {
+      await signOut(auth); // Revertir si no existe en la base de datos o está eliminado
       throw new Error('Usuario no encontrado en la base de datos o se encuentra inactivo.');
     }
-    
-    const usuarioData = userSnap.docs[0].data();
-    
-    // Anidamos el objeto de contacto previamente descargado
-    usuarioData.contacto = contactData;
+
+    const usuarioData = userSnap.data();
+
+    // 3.3. Descargar el Contacto asociado por doc ID = contact_id del usuario
+    const contactoRef = doc(db, 'contactos', usuarioData.contact_id).withConverter(contactoConverter);
+    const contactSnap = await getDoc(contactoRef);
+
+    if (!contactSnap.exists() || contactSnap.data().deletedAt !== null) {
+      await signOut(auth); // Revertir si no existe el contacto asociado
+      throw new Error('No existe información de contacto activa asociada a este usuario.');
+    }
+
+    // Anidamos el objeto de contacto descargado
+    usuarioData.contacto = contactSnap.data();
 
     // 3.4. Obtener los datos de la Empresa, si no es super_admin
     if (usuarioData.system_role !== 'super_admin' && usuarioData.empresa_id) {
@@ -142,6 +141,18 @@ export const useSessionStore = defineStore('session', () => {
     currentUser.value = usuarioData;
     activeCompanyId.value = usuarioData.empresa_id || null;
     activeClienteId.value = usuarioData.cliente_id || null;
+
+    // Cargar grants del usuario (lectura puntual — §9 CLAUDE.md)
+    if (!usuarioData.isSuperAdmin) {
+      await useGrantStore().cargarGrants(usuarioData.id);
+      // Registrar slug→id de la empresa del usuario para el guard
+      if (usuarioData.empresa) {
+        useGrantStore().registrarEmpresaSlug(
+          usuarioData.empresa.slug,
+          usuarioData.empresa_id ?? usuarioData.empresa.id
+        );
+      }
+    }
 
     // 3.4.1. Cargar preferencias del usuario si existen
     if (usuarioData.preferences) {
@@ -185,6 +196,7 @@ export const useSessionStore = defineStore('session', () => {
     activeClienteId.value = null;
     activeCompanyId.value = null;
     activeUbicacionId.value = null;
+    useGrantStore().limpiarGrants();
 
     // Limpiamos el Local Storage
     localStorage.removeItem('session_token');
@@ -272,6 +284,17 @@ export const useSessionStore = defineStore('session', () => {
       currentSession.value = sessionData;
       activeCompanyId.value = usuarioData.empresa_id || null;
       activeClienteId.value = usuarioData.cliente_id || null;
+
+      // Cargar grants (lectura puntual — §9 CLAUDE.md)
+      if (!usuarioData.isSuperAdmin) {
+        await useGrantStore().cargarGrants(usuarioData.id);
+        if (usuarioData.empresa) {
+          useGrantStore().registrarEmpresaSlug(
+            usuarioData.empresa.slug,
+            usuarioData.empresa_id ?? usuarioData.empresa.id
+          );
+        }
+      }
 
       // Cargar preferencias del usuario si existen
       if (usuarioData.preferences) {

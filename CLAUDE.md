@@ -344,15 +344,42 @@ Proveedor de DTE abstracto con dos modos. Default global configurable (`dte_prov
 - Validar `entitlements` de la empresa en `create` de `empleados`/`ubicaciones`.
 - Webhooks MercadoPago: validar firma `x-signature` + **idempotencia** (eventos duplicados).
 
+### §9-bis — Bootstrap del primer super_admin
+
+Cuando la plataforma no tiene ningún usuario creado (`config/setup` no existe o `initialized != true`), las Security Rules abren temporalmente tres puertas de escritura para el usuario autenticado en Firebase Auth:
+
+| Colección | Permiso especial |
+|---|---|
+| `config/{docId}` | `write` si `sistemaNoInicializado()` |
+| `usuarios/{userId}` | `create` si `uid == userId` y `sistemaNoInicializado()` |
+| `contactos/{contactoId}` | `create` si `sistemaNoInicializado()` |
+
+La función helper en las Rules es:
+```js
+function sistemaNoInicializado() {
+  let setupDoc = get(/databases/$(database)/documents/config/setup);
+  return !setupDoc.exists || setupDoc.data.initialized != true;
+}
+```
+
+**Flujo de registro** (`sessionStore.registerFirstSuperAdmin`):
+1. `createUserWithEmailAndPassword` → Firebase Auth autentica al usuario.
+2. `setDoc(contactos/newId)` → permitido porque `sistemaNoInicializado() == true`.
+3. `setDoc(usuarios/authUid)` con `system_role: 'super_admin'` → permitido (uid == userId + no inicializado).
+4. `setDoc(config/setup, { initialized: true })` → cierra todas las puertas de bootstrap.
+5. `login()` automático → `isSuperAdmin()` ya puede resolverse normalmente.
+
+Una vez que `config/setup.initialized == true`, `sistemaNoInicializado()` devuelve `false` y estas puertas quedan cerradas permanentemente. La pantalla de login (`LoginView.vue`) lee `config/setup` sin autenticar (la regla `allow read: if true` en `config`) para decidir si mostrar el formulario de setup inicial o el de login normal.
+
 ---
 
 ## 10. Plan de trabajo (por fases)
 
-**Fase 0 — Fundaciones** *(en curso)*: colección `clientes`; `empresas.cliente_id`; `src/auth/permissions.ts`.
+**Fase 0 — Fundaciones** ✅ *Completa*: colección `clientes`; `empresas.cliente_id`; `src/auth/permissions.ts`.
 
-**Fase 1 — Autorización + cuentas**: `grants` + `puedeAcceder()`; refactor `beforeEach`; provisión de usuario desde empleado (`crear_acceso` / "Invitar"); Security Rules base.
+**Fase 1 — Autorización + cuentas** ✅ *Completa*: `grants` + `puedeAcceder()`; refactor `beforeEach`; Security Rules base; bootstrap del primer super_admin (ver §9-bis). Pendiente diferido a Fase 3: provisión de usuario desde empleado (`crear_acceso` / "Invitar") — se implementará junto al catálogo de cargos.
 
-**Fase 2 — Routing por scope**: prefijos `sucursales/`, `zonas/`; `ZonaLayout` + `views/zona/*`; `AppShell.vue`.
+**Fase 2 — Routing por scope** *(en curso)*: prefijos `sucursales/`, `zonas/`; `ZonaLayout` + `views/zona/*`; `AppShell.vue`.
 
 **Fase 3 — Cargos dinámicos**: extender `Cargo`; UI catálogo; provisión de grant desde cargo.
 
@@ -375,3 +402,28 @@ Proveedor de DTE abstracto con dos modos. Default global configurable (`dte_prov
 - **ConfiguracionTurnos:** plantilla de demanda de cobertura (default/month/range).
 - **Presencia:** ventana de un empleado en el local. **Segmento:** estación asignada por sub-intervalo.
 - **Solicitud:** excepción (licencia/feriado/emergencia) con estados y reemplazo.
+
+## 12. Instrucciones Adicionales
+
+- Usa al final de cada cambio "flatpak-spawn --host npx tsc --noEmit 2>&1" para probar 0 errores.
+- Siempre deja un registro en este archivo del avance de cada fase en la seccion "13. Registro de Avance"
+
+## 13. Registro de Avance
+
+### Fase 0 — Fundaciones ✅ (2026-06-19)
+- Modelos creados con `FirestoreDataConverter`: `Cliente`, `Empresa`, `Contacto`, `Usuario`, `Grant`, `Sesion`, `Empleado`, `Zona`, `Ubicacion`, `Estacion`, `Contrato`, `Asignacion`, `Excepcion`, `ReglaAsignacion`.
+- `src/auth/permissions.ts`: mapa `rol → permisos[]` completo.
+- Colección `clientes` y campo `cliente_id` en `empresas`.
+
+### Fase 1 — Autorización + cuentas ✅ (2026-06-19)
+- `src/auth/access.ts`: `puedeAcceder()` y `can()` con resolución jerárquica de scope.
+- `src/stores/grantStore.ts`: carga de grants al login, resolución de slugs empresa/sucursal.
+- `src/router/index.ts`: guard `beforeEach` con RBAC — verifica `requiresAuth`, `requiresSuperAdmin`, `requiresCompany`, `requiresUbicacion`.
+- `firestore.rules`: Security Rules base desplegadas. Bootstrap del primer super_admin implementado vía `sistemaNoInicializado()` (ver §9-bis).
+- `src/stores/sessionStore.ts`: `registerFirstSuperAdmin()` con flujo de bootstrap; `login()` con carga de contacto, empresa y grants; `validateSession()` para rehidratación desde localStorage.
+- `src/views/LoginView.vue`: formulario dual — setup inicial (primer super_admin) o login normal, controlado por `checkIfFirstSetup()`.
+- **Decisión:** provisión de cuentas desde empleado (`crear_acceso` / "Invitar") diferida a Fase 3.
+
+### Fase 2 — Routing por scope 🔄 (inicio: 2026-06-20)
+- Estado actual: rutas `/:companySlug` (EmpresaLayout) y `/:companySlug/:ubicacionSlug` (SucursalLayout) ya existen.
+- Pendiente: prefijo `sucursales/` en rutas de sucursal; `/:companySlug/zonas/:zonaSlug` con `ZonaLayout`; vistas `views/zona/*`; `AppShell.vue` unificado.

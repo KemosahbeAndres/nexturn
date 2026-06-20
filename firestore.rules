@@ -9,99 +9,190 @@ service cloud.firestore {
       return request.auth != null;
     }
 
-    // Lee el doc del usuario autenticado y verifica system_role.
-    // NOTA: request.auth.uid coincide con el id del doc en la colección 'usuarios'
-    // porque Firebase Auth genera el uid que también usamos como id de documento.
+    // Carga el doc del usuario autenticado UNA vez — Firestore cachea el get() dentro del request.
+    // IMPORTANTE: esta función NO debe usarse en la regla de /usuarios/{userId} para evitar
+    // recursión circular (la regla de usuarios llamaría a isSuperAdmin que llama get(usuarios) de nuevo).
+    function usuarioDoc() {
+      return get(/databases/$(database)/documents/usuarios/$(request.auth.uid)).data;
+    }
+
     function isSuperAdmin() {
+      return isSignedIn() && usuarioDoc().system_role == 'super_admin';
+    }
+
+    // Devuelve true mientras el sistema no ha sido inicializado (config/setup no existe o initialized != true).
+    // Permite el bootstrap del primer super_admin sin que exista todavía un usuario en Firestore.
+    function sistemaNoInicializado() {
+      let setupDoc = get(/databases/$(database)/documents/config/setup);
+      return !setupDoc.exists || setupDoc.data.initialized != true;
+    }
+
+    // El usuario tiene un grant activo sobre la empresa dada.
+    // Lee el campo denormalizado company_ids del doc de usuario (actualizado al crear/revocar grant).
+    function tieneAccesoEmpresa(companyId) {
       return isSignedIn() &&
-        get(/databases/$(database)/documents/usuarios/$(request.auth.uid)).data.system_role == 'super_admin';
+        companyId in usuarioDoc().get('company_ids', []);
+    }
+
+    // El usuario pertenece al mismo cliente que el doc (aislamiento de tenant a nivel cliente).
+    function mismoCliente(docClienteId) {
+      return isSignedIn() && usuarioDoc().cliente_id == docClienteId;
+    }
+
+    // El contacto pertenece al propio usuario autenticado (lo lee al iniciar sesión).
+    function esMiContacto(contactoId) {
+      return isSignedIn() && usuarioDoc().contact_id == contactoId;
+    }
+
+    // ── config ───────────────────────────────────────────────────────────────
+    // Marcador público de estado del sistema (config/setup → { initialized }).
+    // Lectura pública: la pantalla de login lo consulta SIN autenticar para saber
+    // si debe mostrar el registro del primer super_admin. Solo expone un booleano.
+    // Bootstrap: el primer super_admin puede marcar el sistema como inicializado
+    // incluso antes de que su doc exista como super_admin validado (el doc de usuario
+    // ya fue creado en el paso anterior del flujo de registro).
+    match /config/{docId} {
+      allow read: if true;
+      allow write: if isSuperAdmin() || (isSignedIn() && sistemaNoInicializado());
+    }
+
+    // ── grants ───────────────────────────────────────────────────────────────
+    // Solo super_admin puede crear/editar grants.
+    // El usuario puede leer sus propios grants (para que el grantStore pueda cargarlos al login).
+    match /grants/{grantId} {
+      allow read: if isSuperAdmin() ||
+        (isSignedIn() && resource.data.user_id == request.auth.uid);
+      allow create, update, delete: if isSuperAdmin();
     }
 
     // ── clientes ─────────────────────────────────────────────────────────────
-    // Solo el super_admin puede leer/escribir clientes.
-    // Fase 1 añadirá: el owner del cliente también puede leer el suyo.
+    // Solo super_admin puede escribir. Lectura: super_admin o mismo cliente.
+    // Fase 6 añadirá: owner del cliente también puede leer el suyo.
     match /clientes/{clienteId} {
-      allow read, write: if isSuperAdmin();
-    }
-
-    // ── empresas ─────────────────────────────────────────────────────────────
-    // Leer: super_admin o usuario cuyo cliente_id coincida con el de la empresa.
-    // Escribir: solo super_admin (Fase 1 abrirá al company_admin con grant).
-    match /empresas/{empresaId} {
       allow read: if isSuperAdmin() ||
-        (isSignedIn() &&
-          get(/databases/$(database)/documents/usuarios/$(request.auth.uid)).data.cliente_id
-            == resource.data.cliente_id);
+        (isSignedIn() && mismoCliente(clienteId));
       allow write: if isSuperAdmin();
     }
 
+    // ── empresas ─────────────────────────────────────────────────────────────
+    match /empresas/{empresaId} {
+      allow read: if isSuperAdmin() ||
+        (isSignedIn() && (
+          tieneAccesoEmpresa(empresaId) ||
+          mismoCliente(resource.data.cliente_id)
+        ));
+      allow write: if isSuperAdmin() ||
+        (isSignedIn() && tieneAccesoEmpresa(empresaId));
+    }
+
     // ── usuarios ─────────────────────────────────────────────────────────────
-    // Cada usuario puede leer y actualizar su propio doc (para guardar preferencias).
-    // El super_admin puede todo. Fase 1 abrirá escritura al users.manage grant.
+    // La regla para el doc PROPIO NO usa isSuperAdmin() para evitar recursión circular:
+    //   isSuperAdmin() → get(/usuarios/uid) → evalúa regla de usuarios → isSuperAdmin() → ...
+    // Firestore cachea el get() dentro del request, pero la evaluación recursiva de reglas
+    // dispara el error antes de que el caché ayude.
+    //
+    // Solución: separar en dos reglas.
+    // 1. El propio usuario siempre puede leer/escribir su doc (rompe la recursión).
+    // 2. Otros docs: se permite si quien accede es super_admin (usa isSuperAdmin() de forma segura
+    //    porque el get(/usuarios/uid) ya fue resuelto sin recursión en el paso anterior).
+    // 3. Bootstrap: si el sistema no está inicializado, se permite crear el primer usuario
+    //    con uid == userId (solo escritura del propio doc durante el setup inicial).
     match /usuarios/{userId} {
-      allow read, write: if isSuperAdmin() || (isSignedIn() && request.auth.uid == userId);
+      // Bootstrap del primer super_admin — solo si el sistema no ha sido inicializado.
+      allow create: if isSignedIn() && request.auth.uid == userId && sistemaNoInicializado();
+      // El usuario accede a su propio doc — sin get() adicional, rompe la recursión.
+      allow read, write: if isSignedIn() && request.auth.uid == userId;
+      // Un super_admin puede leer/escribir cualquier doc de usuario.
+      // Esta rama solo se evalúa cuando uid != userId, por lo que el get(usuarios/uid)
+      // apunta a un doc distinto al que se está accediendo — sin recursión.
+      allow read, write: if request.auth.uid != userId && isSuperAdmin();
     }
 
     // ── sesiones ─────────────────────────────────────────────────────────────
-    // El usuario solo puede acceder a sus propias sesiones.
     match /sesiones/{sesionId} {
       allow read, write: if isSignedIn() &&
         (isSuperAdmin() ||
-          resource == null ||   // permite create
+          resource == null ||
           resource.data.user_id == request.auth.uid);
     }
 
-    // ── contactos ────────────────────────────────────────────────────────────
-    // Temporal: cualquier usuario autenticado puede leer/escribir.
-    // Fase 1 restringirá por cliente_id / grant.
+    // ── contactos ─────────────────────────────────────────────────────────────
+    // Aislamiento por cliente_id. Los contactos no tienen company_id propio
+    // (un contacto puede ser empleado en varias empresas del mismo cliente).
+    // Bootstrap: si el sistema no está inicializado, se permite crear el primer contacto
+    // (el del super_admin) sin que exista aún un usuario en Firestore.
     match /contactos/{contactoId} {
-      allow read, write: if isSignedIn();
+      allow create: if isSignedIn() && sistemaNoInicializado();
+      allow read: if isSuperAdmin() ||
+        esMiContacto(contactoId) ||
+        (isSignedIn() && mismoCliente(resource.data.get('cliente_id', null)));
+      allow write: if isSuperAdmin() ||
+        (isSignedIn() && mismoCliente(resource.data.get('cliente_id', null)));
     }
 
     // ── empleados ─────────────────────────────────────────────────────────────
-    // Temporal: cualquier usuario autenticado puede leer/escribir.
-    // Fase 1 restringirá por company_id + grant.
     match /empleados/{empleadoId} {
-      allow read, write: if isSignedIn();
+      allow read: if isSuperAdmin() ||
+        (isSignedIn() && tieneAccesoEmpresa(resource.data.company_id));
+      allow write: if isSuperAdmin() ||
+        (isSignedIn() && tieneAccesoEmpresa(resource.data.company_id));
     }
 
     // ── ubicaciones ───────────────────────────────────────────────────────────
     match /ubicaciones/{ubicacionId} {
-      allow read, write: if isSignedIn();
+      allow read: if isSuperAdmin() ||
+        (isSignedIn() && tieneAccesoEmpresa(resource.data.company_id));
+      allow write: if isSuperAdmin() ||
+        (isSignedIn() && tieneAccesoEmpresa(resource.data.company_id));
     }
 
     // ── zonas ─────────────────────────────────────────────────────────────────
     match /zonas/{zonaId} {
-      allow read, write: if isSignedIn();
+      allow read: if isSuperAdmin() ||
+        (isSignedIn() && tieneAccesoEmpresa(resource.data.empresa_id));
+      allow write: if isSuperAdmin() ||
+        (isSignedIn() && tieneAccesoEmpresa(resource.data.empresa_id));
     }
 
     // ── estaciones ────────────────────────────────────────────────────────────
     match /estaciones/{estacionId} {
-      allow read, write: if isSignedIn();
+      allow read: if isSuperAdmin() ||
+        (isSignedIn() && tieneAccesoEmpresa(resource.data.empresa_id));
+      allow write: if isSuperAdmin() ||
+        (isSignedIn() && tieneAccesoEmpresa(resource.data.empresa_id));
     }
 
     // ── habilidades ───────────────────────────────────────────────────────────
+    // Temporal: catálogo global sin aislamiento. Fase 3 lo vinculará a empresa.
     match /habilidades/{habilidadId} {
       allow read, write: if isSignedIn();
     }
 
     // ── asignaciones ──────────────────────────────────────────────────────────
     match /asignaciones/{asignacionId} {
-      allow read, write: if isSignedIn();
+      allow read: if isSuperAdmin() ||
+        (isSignedIn() && tieneAccesoEmpresa(resource.data.empresa_id));
+      allow write: if isSuperAdmin() ||
+        (isSignedIn() && tieneAccesoEmpresa(resource.data.empresa_id));
     }
 
     // ── excepciones ───────────────────────────────────────────────────────────
     match /excepciones/{excepcionId} {
-      allow read, write: if isSignedIn();
+      allow read: if isSuperAdmin() ||
+        (isSignedIn() && tieneAccesoEmpresa(resource.data.empresa_id));
+      allow write: if isSuperAdmin() ||
+        (isSignedIn() && tieneAccesoEmpresa(resource.data.empresa_id));
     }
 
     // ── reglas_asignacion ─────────────────────────────────────────────────────
     match /reglas_asignacion/{reglaId} {
-      allow read, write: if isSignedIn();
+      allow read: if isSuperAdmin() ||
+        (isSignedIn() && tieneAccesoEmpresa(resource.data.empresa_id));
+      allow write: if isSuperAdmin() ||
+        (isSignedIn() && tieneAccesoEmpresa(resource.data.empresa_id));
     }
 
     // ── Denegación por defecto ────────────────────────────────────────────────
-    // Cualquier colección no listada queda bloqueada para todos.
     match /{document=**} {
       allow read, write: if false;
     }
