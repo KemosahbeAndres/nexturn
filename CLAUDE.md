@@ -379,9 +379,9 @@ Una vez que `config/setup.initialized == true`, `sistemaNoInicializado()` devuel
 
 **Fase 1 — Autorización + cuentas** ✅ *Completa*: `grants` + `puedeAcceder()`; refactor `beforeEach`; Security Rules base; bootstrap del primer super_admin (ver §9-bis). Pendiente diferido a Fase 3: provisión de usuario desde empleado (`crear_acceso` / "Invitar") — se implementará junto al catálogo de cargos.
 
-**Fase 2 — Routing por scope** *(en curso)*: prefijos `sucursales/`, `zonas/`; `ZonaLayout` + `views/zona/*`; `AppShell.vue`.
+**Fase 2 — Routing por scope** ✅ *Completa*: prefijos `sucursales/`, `zonas/`; `ZonaLayout` + `views/zona/*`; `AppShell.vue`.
 
-**Fase 3 — Cargos dinámicos**: extender `Cargo`; UI catálogo; provisión de grant desde cargo.
+**Fase 3 — Cargos dinámicos** ✅ *Completa*: extender `Cargo`; UI catálogo; provisión de grant desde cargo.
 
 **Fase 4 — Estaciones + scheduling**: `Estacion` (intensidad/max_continuo); demanda desde `ConfiguracionTurnos`; `presencias`, `segmentos`; refactor `asignaciones`; **algoritmo greedy en Cloud Function**; `solicitudes` con estados + reemplazo; calendario con lectura única + notificaciones.
 
@@ -435,3 +435,9 @@ Una vez que `config/setup.initialized == true`, `sistemaNoInicializado()` devuel
 - `src/layouts/AppShell.vue`: shell visual unificado (sidebar + topbar móvil + bottombar + offcanvas perfil). Props: `navItems`, `bottomItems?`, `routeParams`, `contextLabel`, `pageTitle`, `perfilRouteName`, `perfilRouteParams`, `isActive`. Slots: `#sidebar-top`, `#sidebar-footer-top`, `#topbar-left`. Evento: `@logout`.
 - `EmpresaLayout.vue` y `SucursalLayout.vue` refactorizados para usar `AppShell` — solo conservan `<script setup>` con la lógica propia.
 - `ZonaLayout.vue`: nuevo layout para el scope zona, usa `AppShell`, carga `zonaStore.listarZonas()` y establece `activeZonaId`.
+
+### Fase 3 — Cargos dinámicos ✅ (2026-06-20)
+- `src/models/Role.ts`: campos `scope_role_template: ScopeRoleTemplate`, `elegible_encargado: boolean`, `estaciones_default: string[]` agregados al modelo + `roleToFirestore`/`roleFromFirestore`. Tipo `ScopeRoleTemplate` exportado.
+- `src/stores/empresaStore.ts`: `addWorkRole()` y `updateWorkRole()` actualizados para recibir y persistir los nuevos campos.
+- `src/views/empresa/AjustesRolesView.vue`: formulario de creación y edición extendido con selector `scope_role_template` y checkbox `elegible_encargado`.
+- `src/views/sucursal/PersonalView.vue`: sección "Acceso al sistema" agregada en el panel de detalle del empleado. Busca usuario existente por `contact_id`, muestra estado y grants actuales, o formulario de invitación con selector de rol y contraseña temporal. Crea usuario en Firebase Auth (app secundaria), doc `usuarios`, y grant con scope automático según rol elegido. `revocarAcceso()` suspende el usuario y revoca todos sus grants de la empresa.

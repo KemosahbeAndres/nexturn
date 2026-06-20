@@ -43,6 +43,18 @@
               <option value="">Sin rol padre (raíz)</option>
               <option v-for="r in empresa?.cargos" :key="r.id" :value="r.id">{{ r.nombre }}</option>
             </select>
+            <select v-model="addForm.scope_role_template"
+              class="w-full px-3 py-2 text-sm bg-gray-50 dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 dark:text-white">
+              <option value="">Sin acceso al sistema</option>
+              <option value="zone_manager">Gestor de zona</option>
+              <option value="branch_manager">Gestor de sucursal</option>
+              <option value="member">Miembro</option>
+            </select>
+            <label class="flex items-center gap-2 cursor-pointer select-none">
+              <input v-model="addForm.elegible_encargado" type="checkbox"
+                class="w-4 h-4 text-blue-600 border-gray-300 dark:border-gray-600 rounded focus:ring-blue-500" />
+              <span class="text-sm text-gray-700 dark:text-gray-300">Elegible como encargado</span>
+            </label>
           </div>
           <p v-if="addError" class="text-xs text-red-500 dark:text-red-400">{{ addError }}</p>
           <div class="flex gap-2">
@@ -129,6 +141,26 @@
               </option>
             </select>
           </div>
+          <div>
+            <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Acceso al sistema (template)</label>
+            <select v-model="editForm.scope_role_template"
+              :disabled="!canManage"
+              class="w-full px-3 py-2 text-sm bg-gray-50 dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 dark:text-white disabled:opacity-60 disabled:cursor-not-allowed transition-colors">
+              <option value="">Sin acceso al sistema</option>
+              <option value="zone_manager">Gestor de zona</option>
+              <option value="branch_manager">Gestor de sucursal</option>
+              <option value="member">Miembro</option>
+            </select>
+            <p class="text-xs text-gray-400 dark:text-gray-500 mt-1">Grant que se sugiere al crear un usuario para este cargo.</p>
+          </div>
+          <div class="flex items-center gap-2">
+            <input v-model="editForm.elegible_encargado" type="checkbox" id="edit-elegible-encargado"
+              :disabled="!canManage"
+              class="w-4 h-4 text-blue-600 border-gray-300 dark:border-gray-600 rounded focus:ring-blue-500 disabled:opacity-60" />
+            <label for="edit-elegible-encargado" class="text-sm text-gray-700 dark:text-gray-300 cursor-pointer select-none">
+              Elegible como encargado de zona o sucursal
+            </label>
+          </div>
         </div>
 
         <!-- Hijos del rol -->
@@ -174,7 +206,7 @@ import { ref, computed, watch } from 'vue';
 import { useRoute } from 'vue-router';
 import { useEmpresaStore } from '../../stores/empresaStore';
 import { useSessionStore } from '../../stores/sessionStore';
-import type { Role } from '../../models/Role';
+import type { Role, ScopeRoleTemplate } from '../../models/Role';
 import RoleRow from '../../components/empresa/RoleRow.vue';
 
 const route = useRoute();
@@ -217,9 +249,9 @@ watch(() => empresa.value?.cargos, (roles) => {
 
 // ── Editor del rol seleccionado ─────────────────────────────────────────────
 
-type EditForm = { nombre: string; slug: string; parent_role: string };
-const editForm = ref<EditForm>({ nombre: '', slug: '', parent_role: '' });
-const editSnapshot = ref<EditForm>({ nombre: '', slug: '', parent_role: '' });
+type EditForm = { nombre: string; slug: string; parent_role: string; scope_role_template: ScopeRoleTemplate | ''; elegible_encargado: boolean };
+const editForm = ref<EditForm>({ nombre: '', slug: '', parent_role: '', scope_role_template: '', elegible_encargado: false });
+const editSnapshot = ref<EditForm>({ nombre: '', slug: '', parent_role: '', scope_role_template: '', elegible_encargado: false });
 const saving = ref(false);
 const editError = ref('');
 const editSuccess = ref('');
@@ -230,6 +262,8 @@ watch(selectedRole, (role) => {
     nombre: role.nombre,
     slug: role.slug,
     parent_role: role.parent_role ?? '',
+    scope_role_template: role.scope_role_template ?? '',
+    elegible_encargado: role.elegible_encargado,
   };
   editForm.value = { ...snap };
   editSnapshot.value = { ...snap };
@@ -285,6 +319,9 @@ async function submitEdit() {
       nombre: editForm.value.nombre.trim(),
       slug: editForm.value.slug.trim(),
       parent_role: editForm.value.parent_role || null,
+      scope_role_template: (editForm.value.scope_role_template || null) as ScopeRoleTemplate,
+      elegible_encargado: editForm.value.elegible_encargado,
+      estaciones_default: selectedRole.value.estaciones_default,
     });
     editSuccess.value = 'Rol actualizado correctamente.';
     setTimeout(() => { editSuccess.value = ''; }, 3000);
@@ -309,7 +346,7 @@ async function submitDelete() {
 // ── Formulario agregar ───────────────────────────────────────────────────────
 
 const showAddForm = ref(false);
-const addForm = ref({ nombre: '', slug: '', parent_role: '' });
+const addForm = ref({ nombre: '', slug: '', parent_role: '', scope_role_template: '' as ScopeRoleTemplate | '', elegible_encargado: false });
 const adding = ref(false);
 const addError = ref('');
 
@@ -334,7 +371,7 @@ watch(() => addForm.value.slug, (val) => {
 function openAdd() {
   showAddForm.value = true;
   selectedRole.value = null;
-  addForm.value = { nombre: '', slug: '', parent_role: '' };
+  addForm.value = { nombre: '', slug: '', parent_role: '', scope_role_template: '', elegible_encargado: false };
   addError.value = '';
   slugManual = false;
 }
@@ -353,6 +390,8 @@ async function submitAdd() {
       nombre: addForm.value.nombre.trim(),
       slug: addForm.value.slug.trim(),
       parent_role: addForm.value.parent_role || null,
+      scope_role_template: (addForm.value.scope_role_template || null) as ScopeRoleTemplate,
+      elegible_encargado: addForm.value.elegible_encargado,
     });
     closeAdd();
   } catch (e: any) {

@@ -1,4 +1,9 @@
 import { Timestamp } from 'firebase/firestore';
+import type { GrantRole } from '../auth/permissions';
+
+// Template de grant que se sugiere al provisionar usuario desde este cargo.
+// null = sin acceso al sistema (operario típico).
+export type ScopeRoleTemplate = Extract<GrantRole, 'zone_manager' | 'branch_manager' | 'member'> | null;
 
 export class Role {
   // parent_role apunta al `id` (UUID) del rol padre, null si es raíz de jerarquía
@@ -7,6 +12,9 @@ export class Role {
     public nombre: string,
     public slug: string,
     public parent_role: string | null = null,
+    public scope_role_template: ScopeRoleTemplate = null,
+    public elegible_encargado: boolean = false,
+    public estaciones_default: string[] = [],
     public createdAt: Date = new Date(),
     public updatedAt: Date = new Date(),
     public deletedAt: Date | null = null
@@ -50,6 +58,9 @@ export function roleToFirestore(role: Role): Record<string, unknown> {
     nombre: role.nombre,
     slug: role.slug,
     parent_role: role.parent_role,
+    scope_role_template: role.scope_role_template,
+    elegible_encargado: role.elegible_encargado,
+    estaciones_default: role.estaciones_default,
     createdAt: role.createdAt ? Timestamp.fromDate(role.createdAt) : Timestamp.now(),
     updatedAt: Timestamp.now(),
     deletedAt: role.deletedAt ? Timestamp.fromDate(role.deletedAt) : null,
@@ -62,6 +73,9 @@ export function roleFromFirestore(data: Record<string, any>): Role {
     data.nombre || '',
     data.slug || '',
     data.parent_role ?? null,
+    data.scope_role_template ?? null,
+    data.elegible_encargado ?? false,
+    data.estaciones_default ?? [],
     data.createdAt?.toDate?.() || new Date(),
     data.updatedAt?.toDate?.() || new Date(),
     data.deletedAt?.toDate?.() ?? null

@@ -315,6 +315,106 @@
           </div>
         </section>
 
+        <!-- Sección: Acceso al sistema -->
+        <section class="bg-white dark:bg-gray-800 rounded-xl border border-gray-100 dark:border-gray-700 overflow-hidden">
+          <div class="px-4 py-3 border-b border-gray-100 dark:border-gray-700">
+            <p class="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">Acceso al sistema</p>
+            <p class="text-[10px] text-gray-400 dark:text-gray-500 mt-0.5">Gestiona si este empleado puede iniciar sesión.</p>
+          </div>
+
+          <!-- Estado: buscando usuario -->
+          <div v-if="buscandoUsuario" class="px-4 py-5 flex items-center gap-2 text-gray-400">
+            <svg class="w-4 h-4 animate-spin" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+              <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/>
+              <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"/>
+            </svg>
+            <span class="text-xs">Verificando acceso…</span>
+          </div>
+
+          <!-- Estado: ya tiene usuario -->
+          <div v-else-if="usuarioEmpleado" class="px-4 py-4 space-y-3">
+            <div class="flex items-center gap-3">
+              <span class="w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold shrink-0"
+                :class="usuarioEmpleado.estado === 'activo'
+                  ? 'bg-emerald-100 dark:bg-emerald-900/40 text-emerald-700 dark:text-emerald-300'
+                  : usuarioEmpleado.estado === 'invitado'
+                  ? 'bg-amber-100 dark:bg-amber-900/40 text-amber-700 dark:text-amber-300'
+                  : 'bg-gray-100 dark:bg-gray-700 text-gray-500'">
+                {{ usuarioEmpleado.estado === 'activo' ? '✓' : usuarioEmpleado.estado === 'invitado' ? '~' : '✕' }}
+              </span>
+              <div>
+                <p class="text-sm font-medium text-gray-900 dark:text-white">{{ usuarioEmpleado.contacto?.email || empleadoSeleccionado?.contacto?.email || '—' }}</p>
+                <p class="text-xs capitalize"
+                  :class="usuarioEmpleado.estado === 'activo'
+                    ? 'text-emerald-600 dark:text-emerald-400'
+                    : usuarioEmpleado.estado === 'invitado'
+                    ? 'text-amber-600 dark:text-amber-400'
+                    : 'text-gray-400 dark:text-gray-500'">
+                  {{ { activo: 'Activo', invitado: 'Invitado (pendiente)', suspendido: 'Suspendido' }[usuarioEmpleado.estado] ?? usuarioEmpleado.estado }}
+                </p>
+              </div>
+            </div>
+            <!-- Grants del usuario para esta empresa -->
+            <div v-if="grantsUsuarioEmpleado.length" class="space-y-1">
+              <p class="text-[10px] font-medium text-gray-400 dark:text-gray-500 uppercase">Permisos asignados</p>
+              <div class="flex flex-wrap gap-1.5">
+                <span v-for="g in grantsUsuarioEmpleado" :key="g.id"
+                  class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-blue-50 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 border border-blue-100 dark:border-blue-800">
+                  {{ GRANT_ROLE_LABELS[g.role] ?? g.role }}
+                  <span class="text-[10px] text-blue-400 dark:text-blue-500">· {{ SCOPE_TYPE_LABELS[g.scope_type] ?? g.scope_type }}</span>
+                </span>
+              </div>
+            </div>
+            <p v-if="errorAcceso" class="text-xs text-red-500">{{ errorAcceso }}</p>
+            <button type="button" @click="revocarAcceso" :disabled="guardandoAcceso"
+              class="text-xs text-red-600 dark:text-red-400 hover:underline disabled:opacity-50">
+              {{ guardandoAcceso ? 'Procesando…' : 'Revocar acceso' }}
+            </button>
+          </div>
+
+          <!-- Estado: sin usuario — formulario de invitación -->
+          <div v-else class="px-4 py-4 space-y-3">
+            <p class="text-xs text-gray-400 dark:text-gray-500">Este empleado aún no tiene acceso al sistema.</p>
+
+            <!-- Si el cargo tiene scope_role_template, lo mostramos como sugerencia -->
+            <div v-if="templateSugerido" class="p-3 rounded-lg bg-blue-50 dark:bg-blue-900/20 border border-blue-100 dark:border-blue-800">
+              <p class="text-xs text-blue-700 dark:text-blue-300">
+                Su cargo sugiere el rol <strong>{{ GRANT_ROLE_LABELS[templateSugerido] }}</strong>.
+              </p>
+            </div>
+
+            <!-- Formulario de invitación -->
+            <div v-if="!empleadoSeleccionado?.contacto?.email" class="p-3 rounded-lg bg-amber-50 dark:bg-amber-900/20 border border-amber-100 dark:border-amber-800">
+              <p class="text-xs text-amber-700 dark:text-amber-300">Agrega un email al empleado antes de crear su acceso.</p>
+            </div>
+
+            <template v-else>
+              <div class="space-y-2">
+                <div>
+                  <label class="block text-[10px] font-medium text-gray-500 dark:text-gray-400 mb-1">Rol de acceso</label>
+                  <select v-model="formAcceso.role"
+                    class="w-full px-2.5 py-1.5 text-xs rounded-lg border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-1 focus:ring-blue-500">
+                    <option value="zone_manager">Gestor de zona</option>
+                    <option value="branch_manager">Gestor de sucursal</option>
+                    <option value="member">Miembro</option>
+                    <option value="viewer">Solo lectura</option>
+                  </select>
+                </div>
+                <div>
+                  <label class="block text-[10px] font-medium text-gray-500 dark:text-gray-400 mb-1">Contraseña temporal</label>
+                  <input v-model="formAcceso.password" type="password" placeholder="Mín. 6 caracteres" minlength="6"
+                    class="w-full px-2.5 py-1.5 text-xs rounded-lg border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-1 focus:ring-blue-500" />
+                </div>
+              </div>
+              <p v-if="errorAcceso" class="text-xs text-red-500">{{ errorAcceso }}</p>
+              <button type="button" @click="crearAccesoEmpleado" :disabled="guardandoAcceso || formAcceso.password.length < 6"
+                class="w-full px-3 py-2 text-xs font-medium text-white bg-blue-600 hover:bg-blue-700 disabled:opacity-50 rounded-lg transition-colors">
+                {{ guardandoAcceso ? 'Creando acceso…' : 'Crear acceso e invitar' }}
+              </button>
+            </template>
+          </div>
+        </section>
+
       </div>
     </div>
 
@@ -518,16 +618,38 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, watch, reactive } from 'vue';
 import { useRoute } from 'vue-router';
-import { collection, doc, setDoc, getDocs, query, where, updateDoc, Timestamp } from 'firebase/firestore';
+import { collection, doc, setDoc, getDocs, query, where, updateDoc, Timestamp, getDoc } from 'firebase/firestore';
+import { initializeApp, deleteApp } from 'firebase/app';
+import { getAuth, createUserWithEmailAndPassword } from 'firebase/auth';
 import { useSessionStore } from '../../stores/sessionStore';
 import { useEmpresaStore } from '../../stores/empresaStore';
 import { useEmpleadoStore } from '../../stores/empleadoStore';
 import { useUbicacionStore } from '../../stores/ubicacionStore';
 import { useEstacionStore } from '../../stores/estacionStore';
+import { useGrantStore } from '../../stores/grantStore';
 import { useRut } from '../../composables/useRut';
-import { db } from '../../firebase';
+import { db, firebaseApp } from '../../firebase';
 import { contactoConverter, Contacto } from '../../models/Contacto';
+import { Usuario, usuarioConverter } from '../../models/Usuario';
+import { Grant, grantConverter } from '../../models/Grant';
 import type { Empleado } from '../../models/Empleado';
+import type { GrantRole, ScopeType } from '../../auth/permissions';
+
+const GRANT_ROLE_LABELS: Record<GrantRole, string> = {
+  owner: 'Owner',
+  company_admin: 'Admin empresa',
+  zone_manager: 'Gestor de zona',
+  branch_manager: 'Gestor de sucursal',
+  member: 'Miembro',
+  viewer: 'Solo lectura',
+};
+
+const SCOPE_TYPE_LABELS: Record<ScopeType, string> = {
+  client: 'cliente',
+  company: 'empresa',
+  zone: 'zona',
+  branch: 'sucursal',
+};
 
 const route = useRoute();
 const sessionStore = useSessionStore();
@@ -535,6 +657,7 @@ const empresaStore = useEmpresaStore();
 const empleadoStore = useEmpleadoStore();
 const ubicacionStore = useUbicacionStore();
 const estacionStore = useEstacionStore();
+const grantStore = useGrantStore();
 
 const activeCompanyId = computed(() => {
   if (sessionStore.userRole !== 'super_admin') return sessionStore.activeCompanyId;
@@ -942,6 +1065,189 @@ async function guardarNuevoEmpleado() {
     errorNuevo.value = e.message || 'Error al crear el empleado.';
   } finally {
     guardandoNuevo.value = false;
+  }
+}
+
+// ── Acceso al sistema ──────────────────────────────────────────────────────────
+
+const buscandoUsuario    = ref(false);
+const usuarioEmpleado    = ref<Usuario | null>(null);
+const grantsUsuarioEmpleado = ref<Grant[]>([]);
+const guardandoAcceso    = ref(false);
+const errorAcceso        = ref('');
+const formAcceso = reactive({ role: 'member' as GrantRole, password: '' });
+
+// Template de grant sugerido por el cargo activo del empleado
+const templateSugerido = computed<GrantRole | null>(() => {
+  if (!empleadoSeleccionado.value) return null;
+  const contrato = (empleadoSeleccionado.value.contratos ?? []).find(c => c.active && !c.deletedAt);
+  if (!contrato?.cargo_id) return null;
+  const cargo = cargosEmpresa.value.find(c => c.id === contrato.cargo_id);
+  return (cargo?.scope_role_template ?? null) as GrantRole | null;
+});
+
+// Cuando se selecciona un empleado, precarga el template y busca usuario existente
+watch(empleadoSeleccionado, async (emp) => {
+  usuarioEmpleado.value = null;
+  grantsUsuarioEmpleado.value = [];
+  errorAcceso.value = '';
+  formAcceso.password = '';
+
+  if (templateSugerido.value) {
+    formAcceso.role = templateSugerido.value;
+  }
+
+  if (!emp?.contact_id) return;
+  buscandoUsuario.value = true;
+  try {
+    const snap = await getDocs(
+      query(collection(db, 'usuarios').withConverter(usuarioConverter),
+        where('contact_id', '==', emp.contact_id),
+        where('deletedAt', '==', null)
+      )
+    );
+    if (snap.empty) return;
+    const u = snap.docs[0].data();
+    // Hidratar contacto
+    if (emp.contacto) u.contacto = emp.contacto;
+    usuarioEmpleado.value = u;
+
+    // Cargar grants del usuario para esta empresa
+    if (activeCompanyId.value) {
+      const gSnap = await getDocs(
+        query(collection(db, 'grants').withConverter(grantConverter),
+          where('user_id', '==', u.id),
+          where('company_id', '==', activeCompanyId.value),
+          where('active', '==', true),
+          where('deletedAt', '==', null)
+        )
+      );
+      grantsUsuarioEmpleado.value = gSnap.docs.map(d => d.data());
+    }
+  } catch (e) {
+    console.error('Error buscando usuario del empleado:', e);
+  } finally {
+    buscandoUsuario.value = false;
+  }
+}, { immediate: false });
+
+async function crearAccesoEmpleado() {
+  if (!empleadoSeleccionado.value || !activeCompanyId.value) return;
+  if (!empleadoSeleccionado.value.contacto?.email) {
+    errorAcceso.value = 'El empleado no tiene email registrado.';
+    return;
+  }
+  if (formAcceso.password.length < 6) {
+    errorAcceso.value = 'La contraseña debe tener al menos 6 caracteres.';
+    return;
+  }
+  guardandoAcceso.value = true;
+  errorAcceso.value = '';
+  try {
+    const email = empleadoSeleccionado.value.contacto.email;
+    const contactId = empleadoSeleccionado.value.contact_id;
+
+    // Obtener cliente_id desde la empresa (el super_admin no tiene activeClienteId en sesión)
+    const empresa = empresaStore.empresas?.find(e => e.id === activeCompanyId.value);
+    const clienteId = empresa?.cliente_id ?? sessionStore.activeClienteId;
+    if (!clienteId) throw new Error('No se encontró el cliente asociado a esta empresa.');
+
+    // Crear usuario en Firebase Auth usando app secundaria (evita cerrar sesión del admin)
+    const secondaryApp = initializeApp(firebaseApp.options, `InviteApp_${Date.now()}`);
+    const secondaryAuth = getAuth(secondaryApp);
+    let authUid: string;
+    try {
+      const cred = await createUserWithEmailAndPassword(secondaryAuth, email, formAcceso.password);
+      authUid = cred.user.uid;
+    } finally {
+      await deleteApp(secondaryApp);
+    }
+
+    // Crear doc en colección 'usuarios'
+    const newUsuario = new Usuario(
+      authUid,
+      null,
+      contactId,
+      'client_user',
+      new Date(),
+      new Date(),
+      null,
+      clienteId,
+      undefined,
+      'invitado',
+      [activeCompanyId.value]
+    );
+    await setDoc(
+      doc(collection(db, 'usuarios').withConverter(usuarioConverter), authUid),
+      newUsuario
+    );
+
+    // Determinar scope según rol elegido
+    let scopeType: ScopeType = 'company';
+    let scopeId = activeCompanyId.value;
+
+    if (formAcceso.role === 'zone_manager' && sessionStore.activeZonaId) {
+      scopeType = 'zone';
+      scopeId = sessionStore.activeZonaId;
+    } else if ((formAcceso.role === 'branch_manager' || formAcceso.role === 'member') && sessionStore.activeUbicacionId) {
+      scopeType = 'branch';
+      scopeId = sessionStore.activeUbicacionId;
+    }
+
+    // Crear grant
+    await grantStore.crearGrant({
+      user_id:    authUid,
+      cliente_id: clienteId,
+      company_id: activeCompanyId.value,
+      scope_type: scopeType,
+      scope_id:   scopeId,
+      role:       formAcceso.role,
+      active:     true,
+    });
+
+    // Actualizar vista local
+    newUsuario.contacto = empleadoSeleccionado.value.contacto;
+    usuarioEmpleado.value = newUsuario;
+
+    // Recargar grants
+    const gSnap = await getDocs(
+      query(collection(db, 'grants').withConverter(grantConverter),
+        where('user_id', '==', authUid),
+        where('company_id', '==', activeCompanyId.value),
+        where('active', '==', true),
+        where('deletedAt', '==', null)
+      )
+    );
+    grantsUsuarioEmpleado.value = gSnap.docs.map(d => d.data());
+    formAcceso.password = '';
+  } catch (e: any) {
+    errorAcceso.value = e.message || 'Error al crear el acceso.';
+  } finally {
+    guardandoAcceso.value = false;
+  }
+}
+
+async function revocarAcceso() {
+  if (!usuarioEmpleado.value) return;
+  if (!confirm(`¿Revocar el acceso de ${empleadoSeleccionado.value?.displayName}? El usuario no podrá iniciar sesión.`)) return;
+  guardandoAcceso.value = true;
+  errorAcceso.value = '';
+  try {
+    // Revocar todos los grants del usuario para esta empresa
+    for (const g of grantsUsuarioEmpleado.value) {
+      await grantStore.revocarGrant(g.id, g.user_id, g.company_id);
+    }
+    // Suspender usuario
+    await updateDoc(doc(db, 'usuarios', usuarioEmpleado.value.id), {
+      estado: 'suspendido',
+      updatedAt: Timestamp.now(),
+    });
+    usuarioEmpleado.value = null;
+    grantsUsuarioEmpleado.value = [];
+  } catch (e: any) {
+    errorAcceso.value = e.message || 'Error al revocar acceso.';
+  } finally {
+    guardandoAcceso.value = false;
   }
 }
 </script>

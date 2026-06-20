@@ -7,6 +7,7 @@ import { Empresa, empresaConverter } from '../models/Empresa';
 import type { EmpresaType } from '../models/Empresa';
 import { contactoConverter } from '../models/Contacto';
 import { Role, roleToFirestore } from '../models/Role';
+import type { ScopeRoleTemplate } from '../models/Role';
 
 export const useEmpresaStore = defineStore('empresa', () => {
   const empresasRef = collection(db, 'empresas').withConverter(empresaConverter);
@@ -78,7 +79,14 @@ export const useEmpresaStore = defineStore('empresa', () => {
   }
 
   // Gestión de roles de trabajo (solo admin/super_admin)
-  async function addWorkRole(empresaId: string, data: { nombre: string; slug: string; parent_role?: string | null }) {
+  async function addWorkRole(empresaId: string, data: {
+    nombre: string;
+    slug: string;
+    parent_role?: string | null;
+    scope_role_template?: ScopeRoleTemplate;
+    elegible_encargado?: boolean;
+    estaciones_default?: string[];
+  }) {
     const empresa = empresas.value?.find(e => e.id === empresaId);
     if (!empresa) return;
     if (empresa.cargos.some(r => r.slug === data.slug)) {
@@ -88,7 +96,15 @@ export const useEmpresaStore = defineStore('empresa', () => {
     if (parentId && !empresa.cargos.some(r => r.id === parentId)) {
       throw new Error('El rol padre no existe en esta empresa.');
     }
-    const newRole = new Role(crypto.randomUUID(), data.nombre, data.slug, parentId);
+    const newRole = new Role(
+      crypto.randomUUID(),
+      data.nombre,
+      data.slug,
+      parentId,
+      data.scope_role_template ?? null,
+      data.elegible_encargado ?? false,
+      data.estaciones_default ?? []
+    );
     await updateEmpresa(empresaId, { cargos: [...empresa.cargos, newRole] });
   }
 
@@ -106,7 +122,14 @@ export const useEmpresaStore = defineStore('empresa', () => {
     await updateEmpresa(empresaId, { cargos: empresa.cargos.filter(r => r.id !== roleId) });
   }
 
-  async function updateWorkRole(empresaId: string, roleId: string, data: { nombre: string; slug: string; parent_role: string | null }) {
+  async function updateWorkRole(empresaId: string, roleId: string, data: {
+    nombre: string;
+    slug: string;
+    parent_role: string | null;
+    scope_role_template: ScopeRoleTemplate;
+    elegible_encargado: boolean;
+    estaciones_default: string[];
+  }) {
     const empresa = empresas.value?.find(e => e.id === empresaId);
     if (!empresa) return;
     const slugConflict = empresa.cargos.some(r => r.slug === data.slug && r.id !== roleId);
@@ -115,7 +138,9 @@ export const useEmpresaStore = defineStore('empresa', () => {
       throw new Error('El rol padre no existe en esta empresa.');
     }
     const updatedRoles = empresa.cargos.map(r =>
-      r.id === roleId ? new Role(r.id, data.nombre, data.slug, data.parent_role, r.createdAt, new Date(), r.deletedAt) : r
+      r.id === roleId
+        ? new Role(r.id, data.nombre, data.slug, data.parent_role, data.scope_role_template, data.elegible_encargado, data.estaciones_default, r.createdAt, new Date(), r.deletedAt)
+        : r
     );
     await updateEmpresa(empresaId, { cargos: updatedRoles });
   }
