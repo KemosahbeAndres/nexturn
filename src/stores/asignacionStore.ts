@@ -5,61 +5,52 @@ import { ref, computed } from 'vue';
 import { db } from '../firebase';
 import { Asignacion, asignacionConverter } from '../models/Asignacion';
 import type { AsignacionStatus } from '../models/Asignacion';
-import type { Turno } from '../models/Ubicacion';
 
 export const useAsignacionStore = defineStore('asignacion', () => {
   const asignacionesRef = collection(db, 'asignaciones').withConverter(asignacionConverter);
 
-  const queryParams = ref<{ locationId: string | null; status?: AsignacionStatus }>({ locationId: null });
+  const queryParams = ref<{ ubicacionId: string | null; date?: string }>({ ubicacionId: null });
 
-  function listarAsignaciones(locationId: string, status?: AsignacionStatus) {
-    queryParams.value = { locationId, status };
+  function listarAsignaciones(ubicacionId: string, date?: string) {
+    queryParams.value = { ubicacionId, date };
   }
 
   function clearAsignaciones() {
-    queryParams.value = { locationId: null };
+    queryParams.value = { ubicacionId: null };
   }
 
   const asignacionesQuery = computed(() => {
-    if (!queryParams.value.locationId) return null;
+    if (!queryParams.value.ubicacionId) return null;
     const conditions = [
-      where('location_id', '==', queryParams.value.locationId),
+      where('ubicacion_id', '==', queryParams.value.ubicacionId),
       where('deletedAt', '==', null),
     ];
-    if (queryParams.value.status) {
-      conditions.push(where('status', '==', queryParams.value.status));
+    if (queryParams.value.date) {
+      conditions.push(where('date', '==', queryParams.value.date));
     }
     return query(asignacionesRef, ...conditions);
   });
 
   const asignaciones = useCollection(asignacionesQuery);
-
   const asignacionesDraft = computed(() => asignaciones.value?.filter(a => a.status === 'draft') ?? []);
   const asignacionesPublicadas = computed(() => asignaciones.value?.filter(a => a.status === 'published') ?? []);
 
   async function createAsignacion(data: {
-    location_id: string;
+    empresa_id: string;
+    ubicacion_id: string;
     date: string;
-    turn: Turno;
-    assigned_staff: string[];
     status?: AsignacionStatus;
   }) {
     const docRef = doc(asignacionesRef);
     const nueva = new Asignacion(
       docRef.id,
-      data.location_id,
+      data.empresa_id,
+      data.ubicacion_id,
       data.date,
-      data.turn,
-      data.assigned_staff,
       data.status ?? 'draft'
     );
     await setDoc(docRef, nueva);
     return docRef.id;
-  }
-
-  async function updateAsignacion(id: string, data: Partial<Pick<Asignacion, 'date' | 'turn' | 'assigned_staff' | 'status'>>) {
-    const docRef = doc(db, 'asignaciones', id);
-    await updateDoc(docRef, { ...data, updatedAt: Timestamp.now() });
   }
 
   async function publishAsignacion(id: string) {
@@ -79,7 +70,6 @@ export const useAsignacionStore = defineStore('asignacion', () => {
     listarAsignaciones,
     clearAsignaciones,
     createAsignacion,
-    updateAsignacion,
     publishAsignacion,
     softDeleteAsignacion,
   };

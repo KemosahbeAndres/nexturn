@@ -436,6 +436,26 @@ Una vez que `config/setup.initialized == true`, `sistemaNoInicializado()` devuel
 - `EmpresaLayout.vue` y `SucursalLayout.vue` refactorizados para usar `AppShell` — solo conservan `<script setup>` con la lógica propia.
 - `ZonaLayout.vue`: nuevo layout para el scope zona, usa `AppShell`, carga `zonaStore.listarZonas()` y establece `activeZonaId`.
 
+### Fase 4 — Estaciones + Scheduling ✅ (2026-06-20)
+- `src/models/Estacion.ts`: campos `intensidad: 'alta'|'media'|'baja'` y `max_continuo_min: number|null` agregados + converter actualizado.
+- `src/models/Asignacion.ts`: refactor completo a grouper/publicación (`empresa_id`, `ubicacion_id`, `date`, `status`). Elimina `location_id`, `turn`, `assigned_staff`.
+- `src/models/Presencia.ts`: nuevo modelo (`empresa_id`, `ubicacion_id`, `empleado_id`, `date`, `start`, `end`).
+- `src/models/Segmento.ts`: nuevo modelo con `tipo: 'estacion'|'descanso'`, `status: 'draft'|'published'`, `asignacion_id`. Requiere índice compuesto Firestore `(empleado_id, date)`.
+- `src/models/Solicitud.ts`: nuevo modelo reemplazando `Excepcion` para el flujo de solicitudes con `estado`, `reemplazo`, `aprobador_id`. `Excepcion.ts` se mantiene intacto.
+- `src/stores/estacionStore.ts`: `createEstacion()` y `updateEstacion()` extendidos con `intensidad` y `max_continuo_min`.
+- `src/stores/asignacionStore.ts`: refactorizado para el nuevo schema de Asignacion.
+- `src/stores/presenciaStore.ts`: nuevo store, lecturas puntuales (`getDocs`).
+- `src/stores/segmentoStore.ts`: nuevo store mixto — `useCollection` para la vista del manager (draft board), `cargarSegmentosEmpleado()` para CalendarioView (una lectura puntual).
+- `src/stores/solicitudStore.ts`: nuevo store con `listarPorSucursal()` / `listarPorEmpleado()`, `aprobarSolicitud()`, `rechazarSolicitud()`.
+- `functions/src/index.ts`: Cloud Function `generarBorrador` (`onCall`, región `southamerica-west1`). Algoritmo greedy: buckets de 30 min, anti-solapamiento, anti-saturación (`max_continuo_min`), reglas hard `is_strict`, marcado de huecos. Batch write idempotente.
+- `src/views/sucursal/ajustes/AjustesEstacionesView.vue`: pill group de intensidad + toggle `max_continuo_min` + badge de intensidad en lista.
+- `src/views/sucursal/TurnosView.vue`: toolbar "Generar borrador" con date picker, llama `httpsCallable(functions, 'generarBorrador')`, muestra huecos.
+- `src/views/sucursal/SolicitudesView.vue`: reemplaza stub. Vista manager (tabs por estado, aprobar/rechazar + reemplazo, aviso reasignación manual). Vista empleado (lista propia + modal nueva solicitud).
+- `src/views/sucursal/CalendarioView.vue`: nueva vista, lectura puntual sin listener. Grid semanal con navegación por arrows. Segmentos como bloques (estación o descanso).
+- `src/views/sucursal/PresenciasView.vue`: nueva vista para managers. Date picker → carga presencias del día → registrar/eliminar presencia por empleado.
+- `src/router/index.ts`: rutas `sucursal-presencias` y `sucursal-calendario` agregadas.
+- `src/layouts/SucursalLayout.vue`: navItems "Presencias" (solo managers) y "Mi Calendario" (todos) agregados con iconos SVG inline.
+
 ### Fase 3 — Cargos dinámicos ✅ (2026-06-20)
 - `src/models/Role.ts`: campos `scope_role_template: ScopeRoleTemplate`, `elegible_encargado: boolean`, `estaciones_default: string[]` agregados al modelo + `roleToFirestore`/`roleFromFirestore`. Tipo `ScopeRoleTemplate` exportado.
 - `src/stores/empresaStore.ts`: `addWorkRole()` y `updateWorkRole()` actualizados para recibir y persistir los nuevos campos.

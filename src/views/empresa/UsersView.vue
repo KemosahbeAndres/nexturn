@@ -158,6 +158,7 @@ import { useUsuarioStore } from '../../stores/usuarioStore';
 import { useSessionStore } from '../../stores/sessionStore';
 import { useEmpresaStore } from '../../stores/empresaStore';
 import { Contacto, contactoConverter } from '../../models/Contacto';
+import type { SystemRole } from '../../models/Usuario';
 import UserModal from '../../components/UserModal.vue';
 
 const usuarioStore = useUsuarioStore();
@@ -204,6 +205,7 @@ const openModal = (mode: 'create' | 'edit', user: any = null) => {
 
 const handleSaveUser = async (data: any) => {
   try {
+    const systemRole = data.system_role as SystemRole;
     // Siempre fija la empresa resuelta en onMounted; nunca acepta empresa_id del formulario
     const empresaIdToSave = resolvedEmpresaId.value;
 
@@ -247,14 +249,14 @@ const handleSaveUser = async (data: any) => {
       if (!userSnap.empty) {
         await usuarioStore.updateUsuario(userSnap.docs[0].id, {
           empresa_id: empresaIdToSave,
-          system_role: data.system_role,
+          system_role: systemRole,
           deletedAt: null
         });
       } else {
         await usuarioStore.createUsuario({
           empresa_id: empresaIdToSave,
           contact_id: finalContactId,
-          system_role: data.system_role
+          system_role: systemRole
         });
       }
 
@@ -269,7 +271,7 @@ const handleSaveUser = async (data: any) => {
       }
       await usuarioStore.updateUsuario(selectedUser.value.id, {
         empresa_id: empresaIdToSave,
-        system_role: data.system_role
+        system_role: systemRole
       });
     }
 
@@ -322,7 +324,7 @@ onMounted(async () => {
 
   if (!sessionStore.currentUser) return;
 
-  let roleToFetch = sessionStore.currentUser.system_role;
+  let roleToFetch: string = sessionStore.currentUser.system_role;
   let empresaIdToFetch = sessionStore.currentUser.empresa_id;
 
   if (roleToFetch === 'super_admin' && route.params.companySlug) {

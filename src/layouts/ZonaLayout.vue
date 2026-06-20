@@ -88,7 +88,7 @@ watchEffect(() => {
     zonaStore.listarZonas(companyId);
   }
 
-  if (zonaSlug && zonaStore.zonas?.value) {
+  if (zonaSlug && zonaStore.zonas) {
     const found = zonaStore.resolverZonaSlug(zonaSlug);
     sessionStore.activeZonaId = found?.id ?? null;
   }

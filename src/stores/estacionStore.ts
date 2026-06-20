@@ -4,6 +4,7 @@ import { collection, doc, setDoc, updateDoc, query, where, Timestamp } from 'fir
 import { ref, computed } from 'vue';
 import { db } from '../firebase';
 import { Estacion, estacionConverter } from '../models/Estacion';
+import type { EstacionIntensidad } from '../models/Estacion';
 
 export const useEstacionStore = defineStore('estacion', () => {
   const estacionesRef = collection(db, 'estaciones').withConverter(estacionConverter);
@@ -27,14 +28,31 @@ export const useEstacionStore = defineStore('estacion', () => {
     estaciones.value?.filter(e => e.active && !e.deletedAt) ?? []
   );
 
-  async function createEstacion(data: { empresa_id: string; nombre: string; descripcion: string }) {
+  async function createEstacion(data: {
+    empresa_id: string;
+    nombre: string;
+    descripcion: string;
+    intensidad?: EstacionIntensidad;
+    max_continuo_min?: number | null;
+  }) {
     const docRef = doc(estacionesRef);
-    const nueva = new Estacion(docRef.id, data.empresa_id, data.nombre, data.descripcion, true);
+    const nueva = new Estacion(
+      docRef.id,
+      data.empresa_id,
+      data.nombre,
+      data.descripcion,
+      true,
+      data.intensidad ?? 'media',
+      data.max_continuo_min ?? null
+    );
     await setDoc(docRef, nueva);
     return docRef.id;
   }
 
-  async function updateEstacion(id: string, data: Partial<Pick<Estacion, 'nombre' | 'descripcion' | 'active'>>) {
+  async function updateEstacion(
+    id: string,
+    data: Partial<Pick<Estacion, 'nombre' | 'descripcion' | 'active' | 'intensidad' | 'max_continuo_min'>>
+  ) {
     const docRef = doc(db, 'estaciones', id);
     await updateDoc(docRef, { ...data, updatedAt: Timestamp.now() });
   }

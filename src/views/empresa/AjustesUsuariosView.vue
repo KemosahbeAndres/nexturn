@@ -185,6 +185,7 @@ import { useUsuarioStore } from '../../stores/usuarioStore';
 import { useSessionStore } from '../../stores/sessionStore';
 import { useEmpresaStore } from '../../stores/empresaStore';
 import { Contacto, contactoConverter } from '../../models/Contacto';
+import type { SystemRole } from '../../models/Usuario';
 import UserModal from '../../components/UserModal.vue';
 
 const usuarioStore = useUsuarioStore();
@@ -270,7 +271,7 @@ async function saveChanges() {
     }
     await usuarioStore.updateUsuario(selectedUser.value.id, {
       empresa_id:  resolvedEmpresaId.value,
-      system_role: editForm.value.system_role,
+      system_role: editForm.value.system_role as SystemRole,
     });
     snapshot.value = { ...editForm.value };
   } catch (e: any) {
@@ -289,6 +290,7 @@ function openCreateModal() {
 
 const handleCreateUser = async (data: any) => {
   try {
+    const systemRole = data.system_role as SystemRole;
     const empresaIdToSave = resolvedEmpresaId.value;
 
     const qRut = query(collection(db, 'contactos'), where('rut', '==', data.rut));
@@ -325,11 +327,11 @@ const handleCreateUser = async (data: any) => {
 
     if (!userSnap.empty) {
       await usuarioStore.updateUsuario(userSnap.docs[0].id, {
-        empresa_id: empresaIdToSave, system_role: data.system_role, deletedAt: null,
+        empresa_id: empresaIdToSave, system_role: systemRole, deletedAt: null,
       });
     } else {
       await usuarioStore.createUsuario({
-        empresa_id: empresaIdToSave, contact_id: finalContactId, system_role: data.system_role,
+        empresa_id: empresaIdToSave, contact_id: finalContactId, system_role: systemRole,
       });
     }
 
@@ -385,7 +387,7 @@ const roleBadgeClass = (role: string) => {
 onMounted(async () => {
   if (!sessionStore.currentUser) return;
 
-  let roleToFetch = sessionStore.currentUser.system_role;
+  let roleToFetch: string = sessionStore.currentUser.system_role;
   let empresaIdToFetch = sessionStore.currentUser.empresa_id;
 
   if (roleToFetch === 'super_admin' && route.params.companySlug) {

@@ -36,7 +36,7 @@ export const useZonaStore = defineStore('zona', () => {
     return zonas.value?.find(z => z.slug === slug) ?? null;
   }
 
-  async function createZona(data: Omit<Zona, 'id' | 'createdAt' | 'updatedAt' | 'deletedAt'>) {
+  async function createZona(data: Omit<Zona, 'id' | 'createdAt' | 'updatedAt' | 'deletedAt' | 'slug'> & { slug?: string }) {
     const docRef = doc(zonasRef);
     const newZona = new Zona(
       docRef.id,

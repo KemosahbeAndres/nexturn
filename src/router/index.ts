@@ -95,6 +95,8 @@ const router = createRouter({
         { path: 'dashboard', name: 'sucursal-dashboard', meta: { title: 'Centro de control', subtitle: 'Resumen operativo de la sucursal' }, component: () => import('../views/sucursal/SucursalDashboardView.vue') },
         { path: 'turnos', name: 'sucursal-turnos', meta: { title: 'Turnos', subtitle: 'Gestión de horarios y asignaciones' }, component: () => import('../views/sucursal/TurnosView.vue') },
         { path: 'solicitudes', name: 'sucursal-solicitudes', meta: { title: 'Solicitudes', subtitle: 'Permisos y ausencias pendientes' }, component: () => import('../views/sucursal/SolicitudesView.vue') },
+        { path: 'presencias', name: 'sucursal-presencias', meta: { title: 'Presencias', subtitle: 'Disponibilidad diaria del equipo' }, component: () => import('../views/sucursal/PresenciasView.vue') },
+        { path: 'calendario', name: 'sucursal-calendario', meta: { title: 'Mi Calendario', subtitle: 'Tu horario publicado' }, component: () => import('../views/sucursal/CalendarioView.vue') },
         {
           path: 'mi-equipo',
           component: () => import('../layouts/MiEquipoLayout.vue'),

@@ -618,7 +618,7 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, watch, reactive } from 'vue';
 import { useRoute } from 'vue-router';
-import { collection, doc, setDoc, getDocs, query, where, updateDoc, Timestamp, getDoc } from 'firebase/firestore';
+import { collection, doc, setDoc, getDocs, query, where, updateDoc, Timestamp } from 'firebase/firestore';
 import { initializeApp, deleteApp } from 'firebase/app';
 import { getAuth, createUserWithEmailAndPassword } from 'firebase/auth';
 import { useSessionStore } from '../../stores/sessionStore';

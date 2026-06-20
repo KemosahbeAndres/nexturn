@@ -87,10 +87,60 @@
 
       <AlertBox :alert="alertLogin" class="mb-4" />
 
+      <!-- Usuarios guardados -->
+      <div v-if="savedUsers.length > 0 && !selectedSavedUser" class="mb-5">
+        <p class="text-xs font-medium text-gray-500 dark:text-gray-400 mb-2">Accesos recientes</p>
+        <div class="space-y-2">
+          <div
+            v-for="u in savedUsers" :key="u.email"
+            class="flex items-center gap-3 p-3 rounded-lg border border-gray-200 dark:border-gray-600 hover:border-blue-400 dark:hover:border-blue-500 hover:bg-blue-50 dark:hover:bg-blue-900/20 cursor-pointer transition-colors group"
+            @click="selectSavedUser(u)"
+          >
+            <!-- Avatar inicial -->
+            <div class="w-9 h-9 rounded-full bg-blue-100 dark:bg-blue-900/40 text-blue-700 dark:text-blue-300 flex items-center justify-center text-sm font-bold shrink-0 select-none">
+              {{ u.initials }}
+            </div>
+            <div class="flex-1 min-w-0">
+              <p class="text-sm font-medium text-gray-800 dark:text-white truncate">{{ u.name || u.email }}</p>
+              <p v-if="u.name" class="text-xs text-gray-400 dark:text-gray-500 truncate">{{ u.email }}</p>
+            </div>
+            <button
+              type="button"
+              class="opacity-0 group-hover:opacity-100 p-1 rounded-md text-gray-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 transition-all"
+              title="Eliminar acceso guardado"
+              @click.stop="removeSavedUser(u.email)"
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            </button>
+          </div>
+        </div>
+        <button type="button" @click="showManualEmail = !showManualEmail" class="mt-3 text-xs text-blue-600 dark:text-blue-400 hover:underline">
+          {{ showManualEmail ? 'Ocultar' : 'Usar otra cuenta' }}
+        </button>
+      </div>
+
+      <!-- Vista de usuario seleccionado -->
+      <div v-if="selectedSavedUser" class="mb-5 flex items-center gap-3 p-3 rounded-lg bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-700">
+        <div class="w-9 h-9 rounded-full bg-blue-100 dark:bg-blue-900/40 text-blue-700 dark:text-blue-300 flex items-center justify-center text-sm font-bold shrink-0">
+          {{ selectedSavedUser.initials }}
+        </div>
+        <div class="flex-1 min-w-0">
+          <p class="text-sm font-medium text-gray-800 dark:text-white truncate">{{ selectedSavedUser.name || selectedSavedUser.email }}</p>
+          <p v-if="selectedSavedUser.name" class="text-xs text-gray-400 dark:text-gray-500 truncate">{{ selectedSavedUser.email }}</p>
+        </div>
+        <button type="button" @click="clearSelectedUser" class="p-1 rounded-md text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 transition-colors" title="Cambiar cuenta">
+          <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" />
+          </svg>
+        </button>
+      </div>
+
       <div class="space-y-4 mb-4">
 
-        <!-- Correo electrónico -->
-        <div>
+        <!-- Correo electrónico (solo cuando no hay usuario seleccionado o se pide otra cuenta) -->
+        <div v-if="!selectedSavedUser && (savedUsers.length === 0 || showManualEmail)">
           <label class="block text-sm font-medium mb-1 dark:text-gray-300">Correo electrónico</label>
           <input
             v-model="loginEmail"
@@ -105,6 +155,7 @@
         <div>
           <label class="block text-sm font-medium mb-1 dark:text-gray-300">Contraseña</label>
           <input
+            ref="passwordInputRef"
             v-model="loginPassword"
             type="password" placeholder="••••••••"
             :disabled="loadingLogin"
@@ -134,10 +185,40 @@
 </template>
 
 <script setup lang="ts">
-import { ref, defineComponent, h, onMounted } from 'vue';
+import { ref, defineComponent, h, onMounted, nextTick } from 'vue';
 import { useRouter } from 'vue-router';
 import { useSessionStore } from '../stores/sessionStore';
 import { useRut } from '../composables/useRut';
+
+// ── Tipos y helpers para usuarios guardados ───────────────────────────────────
+
+interface SavedUser {
+  email: string;
+  name: string;
+  initials: string;
+}
+
+const STORAGE_KEY = 'nexturn_saved_users';
+
+function loadSavedUsers(): SavedUser[] {
+  try {
+    return JSON.parse(localStorage.getItem(STORAGE_KEY) ?? '[]');
+  } catch {
+    return [];
+  }
+}
+
+function persistSavedUsers(list: SavedUser[]) {
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(list));
+}
+
+function getInitials(name: string, email: string): string {
+  if (name) {
+    const parts = name.trim().split(/\s+/);
+    return (parts[0][0] + (parts[1]?.[0] ?? '')).toUpperCase();
+  }
+  return email[0].toUpperCase();
+}
 
 // ── Componentes inline ────────────────────────────────────────────────────────
 
@@ -196,6 +277,43 @@ onMounted(async () => {
   }
 });
 
+// ── Usuarios guardados ────────────────────────────────────────────────────────
+
+const savedUsers = ref<SavedUser[]>(loadSavedUsers());
+const selectedSavedUser = ref<SavedUser | null>(null);
+const showManualEmail = ref(false);
+const passwordInputRef = ref<HTMLInputElement | null>(null);
+
+function selectSavedUser(u: SavedUser) {
+  selectedSavedUser.value = u;
+  loginEmail.value = u.email;
+  loginPassword.value = '';
+  nextTick(() => passwordInputRef.value?.focus());
+}
+
+function clearSelectedUser() {
+  selectedSavedUser.value = null;
+  loginEmail.value = '';
+  loginPassword.value = '';
+}
+
+function removeSavedUser(email: string) {
+  savedUsers.value = savedUsers.value.filter(u => u.email !== email);
+  persistSavedUsers(savedUsers.value);
+  if (selectedSavedUser.value?.email === email) clearSelectedUser();
+}
+
+function upsertSavedUser(email: string, name: string) {
+  const initials = getInitials(name, email);
+  const existing = savedUsers.value.findIndex(u => u.email === email);
+  if (existing !== -1) {
+    savedUsers.value[existing] = { email, name, initials };
+  } else {
+    savedUsers.value.unshift({ email, name, initials });
+  }
+  persistSavedUsers(savedUsers.value);
+}
+
 // ── Login — solo por correo ─────────────────────────────────────────────────────
 
 const loginEmail = ref('');
@@ -250,6 +368,9 @@ const handleLogin = async () => {
   alertLogin.value = null;
   try {
     await sessionStore.login(identificador, loginPassword.value, stayConnected.value);
+    const contacto = sessionStore.currentUser?.contacto;
+    const name = contacto ? `${contacto.first_name} ${contacto.last_name}`.trim() : '';
+    upsertSavedUser(identificador, name);
     showAlert('login', 'success', '¡Bienvenido! Redirigiendo al panel...');
     setTimeout(() => router.push('/dashboard'), 1000);
   } catch (error: any) {

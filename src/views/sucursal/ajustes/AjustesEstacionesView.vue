@@ -48,6 +48,11 @@
                 {{ e.descripcion }}
               </p>
             </div>
+            <!-- Badge intensidad -->
+            <span class="shrink-0 text-[10px] px-1.5 py-0.5 rounded font-medium"
+              :class="intensidadClase(e.intensidad)">
+              {{ e.intensidad }}
+            </span>
             <span v-if="!e.active"
               class="shrink-0 text-[10px] px-1.5 py-0.5 rounded bg-amber-100 dark:bg-amber-900/30 text-amber-600 dark:text-amber-400 font-medium">
               inactiva
@@ -71,6 +76,39 @@
             class="w-full px-3 py-2 text-sm bg-gray-50 dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-violet-500 dark:text-white" />
           <input v-model="addForm.descripcion" type="text" placeholder="Descripción (opcional)"
             class="w-full px-3 py-2 text-sm bg-gray-50 dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-violet-500 dark:text-white" />
+
+          <!-- Intensidad -->
+          <div>
+            <label class="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1.5">Intensidad</label>
+            <div class="flex gap-1.5">
+              <button v-for="opcion in intensidadOpciones" :key="opcion.value" type="button"
+                @click="addForm.intensidad = opcion.value"
+                class="flex-1 py-1.5 text-xs font-medium rounded-lg border transition-colors"
+                :class="addForm.intensidad === opcion.value ? opcion.activoClase : 'border-gray-200 dark:border-gray-600 text-gray-500 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-700'">
+                {{ opcion.label }}
+              </button>
+            </div>
+          </div>
+
+          <!-- Max continuo -->
+          <div>
+            <div class="flex items-center justify-between mb-1.5">
+              <label class="text-xs font-medium text-gray-600 dark:text-gray-400">Tiempo máximo continuo</label>
+              <button type="button" @click="addForm.maxEnabled = !addForm.maxEnabled"
+                class="relative w-8 h-4 rounded-full transition-colors"
+                :class="addForm.maxEnabled ? 'bg-violet-500' : 'bg-gray-300 dark:bg-gray-600'">
+                <span class="absolute top-0.5 left-0.5 w-3 h-3 bg-white rounded-full shadow transition-transform"
+                  :class="addForm.maxEnabled ? 'translate-x-4' : 'translate-x-0'" />
+              </button>
+            </div>
+            <div v-if="addForm.maxEnabled" class="flex items-center gap-2">
+              <input v-model.number="addForm.max_continuo_min" type="number" min="15" step="15" placeholder="60"
+                class="w-24 px-3 py-2 text-sm bg-gray-50 dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-violet-500 dark:text-white" />
+              <span class="text-xs text-gray-500 dark:text-gray-400">minutos</span>
+            </div>
+            <p v-else class="text-xs text-gray-400 dark:text-gray-500">Sin límite</p>
+          </div>
+
           <p v-if="addError" class="text-xs text-red-500 dark:text-red-400">{{ addError }}</p>
           <div class="flex gap-2">
             <button type="button" @click="closeAdd"
@@ -147,6 +185,40 @@
               class="w-full px-3 py-2 text-sm bg-gray-50 dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-violet-500 dark:text-white disabled:opacity-60 resize-none transition-colors"
               placeholder="Descripción de la estación..." />
           </div>
+
+          <!-- Intensidad -->
+          <div>
+            <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">Intensidad</label>
+            <div class="flex gap-1.5">
+              <button v-for="opcion in intensidadOpciones" :key="opcion.value" type="button"
+                :disabled="!canManage"
+                @click="editForm.intensidad = opcion.value"
+                class="flex-1 py-1.5 text-xs font-medium rounded-lg border transition-colors disabled:cursor-not-allowed disabled:opacity-60"
+                :class="editForm.intensidad === opcion.value ? opcion.activoClase : 'border-gray-200 dark:border-gray-600 text-gray-500 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-700'">
+                {{ opcion.label }}
+              </button>
+            </div>
+          </div>
+
+          <!-- Max continuo -->
+          <div>
+            <div class="flex items-center justify-between mb-1.5">
+              <label class="text-sm font-medium text-gray-700 dark:text-gray-300">Tiempo máximo continuo</label>
+              <button type="button" :disabled="!canManage" @click="editForm.maxEnabled = !editForm.maxEnabled"
+                class="relative w-8 h-4 rounded-full transition-colors disabled:cursor-not-allowed"
+                :class="editForm.maxEnabled ? 'bg-violet-500' : 'bg-gray-300 dark:bg-gray-600'">
+                <span class="absolute top-0.5 left-0.5 w-3 h-3 bg-white rounded-full shadow transition-transform"
+                  :class="editForm.maxEnabled ? 'translate-x-4' : 'translate-x-0'" />
+              </button>
+            </div>
+            <div v-if="editForm.maxEnabled" class="flex items-center gap-2">
+              <input v-model.number="editForm.max_continuo_min" type="number" min="15" step="15" :disabled="!canManage"
+                class="w-24 px-3 py-2 text-sm bg-gray-50 dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-violet-500 dark:text-white disabled:opacity-60" />
+              <span class="text-sm text-gray-500 dark:text-gray-400">minutos consecutivos en alta intensidad</span>
+            </div>
+            <p v-else class="text-xs text-gray-400 dark:text-gray-500">Sin límite de tiempo continuo</p>
+          </div>
+
           <div class="flex items-center justify-between p-3 rounded-lg bg-gray-50 dark:bg-gray-700/50">
             <span class="text-sm font-medium text-gray-700 dark:text-gray-300">Estación activa</span>
             <button type="button" :disabled="!canManage" @click="editForm.active = !editForm.active"
@@ -187,7 +259,7 @@ import { useRoute } from 'vue-router';
 import { useEmpresaStore } from '../../../stores/empresaStore';
 import { useSessionStore } from '../../../stores/sessionStore';
 import { useEstacionStore } from '../../../stores/estacionStore';
-import type { Estacion } from '../../../models/Estacion';
+import type { Estacion, EstacionIntensidad } from '../../../models/Estacion';
 
 const route = useRoute();
 const empresaStore = useEmpresaStore();
@@ -212,6 +284,20 @@ watch(() => empresa.value?.id, (id) => {
 
 const estaciones = computed(() => estacionStore.estaciones ?? []);
 
+// ── Helpers de intensidad ─────────────────────────────────────────────────────
+
+const intensidadOpciones: { value: EstacionIntensidad; label: string; activoClase: string }[] = [
+  { value: 'alta', label: 'Alta', activoClase: 'border-red-400 bg-red-50 text-red-700 dark:bg-red-900/30 dark:text-red-400 dark:border-red-700' },
+  { value: 'media', label: 'Media', activoClase: 'border-amber-400 bg-amber-50 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400 dark:border-amber-700' },
+  { value: 'baja', label: 'Baja', activoClase: 'border-emerald-400 bg-emerald-50 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400 dark:border-emerald-700' },
+];
+
+function intensidadClase(intensidad: EstacionIntensidad) {
+  if (intensidad === 'alta') return 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400';
+  if (intensidad === 'baja') return 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400';
+  return 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400';
+}
+
 // ── Selección ─────────────────────────────────────────────────────────────────
 
 const selectedEstacion = ref<Estacion | null>(null);
@@ -226,16 +312,30 @@ function selectEstacion(e: Estacion) {
 
 // ── Formulario edición ────────────────────────────────────────────────────────
 
-type EditForm = { nombre: string; descripcion: string; active: boolean };
+type EditForm = {
+  nombre: string;
+  descripcion: string;
+  active: boolean;
+  intensidad: EstacionIntensidad;
+  maxEnabled: boolean;
+  max_continuo_min: number;
+};
 
-const editForm = ref<EditForm>({ nombre: '', descripcion: '', active: true });
-const editSnapshot = ref<EditForm>({ nombre: '', descripcion: '', active: true });
+const editForm = ref<EditForm>({ nombre: '', descripcion: '', active: true, intensidad: 'media', maxEnabled: false, max_continuo_min: 60 });
+const editSnapshot = ref<EditForm>({ nombre: '', descripcion: '', active: true, intensidad: 'media', maxEnabled: false, max_continuo_min: 60 });
 
 watch(selectedEstacion, (e) => {
   editError.value = '';
   editSuccess.value = '';
   if (!e) return;
-  const f: EditForm = { nombre: e.nombre, descripcion: e.descripcion, active: e.active };
+  const f: EditForm = {
+    nombre: e.nombre,
+    descripcion: e.descripcion,
+    active: e.active,
+    intensidad: e.intensidad,
+    maxEnabled: e.max_continuo_min !== null,
+    max_continuo_min: e.max_continuo_min ?? 60,
+  };
   editForm.value = { ...f };
   editSnapshot.value = { ...f };
 });
@@ -243,7 +343,10 @@ watch(selectedEstacion, (e) => {
 const isDirty = computed(() =>
   editForm.value.nombre !== editSnapshot.value.nombre ||
   editForm.value.descripcion !== editSnapshot.value.descripcion ||
-  editForm.value.active !== editSnapshot.value.active
+  editForm.value.active !== editSnapshot.value.active ||
+  editForm.value.intensidad !== editSnapshot.value.intensidad ||
+  editForm.value.maxEnabled !== editSnapshot.value.maxEnabled ||
+  editForm.value.max_continuo_min !== editSnapshot.value.max_continuo_min
 );
 
 function resetEdit() {
@@ -271,6 +374,8 @@ async function save() {
       nombre: editForm.value.nombre.trim(),
       descripcion: editForm.value.descripcion.trim(),
       active: editForm.value.active,
+      intensidad: editForm.value.intensidad,
+      max_continuo_min: editForm.value.maxEnabled ? editForm.value.max_continuo_min : null,
     });
     editSnapshot.value = { ...editForm.value };
     showSuccess();
@@ -295,13 +400,19 @@ async function confirmDelete() {
 // ── Formulario agregar ────────────────────────────────────────────────────────
 
 const addOpen = ref(false);
-const addForm = ref({ nombre: '', descripcion: '' });
+const addForm = ref({
+  nombre: '',
+  descripcion: '',
+  intensidad: 'media' as EstacionIntensidad,
+  maxEnabled: false,
+  max_continuo_min: 60,
+});
 const adding = ref(false);
 const addError = ref('');
 
 function openAdd() {
   addOpen.value = true;
-  addForm.value = { nombre: '', descripcion: '' };
+  addForm.value = { nombre: '', descripcion: '', intensidad: 'media', maxEnabled: false, max_continuo_min: 60 };
   addError.value = '';
   selectedEstacion.value = null;
 }
@@ -321,6 +432,8 @@ async function submitAdd() {
       empresa_id: empresa.value.id,
       nombre: addForm.value.nombre.trim(),
       descripcion: addForm.value.descripcion.trim(),
+      intensidad: addForm.value.intensidad,
+      max_continuo_min: addForm.value.maxEnabled ? addForm.value.max_continuo_min : null,
     });
     closeAdd();
   } catch (e: any) {

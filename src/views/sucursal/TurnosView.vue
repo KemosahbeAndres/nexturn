@@ -70,6 +70,36 @@
       <!-- ── Grilla semanal ────────────────────────────────────────────── -->
       <div class="flex-1 overflow-auto p-4 sm:p-6">
 
+        <!-- ── Toolbar: Generar borrador ── -->
+        <div v-if="canManage" class="mb-5 flex flex-wrap items-end gap-3 p-3 rounded-xl bg-blue-50 dark:bg-blue-900/20 border border-blue-100 dark:border-blue-800/30">
+          <div>
+            <label class="block text-xs font-medium text-blue-700 dark:text-blue-300 mb-1">Fecha a programar</label>
+            <input v-model="fechaBorrador" type="date"
+              class="px-3 py-1.5 text-sm bg-white dark:bg-gray-700 border border-blue-200 dark:border-blue-700 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 dark:text-white tabular-nums" />
+          </div>
+          <button type="button" @click="ejecutarGenerarBorrador" :disabled="generando || !fechaBorrador"
+            class="flex items-center gap-2 px-4 py-2 text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 disabled:opacity-50 rounded-lg transition-colors">
+            <svg v-if="!generando" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" class="w-4 h-4">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M5.25 5.653c0-.856.917-1.398 1.667-.986l11.54 6.348a1.125 1.125 0 0 1 0 1.971l-11.54 6.347a1.125 1.125 0 0 1-1.667-.985V5.653Z" />
+            </svg>
+            <svg v-else class="w-4 h-4 animate-spin" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+              <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/>
+              <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/>
+            </svg>
+            {{ generando ? 'Generando…' : 'Generar borrador' }}
+          </button>
+          <div class="flex-1 min-w-0">
+            <p v-if="borradorExito" class="text-xs text-emerald-700 dark:text-emerald-400 font-medium">{{ borradorExito }}</p>
+            <p v-if="borradorError" class="text-xs text-red-600 dark:text-red-400">{{ borradorError }}</p>
+            <div v-if="borradorHuecos.length" class="mt-1 space-y-0.5">
+              <p class="text-xs font-semibold text-amber-700 dark:text-amber-400">Huecos detectados:</p>
+              <p v-for="(h, i) in borradorHuecos" :key="i" class="text-xs text-amber-600 dark:text-amber-400">
+                {{ h.bucket_start }}–{{ h.bucket_end }} · {{ nombreEstacion(h.estacion_id) }} · {{ h.asignado }}/{{ h.requerido }} cubiertos
+              </p>
+            </div>
+          </div>
+        </div>
+
         <!-- Info de la configuración activa -->
         <div class="flex items-center gap-3 mb-5">
           <span class="px-2.5 py-1 text-xs font-semibold rounded-full"
@@ -476,10 +506,21 @@
 
 <script setup lang="ts">
 import { ref, computed, watch } from 'vue';
+import { httpsCallable } from 'firebase/functions';
 import { useSessionStore } from '../../stores/sessionStore';
 import { useUbicacionStore } from '../../stores/ubicacionStore';
 import { useEstacionStore } from '../../stores/estacionStore';
+import { functions } from '../../firebase';
 import type { Turno, Requerimiento, ConfiguracionTurnos, ConfigScope } from '../../models/Ubicacion';
+
+interface HuecoReporte {
+  date: string;
+  bucket_start: string;
+  bucket_end: string;
+  estacion_id: string;
+  requerido: number;
+  asignado: number;
+}
 
 const sessionStore = useSessionStore();
 const ubicacionStore = useUbicacionStore();
@@ -487,6 +528,44 @@ const estacionStore = useEstacionStore();
 
 const canManage = computed(() => ['super_admin', 'admin'].includes(sessionStore.currentUser?.system_role ?? ''));
 const diasSemana = ['Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado', 'Domingo'];
+
+// ── Generar borrador ──────────────────────────────────────────────────────────
+
+const generarBorradorFn = httpsCallable<
+  { empresa_id: string; ubicacion_id: string; date: string; configuracion_id: string },
+  { asignacion_id: string; segmentos_creados: number; huecos: HuecoReporte[] }
+>(functions, 'generarBorrador');
+
+const fechaBorrador = ref('');
+const generando = ref(false);
+const borradorExito = ref('');
+const borradorError = ref('');
+const borradorHuecos = ref<HuecoReporte[]>([]);
+
+async function ejecutarGenerarBorrador() {
+  const companyId = sessionStore.activeCompanyId;
+  const ubicacionId = sessionStore.activeUbicacionId;
+  if (!companyId || !ubicacionId || !fechaBorrador.value || !configActiva.value) return;
+  generando.value = true;
+  borradorExito.value = '';
+  borradorError.value = '';
+  borradorHuecos.value = [];
+  try {
+    const result = await generarBorradorFn({
+      empresa_id: companyId,
+      ubicacion_id: ubicacionId,
+      date: fechaBorrador.value,
+      configuracion_id: configActiva.value.id,
+    });
+    const data = result.data;
+    borradorExito.value = `Borrador generado: ${data.segmentos_creados} segmentos creados.`;
+    borradorHuecos.value = data.huecos;
+  } catch (e: any) {
+    borradorError.value = e.message ?? 'Error al generar el borrador.';
+  } finally {
+    generando.value = false;
+  }
+}
 
 const ubicacion = computed(() =>
   ubicacionStore.ubicaciones?.find(u => u.id === sessionStore.activeUbicacionId)

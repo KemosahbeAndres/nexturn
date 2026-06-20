@@ -60,7 +60,7 @@ export const useUsuarioStore = defineStore('usuario', () => {
   }, { deep: true });
 
   // CREATE
-  async function createUsuario(data: Omit<Usuario, 'id' | 'createdAt' | 'updatedAt' | 'deletedAt'>) {
+  async function createUsuario(data: Pick<Usuario, 'empresa_id' | 'contact_id' | 'system_role'> & Partial<Pick<Usuario, 'cliente_id' | 'estado' | 'company_ids' | 'preferences'>>) {
     // 1. Verificación de integridad: empresa obligatoria según el rol del nuevo usuario
     if (data.system_role !== 'super_admin' && !data.empresa_id) {
       throw new Error('El id de la empresa es obligatorio para crear usuarios, a menos que el rol sea super_admin.');

@@ -31,6 +31,7 @@ import { useUsuarioStore } from '../../stores/usuarioStore';
 import { useSessionStore } from '../../stores/sessionStore';
 import { useEmpresaStore } from '../../stores/empresaStore';
 import { Contacto, contactoConverter } from '../../models/Contacto';
+import type { SystemRole } from '../../models/Usuario';
 import UserModal from '../../components/UserModal.vue';
 import UserFilteredList from '../../components/UserFilteredList.vue';
 
@@ -50,7 +51,8 @@ const openModal = (mode: 'create' | 'edit', user: any = null) => {
 
 const handleSaveUser = async (data: any) => {
   try {
-    const empresaIdToSave = data.system_role === 'super_admin' ? null : (data.empresa_id || null);
+    const systemRole = data.system_role as SystemRole;
+    const empresaIdToSave = systemRole === 'super_admin' ? null : (data.empresa_id || null);
 
     if (modalMode.value === 'create') {
       const qRut = query(collection(db, 'contactos'), where('rut', '==', data.rut));
@@ -89,11 +91,11 @@ const handleSaveUser = async (data: any) => {
 
       if (!userSnap.empty) {
         await usuarioStore.updateUsuario(userSnap.docs[0].id, {
-          empresa_id: empresaIdToSave, system_role: data.system_role, deletedAt: null
+          empresa_id: empresaIdToSave, system_role: systemRole, deletedAt: null
         });
       } else {
         await usuarioStore.createUsuario({
-          empresa_id: empresaIdToSave, contact_id: finalContactId, system_role: data.system_role
+          empresa_id: empresaIdToSave, contact_id: finalContactId, system_role: systemRole
         });
       }
 
@@ -105,7 +107,7 @@ const handleSaveUser = async (data: any) => {
         });
       }
       await usuarioStore.updateUsuario(selectedUser.value.id, {
-        empresa_id: empresaIdToSave, system_role: data.system_role
+        empresa_id: empresaIdToSave, system_role: systemRole
       });
     }
 
