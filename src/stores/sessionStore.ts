@@ -15,6 +15,7 @@ export const useSessionStore = defineStore('session', () => {
   const currentSession = ref<Sesion | null>(null);
   const activeClienteId = ref<string | null>(null);  // Contexto del cliente/cuenta de facturación
   const activeCompanyId = ref<string | null>(null);  // Contexto de la empresa en la que navegamos
+  const activeZonaId = ref<string | null>(null);     // Contexto de la zona en la que navegamos
   const activeUbicacionId = ref<string | null>(null); // Contexto de la sucursal en la que navegamos
   
   // Preferencias personales del usuario persistidas en el estado local
@@ -195,6 +196,7 @@ export const useSessionStore = defineStore('session', () => {
     currentSession.value = null;
     activeClienteId.value = null;
     activeCompanyId.value = null;
+    activeZonaId.value = null;
     activeUbicacionId.value = null;
     useGrantStore().limpiarGrants();
 
@@ -315,6 +317,7 @@ export const useSessionStore = defineStore('session', () => {
     currentSession,
     activeClienteId,
     activeCompanyId,
+    activeZonaId,
     activeUbicacionId,
     preferences, 
     isAuthenticated, 

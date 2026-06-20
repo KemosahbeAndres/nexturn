@@ -14,6 +14,7 @@ export const useGrantStore = defineStore('grant', () => {
   // Mapa slug→id para resolver URL params sin lecturas adicionales en el guard
   const empresaSlugToId = ref<Record<string, string>>({});
   const ubicacionSlugToId = ref<Record<string, { id: string; zone_id: string | null }>>({});
+  const zonaSlugToId = ref<Record<string, string>>({});
 
   async function cargarGrants(userId: string): Promise<void> {
     const snap = await getDocs(
@@ -35,6 +36,14 @@ export const useGrantStore = defineStore('grant', () => {
     ubicacionSlugToId.value[slug] = { id, zone_id: zoneId };
   }
 
+  function registrarZonaSlug(slug: string, id: string): void {
+    zonaSlugToId.value[slug] = id;
+  }
+
+  function resolverZonaId(slug: string): string | null {
+    return zonaSlugToId.value[slug] ?? null;
+  }
+
   function resolverEmpresaId(slug: string): string | null {
     return empresaSlugToId.value[slug] ?? null;
   }
@@ -47,6 +56,7 @@ export const useGrantStore = defineStore('grant', () => {
     grants.value = [];
     empresaSlugToId.value = {};
     ubicacionSlugToId.value = {};
+    zonaSlugToId.value = {};
   }
 
   // Wrappers que reciben usuario desde fuera (evita dependencia circular con sessionStore)
@@ -120,12 +130,15 @@ export const useGrantStore = defineStore('grant', () => {
     grants,
     empresaSlugToId,
     ubicacionSlugToId,
+    zonaSlugToId,
     cargarGrants,
     limpiarGrants,
     registrarEmpresaSlug,
     registrarUbicacionSlug,
+    registrarZonaSlug,
     resolverEmpresaId,
     resolverUbicacion,
+    resolverZonaId,
     puedeAccederScope,
     canDo,
     crearGrant,

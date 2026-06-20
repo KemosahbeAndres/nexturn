@@ -5,6 +5,7 @@ import { useSessionStore } from '../stores/sessionStore';
 import { useGrantStore } from '../stores/grantStore';
 import { db } from '../firebase';
 import { ubicacionConverter } from '../models/Ubicacion';
+import { zonaConverter } from '../models/Zona';
 
 const router = createRouter({
   history: createWebHistory(import.meta.env.BASE_URL),
@@ -72,7 +73,21 @@ const router = createRouter({
       ]
     },
     {
-      path: '/:companySlug/:ubicacionSlug',
+      path: '/:companySlug/zonas/:zonaSlug',
+      component: () => import('../layouts/ZonaLayout.vue'),
+      meta: { requiresAuth: true, requiresCompany: true, requiresZona: true },
+      children: [
+        { path: '', name: 'zona-home', redirect: { name: 'zona-dashboard' } },
+        {
+          path: 'dashboard',
+          name: 'zona-dashboard',
+          meta: { title: 'Zona', subtitle: 'Resumen de la zona' },
+          component: () => import('../views/zona/ZonaDashboardView.vue')
+        },
+      ]
+    },
+    {
+      path: '/:companySlug/sucursales/:ubicacionSlug',
       component: () => import('../layouts/SucursalLayout.vue'),
       meta: { requiresAuth: true, requiresCompany: true, requiresUbicacion: true },
       children: [
@@ -146,6 +161,24 @@ router.beforeEach(async (to, _from) => {
         return { name: 'empresa-home', params: { companySlug: defaultEmpresaSlug } };
       }
 
+      if (to.meta.requiresZona) {
+        const zonaSlug = to.params.zonaSlug as string;
+        let zonaId = grantStore.resolverZonaId(zonaSlug);
+
+        if (!zonaId) {
+          const resolved = await resolverYRegistrarZona(companyId, zonaSlug);
+          if (!resolved) {
+            return { name: 'empresa-home', params: { companySlug: defaultEmpresaSlug } };
+          }
+          zonaId = resolved.id;
+        }
+
+        const tieneAccesoZona = grantStore.puedeAccederScope(user, 'zone', zonaId, { companyId });
+        if (!tieneAccesoZona) {
+          return { name: 'empresa-home', params: { companySlug: defaultEmpresaSlug } };
+        }
+      }
+
       if (to.meta.requiresUbicacion) {
         const ubicacionSlug = to.params.ubicacionSlug as string;
         const ubicacion = grantStore.resolverUbicacion(ubicacionSlug);
@@ -198,6 +231,24 @@ async function resolverYRegistrarUbicacion(
   const result = { id: data.id, zone_id: data.zone_id ?? null };
   useGrantStore().registrarUbicacionSlug(ubicacionSlug, result.id, result.zone_id);
   return result;
+}
+
+async function resolverYRegistrarZona(
+  companyId: string,
+  zonaSlug: string
+): Promise<{ id: string } | null> {
+  const snap = await getDocs(
+    query(
+      collection(db, 'zonas').withConverter(zonaConverter),
+      where('empresa_id', '==', companyId),
+      where('slug', '==', zonaSlug),
+      where('deletedAt', '==', null)
+    )
+  );
+  if (snap.empty) return null;
+  const data = snap.docs[0].data();
+  useGrantStore().registrarZonaSlug(zonaSlug, data.id);
+  return { id: data.id };
 }
 
 export default router;

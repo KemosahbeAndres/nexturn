@@ -424,6 +424,14 @@ Una vez que `config/setup.initialized == true`, `sistemaNoInicializado()` devuel
 - `src/views/LoginView.vue`: formulario dual — setup inicial (primer super_admin) o login normal, controlado por `checkIfFirstSetup()`.
 - **Decisión:** provisión de cuentas desde empleado (`crear_acceso` / "Invitar") diferida a Fase 3.
 
-### Fase 2 — Routing por scope 🔄 (inicio: 2026-06-20)
-- Estado actual: rutas `/:companySlug` (EmpresaLayout) y `/:companySlug/:ubicacionSlug` (SucursalLayout) ya existen.
-- Pendiente: prefijo `sucursales/` en rutas de sucursal; `/:companySlug/zonas/:zonaSlug` con `ZonaLayout`; vistas `views/zona/*`; `AppShell.vue` unificado.
+### Fase 2 — Routing por scope ✅ (2026-06-20)
+- Ruta de sucursal cambiada a `/:companySlug/sucursales/:ubicacionSlug` (el param name `ubicacionSlug` no cambió — los links por nombre de ruta son transparentes).
+- Nueva ruta `/:companySlug/zonas/:zonaSlug` con `ZonaLayout` + `views/zona/ZonaDashboardView.vue`.
+- Guard `beforeEach` extendido con bloque `requiresZona`: resuelve `zonaSlug → id` vía `grantStore.resolverZonaId()` o lectura puntual `resolverYRegistrarZona()`, verifica acceso `zone` scope.
+- `src/models/Zona.ts`: campo `slug` agregado al modelo y converter.
+- `src/stores/zonaStore.ts`: función `slugify` + slug en `createZona` + `resolverZonaSlug(slug)`.
+- `src/stores/grantStore.ts`: `zonaSlugToId`, `registrarZonaSlug()`, `resolverZonaId()`, limpieza en `limpiarGrants()`.
+- `src/stores/sessionStore.ts`: campo `activeZonaId` agregado (reset en logout).
+- `src/layouts/AppShell.vue`: shell visual unificado (sidebar + topbar móvil + bottombar + offcanvas perfil). Props: `navItems`, `bottomItems?`, `routeParams`, `contextLabel`, `pageTitle`, `perfilRouteName`, `perfilRouteParams`, `isActive`. Slots: `#sidebar-top`, `#sidebar-footer-top`, `#topbar-left`. Evento: `@logout`.
+- `EmpresaLayout.vue` y `SucursalLayout.vue` refactorizados para usar `AppShell` — solo conservan `<script setup>` con la lógica propia.
+- `ZonaLayout.vue`: nuevo layout para el scope zona, usa `AppShell`, carga `zonaStore.listarZonas()` y establece `activeZonaId`.

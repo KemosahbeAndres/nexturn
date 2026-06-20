@@ -5,6 +5,14 @@ import { ref, computed } from 'vue';
 import { db } from '../firebase';
 import { Zona, zonaConverter } from '../models/Zona';
 
+function slugify(text: string): string {
+  return text
+    .toLowerCase()
+    .normalize('NFD').replace(/[̀-ͯ]/g, '')
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '');
+}
+
 export const useZonaStore = defineStore('zona', () => {
   const zonasRef = collection(db, 'zonas').withConverter(zonaConverter);
 
@@ -24,12 +32,17 @@ export const useZonaStore = defineStore('zona', () => {
 
   const zonas = useCollection(zonasQuery);
 
+  function resolverZonaSlug(slug: string): Zona | null {
+    return zonas.value?.find(z => z.slug === slug) ?? null;
+  }
+
   async function createZona(data: Omit<Zona, 'id' | 'createdAt' | 'updatedAt' | 'deletedAt'>) {
     const docRef = doc(zonasRef);
     const newZona = new Zona(
       docRef.id,
       data.empresa_id,
       data.name,
+      data.slug || slugify(data.name),
       data.manager_id,
       data.active
     );
@@ -47,5 +60,5 @@ export const useZonaStore = defineStore('zona', () => {
     await updateDoc(docRef, { active: false, deletedAt: Timestamp.now() });
   }
 
-  return { zonas, listarZonas, createZona, updateZona, softDeleteZona };
+  return { zonas, listarZonas, createZona, updateZona, softDeleteZona, resolverZonaSlug };
 });

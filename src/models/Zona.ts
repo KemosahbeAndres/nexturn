@@ -6,6 +6,7 @@ export class Zona {
     public id: string,
     public empresa_id: string,
     public name: string,
+    public slug: string,
     public manager_id: string | null,
     public active: boolean,
     public createdAt: Date = new Date(),
@@ -19,6 +20,7 @@ export const zonaConverter: FirestoreDataConverter<Zona> = {
     return {
       empresa_id: zona.empresa_id,
       name: zona.name,
+      slug: zona.slug,
       manager_id: zona.manager_id,
       active: zona.active,
       createdAt: zona.createdAt ? Timestamp.fromDate(zona.createdAt) : Timestamp.now(),
@@ -32,6 +34,7 @@ export const zonaConverter: FirestoreDataConverter<Zona> = {
       snapshot.id,
       data.empresa_id,
       data.name || '',
+      data.slug || '',
       data.manager_id ?? null,
       data.active ?? true,
       data.createdAt?.toDate() || new Date(),
