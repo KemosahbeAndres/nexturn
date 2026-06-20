@@ -114,6 +114,12 @@ export const useSessionStore = defineStore('session', () => {
 
     const usuarioData = userSnap.data();
 
+    // Auto-activar usuario invitado en su primer login
+    if (usuarioData.estado === 'invitado') {
+      await updateDoc(usuarioRef, { estado: 'activo', updatedAt: Timestamp.now() });
+      usuarioData.estado = 'activo';
+    }
+
     // 3.3. Descargar el Contacto asociado por doc ID = contact_id del usuario
     const contactoRef = doc(db, 'contactos', usuarioData.contact_id).withConverter(contactoConverter);
     const contactSnap = await getDoc(contactoRef);
@@ -127,14 +133,35 @@ export const useSessionStore = defineStore('session', () => {
     usuarioData.contacto = contactSnap.data();
 
     // 3.4. Obtener los datos de la Empresa, si no es super_admin
-    if (usuarioData.system_role !== 'super_admin' && usuarioData.empresa_id) {
-      const empresaRef = doc(db, 'empresas', usuarioData.empresa_id).withConverter(empresaConverter);
-      const empresaSnap = await getDoc(empresaRef);
-      if (empresaSnap.exists()) {
-        usuarioData.empresa = empresaSnap.data();
-        // Propagar cliente_id desde la empresa si el usuario no lo tiene aún
-        if (!usuarioData.cliente_id && usuarioData.empresa.cliente_id) {
-          usuarioData.cliente_id = usuarioData.empresa.cliente_id;
+    if (usuarioData.system_role !== 'super_admin') {
+      // Intentar por empresa_id directo primero; si no, buscar desde grants
+      let empresaId = usuarioData.empresa_id ?? null;
+
+      if (!empresaId) {
+        // Cargar grants anticipadamente para obtener el company_id
+        const grantSnap = await getDocs(
+          query(
+            collection(db, 'grants'),
+            where('user_id', '==', usuarioData.id),
+            where('active', '==', true),
+            where('deletedAt', '==', null)
+          )
+        );
+        const companyGrant = grantSnap.docs
+          .map(d => d.data())
+          .find((g: any) => g.company_id);
+        if (companyGrant) empresaId = companyGrant.company_id;
+      }
+
+      if (empresaId) {
+        const empresaRef = doc(db, 'empresas', empresaId).withConverter(empresaConverter);
+        const empresaSnap = await getDoc(empresaRef);
+        if (empresaSnap.exists()) {
+          usuarioData.empresa = empresaSnap.data();
+          usuarioData.empresa_id = empresaId;
+          if (!usuarioData.cliente_id && usuarioData.empresa.cliente_id) {
+            usuarioData.cliente_id = usuarioData.empresa.cliente_id;
+          }
         }
       }
     }
@@ -270,13 +297,33 @@ export const useSessionStore = defineStore('session', () => {
       if (contactSnap.exists()) usuarioData.contacto = contactSnap.data();
 
       // 4. Reconstruir empresa si aplica
-      if (usuarioData.system_role !== 'super_admin' && usuarioData.empresa_id) {
-        const empresaRef = doc(db, 'empresas', usuarioData.empresa_id).withConverter(empresaConverter);
-        const empresaSnap = await getDoc(empresaRef);
-        if (empresaSnap.exists()) {
-          usuarioData.empresa = empresaSnap.data();
-          if (!usuarioData.cliente_id && usuarioData.empresa.cliente_id) {
-            usuarioData.cliente_id = usuarioData.empresa.cliente_id;
+      if (usuarioData.system_role !== 'super_admin') {
+        let empresaId = usuarioData.empresa_id ?? null;
+
+        if (!empresaId) {
+          const grantSnap = await getDocs(
+            query(
+              collection(db, 'grants'),
+              where('user_id', '==', usuarioData.id),
+              where('active', '==', true),
+              where('deletedAt', '==', null)
+            )
+          );
+          const companyGrant = grantSnap.docs
+            .map(d => d.data())
+            .find((g: any) => g.company_id);
+          if (companyGrant) empresaId = companyGrant.company_id;
+        }
+
+        if (empresaId) {
+          const empresaRef = doc(db, 'empresas', empresaId).withConverter(empresaConverter);
+          const empresaSnap = await getDoc(empresaRef);
+          if (empresaSnap.exists()) {
+            usuarioData.empresa = empresaSnap.data();
+            usuarioData.empresa_id = empresaId;
+            if (!usuarioData.cliente_id && usuarioData.empresa.cliente_id) {
+              usuarioData.cliente_id = usuarioData.empresa.cliente_id;
+            }
           }
         }
       }

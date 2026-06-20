@@ -57,7 +57,7 @@ const router = createRouter({
       children: [
         {
           path: '',
-          redirect: { name: 'empresa-home' }
+          redirect: 'empresa'
         },
         {
           path: 'empresa',
@@ -77,7 +77,7 @@ const router = createRouter({
       component: () => import('../layouts/ZonaLayout.vue'),
       meta: { requiresAuth: true, requiresCompany: true, requiresZona: true },
       children: [
-        { path: '', name: 'zona-home', redirect: { name: 'zona-dashboard' } },
+        { path: '', redirect: 'dashboard' },
         {
           path: 'dashboard',
           name: 'zona-dashboard',
@@ -91,7 +91,7 @@ const router = createRouter({
       component: () => import('../layouts/SucursalLayout.vue'),
       meta: { requiresAuth: true, requiresCompany: true, requiresUbicacion: true },
       children: [
-        { path: '', name: 'sucursal-home', redirect: { name: 'sucursal-dashboard' } },
+        { path: '', redirect: 'dashboard' },
         { path: 'dashboard', name: 'sucursal-dashboard', meta: { title: 'Centro de control', subtitle: 'Resumen operativo de la sucursal' }, component: () => import('../views/sucursal/SucursalDashboardView.vue') },
         { path: 'turnos', name: 'sucursal-turnos', meta: { title: 'Turnos', subtitle: 'Gestión de horarios y asignaciones' }, component: () => import('../views/sucursal/TurnosView.vue') },
         { path: 'solicitudes', name: 'sucursal-solicitudes', meta: { title: 'Solicitudes', subtitle: 'Permisos y ausencias pendientes' }, component: () => import('../views/sucursal/SolicitudesView.vue') },
@@ -101,7 +101,7 @@ const router = createRouter({
           path: 'mi-equipo',
           component: () => import('../layouts/MiEquipoLayout.vue'),
           children: [
-            { path: '', name: 'sucursal-mi-equipo', redirect: { name: 'sucursal-mi-equipo-personal' } },
+            { path: '', redirect: 'personal' },
             { path: 'personal', name: 'sucursal-mi-equipo-personal', meta: { title: 'Mi Equipo', subtitle: 'Directorio de personal de la sucursal' }, component: () => import('../views/sucursal/PersonalView.vue') },
             { path: 'estaciones', name: 'sucursal-mi-equipo-estaciones', meta: { title: 'Estaciones', subtitle: 'Puestos operativos del equipo' }, component: () => import('../views/sucursal/ajustes/AjustesEstacionesView.vue') },
             { path: 'disponibilidad', name: 'sucursal-mi-equipo-disponibilidad', meta: { title: 'Disponibilidad', subtitle: 'Reglas base de disponibilidad' }, component: () => import('../views/sucursal/ajustes/AjustesDisponibilidadView.vue') },
@@ -115,10 +115,25 @@ const router = createRouter({
 });
 
 router.beforeEach(async (to, _from) => {
+  console.log('[guard] to:', to.name, to.path);
+
+  // Permitir siempre la ruta de login sin ningún procesamiento adicional
+  if (to.name === 'login') return true;
+
   const sessionStore = useSessionStore();
-  const isAuthenticated = await sessionStore.validateSession();
+
+  let isAuthenticated = false;
+  try {
+    isAuthenticated = await sessionStore.validateSession();
+  } catch (e) {
+    console.error('[guard] validateSession error:', e);
+    isAuthenticated = false;
+  }
+
+  console.log('[guard] isAuthenticated:', isAuthenticated, '| currentUser:', sessionStore.currentUser?.id);
 
   if (to.meta.requiresAuth && !isAuthenticated) {
+    console.log('[guard] → login (requiresAuth failed)');
     return { name: 'login' };
   }
 
@@ -127,23 +142,25 @@ router.beforeEach(async (to, _from) => {
   const user = sessionStore.currentUser!;
   const isSuperAdmin = user.isSuperAdmin;
 
+  console.log('[guard] isSuperAdmin:', isSuperAdmin, '| isActivo:', user.isActivo);
+
   // Bloquear usuarios no activos (invitado / suspendido)
   if (!isSuperAdmin && !user.isActivo && to.name !== 'login') {
+    console.log('[guard] → login (not activo)');
     return { name: 'login' };
   }
 
   const defaultEmpresaSlug = user.empresa?.slug ?? user.empresa_id ?? '';
+  const deny = () => defaultEmpresaSlug
+    ? { name: 'empresa-home' as const, params: { companySlug: defaultEmpresaSlug } }
+    : { name: 'login' as const };
 
   if (to.name === 'login') {
-    return isSuperAdmin
-      ? { name: 'admin-dashboard' }
-      : { name: 'empresa-home', params: { companySlug: defaultEmpresaSlug } };
+    return isSuperAdmin ? { name: 'admin-dashboard' } : deny();
   }
 
   // Rutas exclusivas del super_admin
-  if (to.meta.requiresSuperAdmin && !isSuperAdmin) {
-    return { name: 'empresa-home', params: { companySlug: defaultEmpresaSlug } };
-  }
+  if (to.meta.requiresSuperAdmin && !isSuperAdmin) return deny();
 
   if (to.meta.requiresCompany) {
     const companySlug = to.params.companySlug as string;
@@ -152,16 +169,14 @@ router.beforeEach(async (to, _from) => {
       // Resolver slug → id desde el mapa cargado al login
       const grantStore = useGrantStore();
       const companyId = grantStore.resolverEmpresaId(companySlug);
+      console.log('[guard] companySlug:', companySlug, '| companyId:', companyId, '| slugMap:', grantStore.empresaSlugToId);
 
-      if (!companyId) {
-        // Slug desconocido para este usuario → denegar
-        return { name: 'empresa-home', params: { companySlug: defaultEmpresaSlug } };
-      }
+      if (!companyId) return deny();
 
-      const tieneAcceso = grantStore.puedeAccederScope(user, 'company', companyId, { companyId });
-      if (!tieneAcceso) {
-        return { name: 'empresa-home', params: { companySlug: defaultEmpresaSlug } };
-      }
+      // Verificar que el usuario tiene al menos un grant activo en esta empresa (cualquier scope)
+      const perteneceEmpresa = grantStore.grants.some(g => g.company_id === companyId && g.active && g.deletedAt === null);
+      console.log('[guard] perteneceEmpresa:', perteneceEmpresa, '| grants:', grantStore.grants.map(g => `${g.scope_type}/${g.scope_id} company:${g.company_id}`));
+      if (!perteneceEmpresa) return deny();
 
       if (to.meta.requiresZona) {
         const zonaSlug = to.params.zonaSlug as string;
@@ -169,16 +184,12 @@ router.beforeEach(async (to, _from) => {
 
         if (!zonaId) {
           const resolved = await resolverYRegistrarZona(companyId, zonaSlug);
-          if (!resolved) {
-            return { name: 'empresa-home', params: { companySlug: defaultEmpresaSlug } };
-          }
+          if (!resolved) return deny();
           zonaId = resolved.id;
         }
 
         const tieneAccesoZona = grantStore.puedeAccederScope(user, 'zone', zonaId, { companyId });
-        if (!tieneAccesoZona) {
-          return { name: 'empresa-home', params: { companySlug: defaultEmpresaSlug } };
-        }
+        if (!tieneAccesoZona) return deny();
       }
 
       if (to.meta.requiresUbicacion) {
@@ -186,31 +197,25 @@ router.beforeEach(async (to, _from) => {
         const ubicacion = grantStore.resolverUbicacion(ubicacionSlug);
 
         if (!ubicacion) {
-          // Slug de sucursal no cacheado: hacer lectura puntual y registrarlo
           const resolved = await resolverYRegistrarUbicacion(companyId, ubicacionSlug);
-          if (!resolved) {
-            return { name: 'empresa-home', params: { companySlug: defaultEmpresaSlug } };
-          }
+          if (!resolved) return deny();
           const tieneAccesoSucursal = grantStore.puedeAccederScope(
             user, 'branch', resolved.id,
             { companyId, zonaDeLaSucursal: resolved.zone_id ?? undefined }
           );
-          if (!tieneAccesoSucursal) {
-            return { name: 'empresa-home', params: { companySlug: defaultEmpresaSlug } };
-          }
+          if (!tieneAccesoSucursal) return deny();
         } else {
           const tieneAccesoSucursal = grantStore.puedeAccederScope(
             user, 'branch', ubicacion.id,
             { companyId, zonaDeLaSucursal: ubicacion.zone_id ?? undefined }
           );
-          if (!tieneAccesoSucursal) {
-            return { name: 'empresa-home', params: { companySlug: defaultEmpresaSlug } };
-          }
+          if (!tieneAccesoSucursal) return deny();
         }
       }
     }
   }
 
+  console.log('[guard] → return true, mounting route');
   return true;
 });
 

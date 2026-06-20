@@ -137,7 +137,11 @@
         </button>
       </div>
 
-      <div class="space-y-4 mb-4">
+      <form @submit.prevent="handleLogin" class="space-y-4 mb-4">
+
+        <!-- Campo oculto para accesibilidad cuando el email está prefillado -->
+        <input v-if="selectedSavedUser" type="email" autocomplete="username"
+          :value="selectedSavedUser.email" style="display:none" readonly>
 
         <!-- Correo electrónico (solo cuando no hay usuario seleccionado o se pide otra cuenta) -->
         <div v-if="!selectedSavedUser && (savedUsers.length === 0 || showManualEmail)">
@@ -145,9 +149,9 @@
           <input
             v-model="loginEmail"
             type="email" placeholder="correo@empresa.com"
+            autocomplete="username"
             :disabled="loadingLogin"
             class="w-full px-4 h-12 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 transition-colors text-gray-900 dark:text-white"
-            @keyup.enter="handleLogin"
           >
         </div>
 
@@ -158,9 +162,9 @@
             ref="passwordInputRef"
             v-model="loginPassword"
             type="password" placeholder="••••••••"
+            autocomplete="current-password"
             :disabled="loadingLogin"
             class="w-full px-4 h-12 border border-gray-300 dark:border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 transition-colors text-gray-900 dark:text-white bg-white dark:bg-gray-700"
-            @keyup.enter="handleLogin"
           >
         </div>
 
@@ -169,16 +173,16 @@
             class="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 dark:border-gray-600 rounded cursor-pointer">
           <label for="stayConnected" class="ml-2 block text-sm text-gray-700 dark:text-gray-300 cursor-pointer">Permanecer conectado</label>
         </div>
-      </div>
 
-      <button @click="handleLogin" :disabled="loadingLogin"
-        class="w-full py-3 px-4 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-lg shadow-md transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2">
-        <svg v-if="loadingLogin" class="animate-spin h-4 w-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-          <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
-          <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path>
-        </svg>
-        {{ loadingLogin ? 'Iniciando sesión...' : 'Iniciar Sesión' }}
-      </button>
+        <button type="submit" :disabled="loadingLogin"
+          class="w-full py-3 px-4 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-lg shadow-md transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2">
+          <svg v-if="loadingLogin" class="animate-spin h-4 w-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+            <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+            <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path>
+          </svg>
+          {{ loadingLogin ? 'Iniciando sesión...' : 'Iniciar Sesión' }}
+        </button>
+      </form>
     </div>
 
   </main>
@@ -350,7 +354,7 @@ const handleSetup = async () => {
       password: setupPassword.value,
     });
     showAlert('setup', 'success', '¡Usuario creado correctamente! Redirigiendo...');
-    setTimeout(() => router.push('/dashboard'), 1200);
+    await router.push({ name: 'admin-dashboard' });
   } catch (error: any) {
     showAlert('setup', 'error', error.message || 'Error creando usuario inicial.');
   } finally {
@@ -368,11 +372,16 @@ const handleLogin = async () => {
   alertLogin.value = null;
   try {
     await sessionStore.login(identificador, loginPassword.value, stayConnected.value);
-    const contacto = sessionStore.currentUser?.contacto;
+    const user = sessionStore.currentUser!;
+    const contacto = user.contacto;
     const name = contacto ? `${contacto.first_name} ${contacto.last_name}`.trim() : '';
     upsertSavedUser(identificador, name);
     showAlert('login', 'success', '¡Bienvenido! Redirigiendo al panel...');
-    setTimeout(() => router.push('/dashboard'), 1000);
+    const companySlug = user.empresa?.slug ?? user.empresa_id ?? '';
+    const destino = user.isSuperAdmin
+      ? { name: 'admin-dashboard' }
+      : { name: 'empresa-home', params: { companySlug } };
+    await router.push(destino);
   } catch (error: any) {
     showAlert('login', 'error', error.message || 'Credenciales incorrectas.');
   } finally {
