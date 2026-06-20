@@ -178,7 +178,28 @@ router.beforeEach(async (to, _from) => {
       console.log('[guard] perteneceEmpresa:', perteneceEmpresa, '| grants:', grantStore.grants.map(g => `${g.scope_type}/${g.scope_id} company:${g.company_id}`));
       if (!perteneceEmpresa) return deny();
 
-      if (to.meta.requiresZona) {
+      // Si la ruta es de empresa (no sucursal/zona) pero el usuario solo tiene grants branch → redirigir a su sucursal
+      if (!to.params.ubicacionSlug && !to.params.zonaSlug) {
+        const soloTieneBranch = grantStore.grants
+          .filter(g => g.company_id === companyId && g.active && g.deletedAt === null)
+          .every(g => g.scope_type === 'branch');
+        if (soloTieneBranch) {
+          const branchGrant = grantStore.grants.find(g => g.company_id === companyId && g.scope_type === 'branch' && g.active && g.deletedAt === null);
+          if (branchGrant) {
+            const { getDoc, doc } = await import('firebase/firestore');
+            const { db } = await import('../firebase');
+            const { ubicacionConverter } = await import('../models/Ubicacion');
+            const snap = await getDoc(doc(db, 'ubicaciones', branchGrant.scope_id).withConverter(ubicacionConverter));
+            if (snap.exists()) {
+              const u = snap.data();
+              grantStore.registrarUbicacionSlug(u.slug, u.id, u.zone_id ?? null);
+              return { name: 'sucursal-dashboard', params: { companySlug, ubicacionSlug: u.slug } };
+            }
+          }
+        }
+      }
+
+      if (to.meta.requiresZona || to.params.zonaSlug) {
         const zonaSlug = to.params.zonaSlug as string;
         let zonaId = grantStore.resolverZonaId(zonaSlug);
 
@@ -192,23 +213,27 @@ router.beforeEach(async (to, _from) => {
         if (!tieneAccesoZona) return deny();
       }
 
-      if (to.meta.requiresUbicacion) {
+      if (to.meta.requiresUbicacion || to.params.ubicacionSlug) {
         const ubicacionSlug = to.params.ubicacionSlug as string;
         const ubicacion = grantStore.resolverUbicacion(ubicacionSlug);
+        console.log('[guard] ubicacion cache:', ubicacion, '| slug:', ubicacionSlug, '| companyId:', companyId);
 
         if (!ubicacion) {
           const resolved = await resolverYRegistrarUbicacion(companyId, ubicacionSlug);
+          console.log('[guard] resolved ubicacion:', resolved);
           if (!resolved) return deny();
           const tieneAccesoSucursal = grantStore.puedeAccederScope(
             user, 'branch', resolved.id,
             { companyId, zonaDeLaSucursal: resolved.zone_id ?? undefined }
           );
+          console.log('[guard] tieneAccesoSucursal (resolved):', tieneAccesoSucursal, '| grants:', grantStore.grants.map(g => `${g.scope_type}/${g.scope_id}`));
           if (!tieneAccesoSucursal) return deny();
         } else {
           const tieneAccesoSucursal = grantStore.puedeAccederScope(
             user, 'branch', ubicacion.id,
             { companyId, zonaDeLaSucursal: ubicacion.zone_id ?? undefined }
           );
+          console.log('[guard] tieneAccesoSucursal (cached):', tieneAccesoSucursal);
           if (!tieneAccesoSucursal) return deny();
         }
       }

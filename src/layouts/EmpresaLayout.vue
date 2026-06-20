@@ -92,7 +92,9 @@ const currentPageTitle = computed(() => {
 
 watchEffect(() => {
   if (sessionStore.userRole !== 'super_admin') {
-    sessionStore.activeCompanyId = sessionStore.currentUser?.empresa_id || null;
+    // Para client_user: usar empresa_id del usuario o activeCompanyId ya resuelto
+    sessionStore.activeCompanyId =
+      sessionStore.currentUser?.empresa_id ?? sessionStore.activeCompanyId ?? null;
   } else {
     const slug = route.params.companySlug;
     if (slug && empresaStore.empresas) {
@@ -102,12 +104,23 @@ watchEffect(() => {
   }
 });
 
-onMounted(() => {
+onMounted(async () => {
+  const role = sessionStore.userRole;
+
+  // Redirigir si el usuario no tiene acceso al scope empresa (ej: gerente de sucursal)
+  if (role !== 'super_admin') {
+    const destino = await sessionStore.resolverHomeRoute();
+    if (destino.name !== 'empresa-home') {
+      router.replace(destino);
+      return;
+    }
+  }
+
+  const empresaId = sessionStore.currentUser?.empresa_id ?? sessionStore.activeCompanyId;
   if (!empresaStore.empresas || empresaStore.empresas.length === 0) {
-    empresaStore.listarEmpresas(
-      sessionStore.userRole,
-      sessionStore.userRole === 'super_admin' ? null : sessionStore.currentUser?.empresa_id
-    );
+    if (role === 'super_admin' || empresaId) {
+      empresaStore.listarEmpresas(role, role === 'super_admin' ? null : empresaId);
+    }
   }
 });
 

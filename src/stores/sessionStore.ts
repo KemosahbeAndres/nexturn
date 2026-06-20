@@ -8,6 +8,8 @@ import { empresaConverter } from '../models/Empresa';
 import { Sesion, sesionConverter } from '../models/Sesion';
 import { Contacto, contactoConverter } from '../models/Contacto';
 import { useGrantStore } from './grantStore';
+import { ubicacionConverter } from '../models/Ubicacion';
+import { zonaConverter } from '../models/Zona';
 
 export const useSessionStore = defineStore('session', () => {
   // 1. STATE (Datos Reactivos)
@@ -359,6 +361,45 @@ export const useSessionStore = defineStore('session', () => {
     }
   }
 
+  async function resolverHomeRoute(): Promise<{ name: string; params?: Record<string, string> }> {
+    const user = currentUser.value;
+    if (!user || user.isSuperAdmin) return { name: 'admin-dashboard' };
+
+    const grants = useGrantStore().grants;
+    const companySlug = user.empresa?.slug ?? '';
+
+    // Si tiene grant de company o client → panel de empresa
+    const tieneCompany = grants.some(g => g.scope_type === 'client' || g.scope_type === 'company');
+    if (tieneCompany && companySlug) return { name: 'empresa-home', params: { companySlug } };
+
+    // Si tiene grant de branch → ir a la sucursal
+    const branchGrant = grants.find(g => g.scope_type === 'branch');
+    if (branchGrant) {
+      const ubicRef = doc(db, 'ubicaciones', branchGrant.scope_id).withConverter(ubicacionConverter);
+      const ubicSnap = await getDoc(ubicRef);
+      if (ubicSnap.exists()) {
+        const ubicacion = ubicSnap.data();
+        useGrantStore().registrarUbicacionSlug(ubicacion.slug, ubicacion.id, ubicacion.zone_id ?? null);
+        return { name: 'sucursal-dashboard', params: { companySlug, ubicacionSlug: ubicacion.slug } };
+      }
+    }
+
+    // Si tiene grant de zone → ir a la zona
+    const zonaGrant = grants.find(g => g.scope_type === 'zone');
+    if (zonaGrant && companySlug) {
+      const zonaRef = doc(db, 'zonas', zonaGrant.scope_id).withConverter(zonaConverter);
+      const zonaSnap = await getDoc(zonaRef);
+      if (zonaSnap.exists()) {
+        const zona = zonaSnap.data();
+        return { name: 'zona-dashboard', params: { companySlug, zonaSlug: zona.slug } };
+      }
+    }
+
+    // Fallback
+    if (companySlug) return { name: 'empresa-home', params: { companySlug } };
+    return { name: 'login' };
+  }
+
   return {
     currentUser,
     currentSession,
@@ -377,6 +418,7 @@ export const useSessionStore = defineStore('session', () => {
     toggleTheme,
     checkIfFirstSetup,
     registerFirstSuperAdmin,
-    validateSession
+    validateSession,
+    resolverHomeRoute
   };
 });

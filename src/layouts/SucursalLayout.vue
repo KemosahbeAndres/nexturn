@@ -63,7 +63,6 @@ const IconCalendario  = defineComponent({ render: () => h('svg', { xmlns: 'http:
 interface MenuItem { name: string; routeName: string; icon: any }
 
 const MI_EQUIPO_ROUTES = [
-  'sucursal-mi-equipo',
   'sucursal-mi-equipo-personal',
   'sucursal-mi-equipo-estaciones',
   'sucursal-mi-equipo-disponibilidad',
@@ -73,7 +72,7 @@ const MI_EQUIPO_ROUTES = [
 
 const isMiEquipoActive = computed(() => MI_EQUIPO_ROUTES.includes(route.name as string));
 const isMenuItemActive = (routeName: string) =>
-  routeName === 'sucursal-mi-equipo' ? isMiEquipoActive.value : route.name === routeName;
+  routeName === 'sucursal-mi-equipo-personal' ? isMiEquipoActive.value : route.name === routeName;
 
 const esManager = computed(() => {
   const role = sessionStore.currentUser?.system_role;
@@ -89,7 +88,7 @@ const menuItems = computed((): MenuItem[] => {
   ];
   if (esManager.value) {
     items.splice(3, 0,
-      { name: 'Mi Equipo',  routeName: 'sucursal-mi-equipo',  icon: IconMiEquipo },
+      { name: 'Mi Equipo',  routeName: 'sucursal-mi-equipo-personal',  icon: IconMiEquipo },
       { name: 'Presencias', routeName: 'sucursal-presencias',  icon: IconPresencias }
     );
   }

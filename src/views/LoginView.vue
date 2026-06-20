@@ -377,10 +377,7 @@ const handleLogin = async () => {
     const name = contacto ? `${contacto.first_name} ${contacto.last_name}`.trim() : '';
     upsertSavedUser(identificador, name);
     showAlert('login', 'success', '¡Bienvenido! Redirigiendo al panel...');
-    const companySlug = user.empresa?.slug ?? user.empresa_id ?? '';
-    const destino = user.isSuperAdmin
-      ? { name: 'admin-dashboard' }
-      : { name: 'empresa-home', params: { companySlug } };
+    const destino = await sessionStore.resolverHomeRoute();
     await router.push(destino);
   } catch (error: any) {
     showAlert('login', 'error', error.message || 'Credenciales incorrectas.');
