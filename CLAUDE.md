@@ -436,6 +436,12 @@ Una vez que `config/setup.initialized == true`, `sistemaNoInicializado()` devuel
 - `EmpresaLayout.vue` y `SucursalLayout.vue` refactorizados para usar `AppShell` — solo conservan `<script setup>` con la lógica propia.
 - `ZonaLayout.vue`: nuevo layout para el scope zona, usa `AppShell`, carga `zonaStore.listarZonas()` y establece `activeZonaId`.
 
+### Fase 3 — Cargos dinámicos ✅ (2026-06-20)
+- `src/models/Role.ts`: campos `scope_role_template: ScopeRoleTemplate`, `elegible_encargado: boolean`, `estaciones_default: string[]` agregados al modelo + `roleToFirestore`/`roleFromFirestore`. Tipo `ScopeRoleTemplate` exportado.
+- `src/stores/empresaStore.ts`: `addWorkRole()` y `updateWorkRole()` actualizados para recibir y persistir los nuevos campos.
+- `src/views/empresa/AjustesRolesView.vue`: formulario de creación y edición extendido con selector `scope_role_template` y checkbox `elegible_encargado`.
+- `src/views/sucursal/PersonalView.vue`: sección "Acceso al sistema" agregada en el panel de detalle del empleado. Busca usuario existente por `contact_id`, muestra estado y grants actuales, o formulario de invitación con selector de rol y contraseña temporal. Crea usuario en Firebase Auth (app secundaria), doc `usuarios`, y grant con scope automático según rol elegido. `revocarAcceso()` suspende el usuario y revoca todos sus grants de la empresa.
+
 ### Fase 4 — Estaciones + Scheduling ✅ (2026-06-20)
 - `src/models/Estacion.ts`: campos `intensidad: 'alta'|'media'|'baja'` y `max_continuo_min: number|null` agregados + converter actualizado.
 - `src/models/Asignacion.ts`: refactor completo a grouper/publicación (`empresa_id`, `ubicacion_id`, `date`, `status`). Elimina `location_id`, `turn`, `assigned_staff`.
@@ -455,9 +461,3 @@ Una vez que `config/setup.initialized == true`, `sistemaNoInicializado()` devuel
 - `src/views/sucursal/PresenciasView.vue`: nueva vista para managers. Date picker → carga presencias del día → registrar/eliminar presencia por empleado.
 - `src/router/index.ts`: rutas `sucursal-presencias` y `sucursal-calendario` agregadas.
 - `src/layouts/SucursalLayout.vue`: navItems "Presencias" (solo managers) y "Mi Calendario" (todos) agregados con iconos SVG inline.
-
-### Fase 3 — Cargos dinámicos ✅ (2026-06-20)
-- `src/models/Role.ts`: campos `scope_role_template: ScopeRoleTemplate`, `elegible_encargado: boolean`, `estaciones_default: string[]` agregados al modelo + `roleToFirestore`/`roleFromFirestore`. Tipo `ScopeRoleTemplate` exportado.
-- `src/stores/empresaStore.ts`: `addWorkRole()` y `updateWorkRole()` actualizados para recibir y persistir los nuevos campos.
-- `src/views/empresa/AjustesRolesView.vue`: formulario de creación y edición extendido con selector `scope_role_template` y checkbox `elegible_encargado`.
-- `src/views/sucursal/PersonalView.vue`: sección "Acceso al sistema" agregada en el panel de detalle del empleado. Busca usuario existente por `contact_id`, muestra estado y grants actuales, o formulario de invitación con selector de rol y contraseña temporal. Crea usuario en Firebase Auth (app secundaria), doc `usuarios`, y grant con scope automático según rol elegido. `revocarAcceso()` suspende el usuario y revoca todos sus grants de la empresa.
