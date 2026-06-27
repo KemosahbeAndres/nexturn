@@ -73,9 +73,9 @@ const router = createRouter({
         },
         { path: 'organizacion', name: 'empresa-organizacion', meta: { title: 'Organización', subtitle: 'Zonas y sucursales de la empresa' }, component: () => import('../views/empresa/AjustesEstructuraView.vue') },
         { path: 'perfil', name: 'empresa-perfil', meta: { title: 'Mi perfil', subtitle: 'Configuración de tu cuenta' }, component: () => import('../views/shared/PerfilView.vue') },
-        { path: 'empresa-ajustes', name: 'empresa-ajustes-empresa', meta: { title: 'Empresa', subtitle: 'Datos generales de la organización' }, component: () => import('../views/empresa/AjustesEmpresaView.vue') },
+        { path: 'empresa-ajustes', name: 'empresa-ajustes-empresa', meta: { title: 'Empresa', subtitle: 'Datos generales de la organización', requiresActiveSubscription: true }, component: () => import('../views/empresa/AjustesEmpresaView.vue') },
         { path: 'usuarios', name: 'empresa-ajustes-usuarios', meta: { title: 'Usuarios', subtitle: 'Control de acceso y permisos' }, component: () => import('../views/empresa/AjustesUsuariosView.vue') },
-        { path: 'cargos', name: 'empresa-ajustes-cargos', meta: { title: 'Cargos', subtitle: 'Roles de trabajo personalizados' }, component: () => import('../views/empresa/AjustesRolesView.vue') },
+        { path: 'cargos', name: 'empresa-ajustes-cargos', meta: { title: 'Cargos', subtitle: 'Roles de trabajo personalizados', requiresActiveSubscription: true }, component: () => import('../views/empresa/AjustesRolesView.vue') },
         { path: 'facturacion', name: 'empresa-facturacion', meta: { title: 'Facturación', subtitle: 'Plan, suscripción y documentos tributarios' }, component: () => import('../views/empresa/AjustesFacturacionView.vue') },
       ]
     },
@@ -100,17 +100,17 @@ const router = createRouter({
       children: [
         { path: '', redirect: 'dashboard' },
         { path: 'dashboard', name: 'sucursal-dashboard', meta: { title: 'Centro de control', subtitle: 'Resumen operativo de la sucursal' }, component: () => import('../views/sucursal/SucursalDashboardView.vue') },
-        { path: 'turnos', name: 'sucursal-turnos', meta: { title: 'Turnos', subtitle: 'Gestión de horarios y asignaciones' }, component: () => import('../views/sucursal/TurnosView.vue') },
-        { path: 'solicitudes', name: 'sucursal-solicitudes', meta: { title: 'Solicitudes', subtitle: 'Permisos y ausencias pendientes' }, component: () => import('../views/sucursal/SolicitudesView.vue') },
-        { path: 'presencias', name: 'sucursal-presencias', meta: { title: 'Presencias', subtitle: 'Disponibilidad diaria del equipo' }, component: () => import('../views/sucursal/PresenciasView.vue') },
+        { path: 'turnos', name: 'sucursal-turnos', meta: { title: 'Turnos', subtitle: 'Gestión de horarios y asignaciones', requiresActiveSubscription: true }, component: () => import('../views/sucursal/TurnosView.vue') },
+        { path: 'solicitudes', name: 'sucursal-solicitudes', meta: { title: 'Solicitudes', subtitle: 'Permisos y ausencias pendientes', requiresActiveSubscription: true }, component: () => import('../views/sucursal/SolicitudesView.vue') },
+        { path: 'presencias', name: 'sucursal-presencias', meta: { title: 'Presencias', subtitle: 'Disponibilidad diaria del equipo', requiresActiveSubscription: true }, component: () => import('../views/sucursal/PresenciasView.vue') },
         { path: 'calendario', name: 'sucursal-calendario', meta: { title: 'Mi Calendario', subtitle: 'Tu horario publicado' }, component: () => import('../views/sucursal/CalendarioView.vue') },
         {
           path: 'mi-equipo',
           component: () => import('../layouts/MiEquipoLayout.vue'),
           children: [
             { path: '', redirect: 'personal' },
-            { path: 'personal', name: 'sucursal-mi-equipo-personal', meta: { title: 'Mi Equipo', subtitle: 'Directorio de personal de la sucursal' }, component: () => import('../views/sucursal/PersonalView.vue') },
-            { path: 'estaciones', name: 'sucursal-mi-equipo-estaciones', meta: { title: 'Estaciones', subtitle: 'Puestos operativos del equipo' }, component: () => import('../views/sucursal/ajustes/AjustesEstacionesView.vue') },
+            { path: 'personal', name: 'sucursal-mi-equipo-personal', meta: { title: 'Mi Equipo', subtitle: 'Directorio de personal de la sucursal', requiresActiveSubscription: true }, component: () => import('../views/sucursal/PersonalView.vue') },
+            { path: 'estaciones', name: 'sucursal-mi-equipo-estaciones', meta: { title: 'Estaciones', subtitle: 'Puestos operativos del equipo', requiresActiveSubscription: true }, component: () => import('../views/sucursal/ajustes/AjustesEstacionesView.vue') },
             { path: 'disponibilidad', name: 'sucursal-mi-equipo-disponibilidad', meta: { title: 'Disponibilidad', subtitle: 'Reglas base de disponibilidad' }, component: () => import('../views/sucursal/ajustes/AjustesDisponibilidadView.vue') },
             { path: 'excepciones', name: 'sucursal-mi-equipo-excepciones', meta: { title: 'Excepciones', subtitle: 'Ausencias y días fuera de rutina' }, component: () => import('../views/sucursal/ajustes/AjustesExcepcionesView.vue') },
             { path: 'reglas', name: 'sucursal-mi-equipo-reglas', meta: { title: 'Reglas', subtitle: 'Preferencias de asignación conjunta' }, component: () => import('../views/sucursal/ajustes/AjustesReglasView.vue') },
@@ -244,6 +244,15 @@ router.beforeEach(async (to, _from) => {
           if (!tieneAccesoSucursal) return deny();
         }
       }
+    }
+  }
+
+  // Bloquear rutas de escritura cuando la empresa está en past_due
+  if (to.meta.requiresActiveSubscription && !isSuperAdmin) {
+    const empresa = sessionStore.currentUser?.empresa;
+    if (empresa?.isPastDue) {
+      const companySlug = to.params.companySlug as string;
+      return { name: 'empresa-facturacion', params: { companySlug } };
     }
   }
 

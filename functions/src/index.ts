@@ -659,13 +659,17 @@ export const webhookMercadoPago = onRequest(
     const xRequestId = req.headers["x-request-id"] as string | undefined;
     const MP_WEBHOOK_SECRET = process.env.MP_WEBHOOK_SECRET;
 
-    if (MP_WEBHOOK_SECRET && xSignature) {
+    if (MP_WEBHOOK_SECRET) {
+      if (!xSignature) {
+        res.status(401).send("Firma requerida");
+        return;
+      }
       const parts = xSignature.split(",");
       const ts = parts.find(p => p.startsWith("ts="))?.split("=")[1];
       const v1 = parts.find(p => p.startsWith("v1="))?.split("=")[1];
-      const dataId = (req.query.data?.toString() && typeof req.query["data.id"] === "string")
-        ? req.query["data.id"]
-        : req.body?.data?.id;
+      const dataId: string | undefined =
+        (typeof req.query["data.id"] === "string" ? req.query["data.id"] : undefined) ??
+        (req.body?.data?.id as string | undefined);
       const manifest = `id:${dataId ?? ""};request-id:${xRequestId ?? ""};ts:${ts ?? ""};`;
       const expected = crypto.createHmac("sha256", MP_WEBHOOK_SECRET).update(manifest).digest("hex");
       if (v1 !== expected) {

@@ -9,7 +9,7 @@
 Plataforma web **multiempresa (multi-tenant)** para la **gestión operativa de turnos** de dos tipos de organización:
 
 - **Empresas comerciales**: turnos con rotación de estaciones y cobertura continua (caso de referencia).
-- **Congregaciones**: asignación de publicadores/capitanes a territorios y stands (caso degenerado, sin rotación).
+- **Congregaciones**: asignación de publicadores/capitanes a territorios y stands (caso simple, sin rotación ni estaciones). **Reutiliza el modelo `Empleado`** (aliasado "Voluntario" en la UI); no tiene colecciones propias — ver §7 *Caso congregación* y §10 *Fases 7–12*.
 
 El núcleo es un **algoritmo de asignación** que casa la *demanda* (qué puestos cubrir y cuándo) con la *oferta* (qué persona está disponible y calificada), respetando reglas de convivencia y carga.
 
@@ -268,7 +268,7 @@ Tres capas; el solape de turnos es **intencional** (cobertura escalonada + rotac
 3. **Segmento** (`segmentos`): estación asignada por sub-intervalo. Rotación incluida.
 
 ### Algoritmo (Fase 4)
-- **Tipo:** auto-borrador **greedy** + edición manual (no solver). Corre en **Cloud Function** (ambos casos).
+- **Tipo:** auto-borrador **greedy** + edición manual (no solver). Corre en **Cloud Function**; `generarBorrador` carga `empresas/{id}` y **bifurca por `empresa.type`** — empresa (esta sección) vs. congregación (ver *Caso congregación*).
 - **Entrada:** demanda (ConfiguracionTurnos) + presencias/disponibilidad + `estacion_ids` + reglas.
 - **Salida:** `segmentos` en `draft`.
 - **Buckets de chequeo:** 30 min. Cobertura por bucket: Σ segmentos activos por estación ≥ demanda.
@@ -282,8 +282,24 @@ Tres capas; el solape de turnos es **intencional** (cobertura escalonada + rotac
 - El empleado **ve su calendario** (requiere usuario provisionado). El calendario se carga con **una lectura puntual al abrir la vista**, no con listener en tiempo real (§9).
 - **Excepciones = `solicitudes`** con estados. El empleado solicita (licencia médica / feriado legal / emergencia). El **encargado de sucursal** aprueba/rechaza y, al aprobar, **define el reemplazo** (quién y cuándo). No hay recálculo automático: se alerta y se reasigna a mano.
 
-### Caso congregación
-Un empleado = un solo segmento = toda su presencia en una estación. El modelo colapsa al simple.
+### Caso congregación (reuso del motor — decisión fijada)
+
+La congregación **no tiene modelos propios**: es el mismo tenant `Empresa` (`type: 'congregacion'`, `facturable: false`) reutilizando el motor y los primitivos compartidos. El vocabulario y una rama simplificada del algoritmo son la única divergencia.
+
+| Concepto empresa | En congregación | Mecanismo |
+|---|---|---|
+| `Empleado` | **Voluntario** | Reuso de `Empleado` (alias solo en UI). `estacion_ids = []` |
+| `Cargo` | Privilegio (publicador/capitán) | Reuso del catálogo `cargos` del tenant |
+| Presencia derivada | Disponibilidad | Lectura directa de `Empleado.disponibilidad` (sin `presencias`) |
+| `Estacion` | — (no aplica) | Demanda = `cantidad` con `estacion_id = null` |
+| `Asignacion` + `Segmento` | Igual | Reuso. `Segmento.estacion_id = null`, `tipo = 'estacion'` |
+| `reglas_asignacion`, `intensidad`, `max_continuo`, colación, facturación/DTE, alertas 40h | — | **OFF** por `type` |
+
+**Algoritmo (rama congregación):** para cada turno del día, tomar `requerimiento.cantidad` voluntarios cuya `disponibilidad` **contenga** el intervalo del turno; única restricción dura = un voluntario no se asigna a dos intervalos solapados; orden por equidad (menos asignado antes); si falta gente se marca **hueco**. Sin rotación, sin estaciones, sin reglas de convivencia.
+
+**Aislamiento:** los voluntarios quedan separados de empleados de empresa por `company_id` (= tenant id) vía `tieneAccesoEmpresa()`.
+
+Detalle ejecutable y sub-fases en §10 *Fases 7–12* y §13.
 
 ---
 
@@ -383,11 +399,31 @@ Una vez que `config/setup.initialized == true`, `sistemaNoInicializado()` devuel
 
 **Fase 3 — Cargos dinámicos** ✅ *Completa*: extender `Cargo`; UI catálogo; provisión de grant desde cargo.
 
-**Fase 4 — Estaciones + scheduling**: `Estacion` (intensidad/max_continuo); demanda desde `ConfiguracionTurnos`; `presencias`, `segmentos`; refactor `asignaciones`; **algoritmo greedy en Cloud Function**; `solicitudes` con estados + reemplazo; calendario con lectura única + notificaciones.
+**Fase 4 — Estaciones + scheduling** ✅ *Completa*: `Estacion` (intensidad/max_continuo); demanda desde `ConfiguracionTurnos`; `presencias`, `segmentos`; refactor `asignaciones`; **algoritmo greedy en Cloud Function**; `solicitudes` con estados + reemplazo; calendario con lectura única + notificaciones.
 
-**Fase 5 — Facturación (por empresa)**: datos tributarios en `empresa`; `preapproval_plan` por tier (Basic con 7 días de prueba → `trialing`); checkout `init_point`; webhooks (`subscription_preapproval`, `subscription_authorized_payment`); **emisión DTE dual** (OpenFactura API automático **o** SII manual con upload de PDF/XML a Storage + notificación), seleccionable por `dte_provider_default`; colección `documentos_tributarios`; `entitlements` + hard block; dunning solo-lectura.
+**Fase 5 — Facturación (por empresa)** ✅ *Completa (verificar en Revisión integral)*: datos tributarios en `empresa`; `preapproval_plan` por tier (Basic con 7 días de prueba → `trialing`); checkout `init_point`; webhooks (`subscription_preapproval`, `subscription_authorized_payment`); **emisión DTE dual** (OpenFactura API automático **o** SII manual con upload de PDF/XML a Storage + notificación), seleccionable por `dte_provider_default`; colección `documentos_tributarios`; `entitlements` + hard block; dunning solo-lectura.
+
+**🔍 Revisión integral — gate previo a Fase 6** *(obligatorio)*: antes de abrir multiempresa, auditar fases 0–5 (registros, `tsc` 0, Security Rules + índices, Fase 5 real vs §8, smoke test empresa e2e). **No avanzar a Fase 6 hasta cerrar este gate.** Checklist en §13.
 
 **Fase 6 — Multiempresa UX**: `ClienteLayout`, selector de empresa, default si hay una sola.
+
+---
+
+### Bloque Congregaciones (Fases 7–12) — reuso de `Empleado` (§7)
+
+Orden: 7 → 8 → 9 → **10 (MVP testeable)** → 11 → 12. Cada fase cierra con `tsc` 0 y su registro en §13.
+
+**Fase 7 — Congregación · tipo de tenant + helper**: computed `isCongregacion` en `empresaStore`/`sessionStore`; confirmar `Empresa.type`/`facturable` en converter.
+
+**Fase 8 — Congregación · disponibilidad del voluntario**: captura de `Empleado.disponibilidad` (ventanas semanales) en `PersonalView` + `empleadoStore.updateDisponibilidad()`.
+
+**Fase 9 — Congregación · demanda sin estación**: en `TurnosView`, requerimiento `cantidad` con `estacion_id = null` cuando `isCongregacion`.
+
+**Fase 10 — Congregación · greedy congregación (MVP)**: rama `congregacion` en `generarBorrador` (bifurca por `empresa.type`; ruta empresa intacta). **← Aquí ya se ingresan datos y se prueban turnos.**
+
+**Fase 11 — Congregación · gating UI empresa-only**: ocultar estaciones, reglas, intensidad, alertas 40h, facturación/DTE por `type`.
+
+**Fase 12 — Congregación · publicación + calendario + e2e**: reuso de `draft → published` y calendario del voluntario; smoke test end-to-end.
 
 ---
 
@@ -397,6 +433,8 @@ Una vez que `config/setup.initialized == true`, `sistemaNoInicializado()` devuel
 - **Empresa:** tenant + entidad tributaria (RUT propio) + suscripción. **Se factura aquí.**
 - **Contacto:** identidad canónica de la persona.
 - **Empleado / Usuario:** facetas opcionales del contacto.
+- **Voluntario:** alias de UI de un `Empleado` en un tenant `type: 'congregacion'`. **No es un modelo propio.**
+- **Congregación:** tenant `Empresa` con `type: 'congregacion'`, `facturable: false`. Reutiliza el motor; sin estaciones ni facturación (§7).
 - **Grant:** `(usuario, rol, scope)`.
 - **Cargo:** puesto contractual (negocio). **Estación:** competencia operativa (scheduling).
 - **ConfiguracionTurnos:** plantilla de demanda de cobertura (default/month/range).
@@ -405,10 +443,39 @@ Una vez que `config/setup.initialized == true`, `sistemaNoInicializado()` devuel
 
 ## 12. Instrucciones Adicionales
 
-- Usa al final de cada cambio "flatpak-spawn --host npx tsc --noEmit 2>&1" para probar 0 errores.
-- Siempre deja un registro en este archivo del avance de cada fase en la seccion "13. Registro de Avance"
+- Al final de **cada cambio**, correr `flatpak-spawn --host npx tsc --noEmit 2>&1` y confirmar **0 errores** antes de dar la fase por cerrada.
+- **Registro obligatorio por fase (§13).** Al terminar cada fase, actualizar §13 con este formato, para saber siempre **dónde está** y **qué falta**:
+  - **Estado:** ✅ Completa · 🚧 En progreso · ⬜ Pendiente
+  - **Fecha** (YYYY-MM-DD) al cerrar.
+  - **Hecho:** archivos tocados + qué se implementó.
+  - **Falta / próximo paso:** lo que queda dentro o después de la fase (vacío si ✅).
+- Mantener actualizado el **Tablero de estado** al inicio de §13 (una fila por fase) en cada cierre.
+- **Gate de revisión:** antes de un hito mayor (p. ej. abrir multiempresa en Fase 6) correr el gate de **Revisión integral** de §13 y cerrarlo (✅ + fecha) antes de continuar.
+- **No tocar la ruta de empresa** del greedy ni los modelos compartidos salvo agregar campos nullable.
 
 ## 13. Registro de Avance
+
+### Tablero de estado
+
+| Fase | Tema | Estado | Falta / próximo paso |
+|---|---|---|---|
+| 0 | Fundaciones | ✅ | — |
+| 1 | Autorización + cuentas | ✅ | — |
+| 2 | Routing por scope | ✅ | — |
+| 3 | Cargos dinámicos | ✅ | — |
+| 4 | Estaciones + scheduling | ✅ | — |
+| 5 | Facturación (DTE/MercadoPago) | ✅ | — |
+| 🔍 | **Revisión integral** (gate previo a F6) | ✅ | — |
+| 6 | Multiempresa UX | ⬜ | `ClienteLayout` + selector (tras el gate) |
+| 7 | Congregación · tipo de tenant + helper | ⬜ | `isCongregacion` + doc |
+| 8 | Congregación · disponibilidad | ⬜ | editor de ventanas + `updateDisponibilidad()` |
+| 9 | Congregación · demanda sin estación | ⬜ | modo `cantidad` en `TurnosView` |
+| 10 | Congregación · greedy (MVP) | ⬜ | rama `congregacion` en `generarBorrador` |
+| 11 | Congregación · gating UI | ⬜ | ocultar módulos empresa-only |
+| 12 | Congregación · publicar + e2e | ⬜ | smoke test end-to-end |
+
+> **Estado actual:** Fases 0–5 y Revisión integral cerradas. Próximo: **Fase 6 (Multiempresa UX)**, luego bloque Congregaciones (7–12).
+> **MVP de congregación operativo tras Fase 10** (ya se ingresan datos y se prueban turnos).
 
 ### Fase 0 — Fundaciones ✅ (2026-06-19)
 - Modelos creados con `FirestoreDataConverter`: `Cliente`, `Empresa`, `Contacto`, `Usuario`, `Grant`, `Sesion`, `Empleado`, `Zona`, `Ubicacion`, `Estacion`, `Contrato`, `Asignacion`, `Excepcion`, `ReglaAsignacion`.
@@ -474,3 +541,59 @@ Una vez que `config/setup.initialized == true`, `sistemaNoInicializado()` devuel
 - `src/layouts/EmpresaLayout.vue`: ítem "Facturación" en menú (condicionado a `billing.manage` vía `can()`). Importa `grantStore` y `can`.
 - `src/layouts/MainLayout.vue`: ítem "DTE" en sidebar y bottombar del super_admin.
 - `firestore.rules`: reglas para `presencias`, `segmentos`, `solicitudes` y `documentos_tributarios` (lectura = `tieneAccesoEmpresa`; escritura = `isSuperAdmin` — los webhooks usan Firebase Admin SDK que bypass las rules).
+- **Falta / verificar en el gate:** confirmar archivos/funciones reales, cobertura de Security Rules e idempotencia de webhooks.
+
+### 🔍 Revisión integral — gate previo a Fase 6 ✅ (2026-06-27)
+
+**Resultado:** Gate cerrado. Fases 0–5 auditadas; 5 defectos corregidos; 0 errores TypeScript.
+
+**Hecho:**
+- [x] 32/32 archivos referenciados en §13 fases 0–5 verificados y presentes en el repo.
+- [x] `vue-tsc --noEmit` frontend → 0 errores. `tsc --noEmit` functions → 0 errores.
+- [x] Security Rules auditadas: `segmentos`, `solicitudes`, `documentos_tributarios` cubiertos con `tieneAccesoEmpresa`; `documentos_tributarios` write solo `isSuperAdmin`.
+- [x] `firestore.indexes.json` completado: 8 índices compuestos agregados (`segmentos×2`, `asignaciones×2`, `presencias`, `grants`, `sesiones×2`). Pendiente despliegue con `firebase deploy --only firestore:indexes`.
+- [x] `storage.rules` creado (solo `super_admin` puede escribir en `dte/`); registrado en `firebase.json`.
+- [x] `functions/src/index.ts`: firma webhook `x-signature` ahora **obligatoria** cuando `MP_WEBHOOK_SECRET` está definida (antes era opcional); extracción de `dataId` corregida para soportar ambos formatos IPN/API de MercadoPago.
+- [x] Idempotencia webhook: confirmada (`payment_ref` lookup antes de crear DTE).
+- [x] DTE dual: OpenFactura automático y SII manual (upload PDF+XML a Storage) operativos.
+- [x] Dunning: enforcement en router (`requiresActiveSubscription: true`) para rutas de escritura (`sucursal-turnos`, `sucursal-presencias`, `sucursal-solicitudes`, `sucursal-mi-equipo-personal`, `sucursal-mi-equipo-estaciones`, `empresa-ajustes-empresa`, `empresa-ajustes-cargos`) — redirige a `empresa-facturacion` si `empresa.isPastDue`.
+
+**Deuda técnica aceptada (no bloquea Fase 6):**
+- Hard block de `entitlements` (max_empleados / max_sucursales) en Security Rules: Firestore Rules no soporta `count()`. Mitigado por validación client-side en `facturaStore.verificarLimiteEmpleados/Sucursales()`. Hard block real diferido a CF `crearEmpleado`/`crearUbicacion` (Fase 6 o posterior).
+- Notificación DTE por email (SendGrid/Firebase Email Extension) pendiente — `notificarDTEEmitido` solo hace `console.log`.
+- Colección `habilidades` sin aislamiento de tenant (catálogo global temporal; no impacta en la funcionalidad actual).
+
+**Archivos modificados:**
+- `functions/src/index.ts` — firma webhook obligatoria + corrección de `dataId`
+- `firestore.indexes.json` — 8 índices compuestos
+- `storage.rules` — nuevo
+- `firebase.json` — sección `"storage"` agregada
+- `src/router/index.ts` — enforcement dunning con `requiresActiveSubscription`
+
+### Fase 6 — Multiempresa UX ⬜
+- **Falta:** `ClienteLayout`, selector de empresa, default si hay una sola (§10). Iniciar **solo tras** cerrar la Revisión integral.
+
+### Fase 7 — Congregación · Tipo de tenant + helper ⬜
+- **Falta:** computed `isCongregacion` / `activeTenantType` en `empresaStore` (o `sessionStore`) resolviendo `empresas[activeCompanyId].type`. Confirmar que el converter de `Empresa` deserializa `type` (default `'empresa'`) y `facturable` (default `true`). Caso documentado en §7.
+- **Aceptación:** `isCongregacion` disponible para ramificar vistas. `tsc` 0.
+
+### Fase 8 — Congregación · Disponibilidad del voluntario ⬜
+- **Falta:** confirmar tipo `Disponibilidad` en `src/models/Empleado.ts` (ventanas `{ day_of_week, start, end }[]`). `empleadoStore.updateDisponibilidad(empleadoId, disp)`. Editor de ventanas semanales en `PersonalView` (requerido si `isCongregacion`; valida `start < end`, sin solapes intra-día). Hoy `createEmpleado` guarda `disponibilidad: null`.
+- **Aceptación:** se guardan/editan ventanas; `empleados/{id}.disponibilidad` poblado. `tsc` 0.
+
+### Fase 9 — Congregación · Demanda sin estación ⬜
+- **Falta:** en `TurnosView`, cuando `isCongregacion`: ocultar estaciones; turno con un único `Requerimiento { estacion_id: null, cantidad }`. Modelos `ConfiguracionTurnos` / `Turno` / `Requerimiento` sin cambios.
+- **Aceptación:** definir "Sáb 09:00–12:00 · N personas" sin estaciones. `tsc` 0.
+
+### Fase 10 — Congregación · Greedy congregación (MVP) ⬜
+- **Falta:** en `functions/src/index.ts`, `generarBorrador` carga `empresas/{empresa_id}` y bifurca: `type === 'congregacion'` → `greedyCongregacion` (sin buckets de rotación, estaciones, `max_continuo`, reglas). Oferta = `Empleado.disponibilidad`; por turno toma `requerimiento.cantidad` voluntarios cuya ventana **contiene** el turno; dura: no doble-asignación solapada; orden por equidad; marca huecos. Escribe `Segmento { estacion_id: null, tipo: 'estacion' }`; reusa `Asignacion`. **Ruta empresa intacta.**
+- **Casos de prueba:** (1) 3 vols, req 2 → 2 segmentos, 0 huecos; (2) 1 vol, req 2 → 1 segmento, 1 hueco; (3) ventana 09–11 vs turno 09–12 → no elegible; (4) ya asignado solapado → excluido; (5) equidad: menor contador entra antes.
+- **Aceptación:** "Generar borrador" crea asignación + segmentos + huecos. **MVP: aquí ya se prueban turnos.** `tsc` 0.
+
+### Fase 11 — Congregación · Gating UI empresa-only ⬜
+- **Falta:** ocultar/deshabilitar por `isCongregacion`: estaciones, `reglas_asignacion`, intensidad, tarjeta "Riesgo de horas semanales" (40h), facturación/DTE. Ajustar `navItems` del `AppShell`.
+- **Aceptación:** UI congregación sin módulos irrelevantes. `tsc` 0.
+
+### Fase 12 — Congregación · Publicación + calendario + e2e ⬜
+- **Falta:** confirmar `draft → published` y calendario del voluntario sobre `Asignacion` / `Segmento` sin cambios. Smoke test: crear congregación → 5 voluntarios + disponibilidad → demanda → generar → publicar → ver calendario.
+- **Aceptación:** flujo completo sin tocar la ruta empresa. `tsc` 0.
