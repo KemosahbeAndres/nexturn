@@ -11,6 +11,7 @@
     @logout="handleLogout"
   >
     <template #sidebar-top>
+      <!-- Super admin: volver al panel admin -->
       <router-link
         v-if="sessionStore.userRole === 'super_admin'"
         to="/dashboard"
@@ -19,9 +20,19 @@
         <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-3 h-3"><path stroke-linecap="round" stroke-linejoin="round" d="M9 15 3 9m0 0 6-6M3 9h12a6 6 0 0 1 0 12h-3" /></svg>
         Panel Admin
       </router-link>
+      <!-- Owner con varias empresas: volver al selector -->
+      <router-link
+        v-else-if="clienteSlugDeVuelta"
+        :to="{ name: 'cliente-empresas', params: { clienteSlug: clienteSlugDeVuelta } }"
+        class="flex items-center gap-1.5 text-[10px] lg:text-xs font-medium text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:hover:text-gray-300 transition-colors mb-3"
+      >
+        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-3 h-3"><path stroke-linecap="round" stroke-linejoin="round" d="M9 15 3 9m0 0 6-6M3 9h12a6 6 0 0 1 0 12h-3" /></svg>
+        Mis Empresas
+      </router-link>
     </template>
 
     <template #topbar-left>
+      <!-- Super admin: volver al panel admin -->
       <router-link
         v-if="sessionStore.userRole === 'super_admin'"
         to="/dashboard"
@@ -29,6 +40,15 @@
       >
         <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-3.5 h-3.5"><path stroke-linecap="round" stroke-linejoin="round" d="M9 15 3 9m0 0 6-6M3 9h12a6 6 0 0 1 0 12h-3" /></svg>
         Admin
+      </router-link>
+      <!-- Owner con varias empresas: volver al selector -->
+      <router-link
+        v-else-if="clienteSlugDeVuelta"
+        :to="{ name: 'cliente-empresas', params: { clienteSlug: clienteSlugDeVuelta } }"
+        class="shrink-0 flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium text-gray-600 dark:text-gray-300 bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 transition-colors"
+      >
+        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-3.5 h-3.5"><path stroke-linecap="round" stroke-linejoin="round" d="M9 15 3 9m0 0 6-6M3 9h12a6 6 0 0 1 0 12h-3" /></svg>
+        Mis Empresas
       </router-link>
     </template>
   </AppShell>
@@ -153,4 +173,14 @@ const handleLogout = async () => {
   await sessionStore.logout();
   router.push('/login');
 };
+
+// Slug del cliente para el botón "← Mis Empresas" (owner con varias empresas)
+const clienteSlugDeVuelta = computed((): string | null => {
+  const user = sessionStore.currentUser;
+  if (!user || user.isSuperAdmin) return null;
+  const clienteGrant = grantStore.grants.find(g => g.scope_type === 'client');
+  if (!clienteGrant) return null;
+  const slugEntry = Object.entries(grantStore.clienteSlugToId).find(([, id]) => id === clienteGrant.scope_id);
+  return slugEntry ? slugEntry[0] : user.cliente?.slug ?? null;
+});
 </script>

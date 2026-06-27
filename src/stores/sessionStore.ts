@@ -10,6 +10,7 @@ import { Contacto, contactoConverter } from '../models/Contacto';
 import { useGrantStore } from './grantStore';
 import { ubicacionConverter } from '../models/Ubicacion';
 import { zonaConverter } from '../models/Zona';
+import { clienteConverter } from '../models/Cliente';
 
 export const useSessionStore = defineStore('session', () => {
   // 1. STATE (Datos Reactivos)
@@ -174,13 +175,26 @@ export const useSessionStore = defineStore('session', () => {
 
     // Cargar grants del usuario (lectura puntual — §9 CLAUDE.md)
     if (!usuarioData.isSuperAdmin) {
-      await useGrantStore().cargarGrants(usuarioData.id);
+      const grantStore = useGrantStore();
+      await grantStore.cargarGrants(usuarioData.id);
       // Registrar slug→id de la empresa del usuario para el guard
       if (usuarioData.empresa) {
-        useGrantStore().registrarEmpresaSlug(
+        grantStore.registrarEmpresaSlug(
           usuarioData.empresa.slug,
           usuarioData.empresa_id ?? usuarioData.empresa.id
         );
+      }
+      // Si tiene grant de cliente, cargar el doc del cliente para obtener su slug
+      const clienteGrant = grantStore.grants.find(g => g.scope_type === 'client');
+      const clienteId = clienteGrant?.scope_id ?? usuarioData.cliente_id ?? null;
+      if (clienteId) {
+        const clienteRef = doc(db, 'clientes', clienteId).withConverter(clienteConverter);
+        const clienteSnap = await getDoc(clienteRef);
+        if (clienteSnap.exists()) {
+          const clienteData = clienteSnap.data();
+          usuarioData.cliente = clienteData;
+          grantStore.registrarClienteSlug(clienteData.slug, clienteId);
+        }
       }
     }
 
@@ -338,12 +352,25 @@ export const useSessionStore = defineStore('session', () => {
 
       // Cargar grants (lectura puntual — §9 CLAUDE.md)
       if (!usuarioData.isSuperAdmin) {
-        await useGrantStore().cargarGrants(usuarioData.id);
+        const grantStore = useGrantStore();
+        await grantStore.cargarGrants(usuarioData.id);
         if (usuarioData.empresa) {
-          useGrantStore().registrarEmpresaSlug(
+          grantStore.registrarEmpresaSlug(
             usuarioData.empresa.slug,
             usuarioData.empresa_id ?? usuarioData.empresa.id
           );
+        }
+        // Registrar slug del cliente para el guard requiresCliente
+        const clienteGrant = grantStore.grants.find(g => g.scope_type === 'client');
+        const clienteId = clienteGrant?.scope_id ?? usuarioData.cliente_id ?? null;
+        if (clienteId) {
+          const clienteRef = doc(db, 'clientes', clienteId).withConverter(clienteConverter);
+          const clienteSnap = await getDoc(clienteRef);
+          if (clienteSnap.exists()) {
+            const clienteData = clienteSnap.data();
+            usuarioData.cliente = clienteData;
+            grantStore.registrarClienteSlug(clienteData.slug, clienteId);
+          }
         }
       }
 
@@ -365,11 +392,29 @@ export const useSessionStore = defineStore('session', () => {
     const user = currentUser.value;
     if (!user || user.isSuperAdmin) return { name: 'admin-dashboard' };
 
-    const grants = useGrantStore().grants;
+    const grantStore = useGrantStore();
+    const grants = grantStore.grants;
     const companySlug = user.empresa?.slug ?? '';
 
-    // Si tiene grant de company o client → panel de empresa
-    const tieneCompany = grants.some(g => g.scope_type === 'client' || g.scope_type === 'company');
+    // Si tiene grant de cliente → ir al selector de empresa (scope cliente)
+    const clienteGrant = grants.find(g => g.scope_type === 'client');
+    if (clienteGrant) {
+      const clienteSlug = user.cliente?.slug ?? grantStore.resolverClienteId(clienteGrant.scope_id) ? clienteGrant.scope_id : null;
+      // Buscar el slug en el mapa inverso
+      const slugEntry = Object.entries(grantStore.clienteSlugToId).find(([, id]) => id === clienteGrant.scope_id);
+      if (slugEntry) {
+        return { name: 'cliente-empresas', params: { clienteSlug: slugEntry[0] } };
+      }
+    }
+
+    // Si tiene múltiples empresas vía company_ids → ir al selector si tiene slug de cliente
+    const tieneMultiEmpresa = (user.company_ids?.length ?? 0) > 1 && user.cliente?.slug;
+    if (tieneMultiEmpresa) {
+      return { name: 'cliente-empresas', params: { clienteSlug: user.cliente!.slug } };
+    }
+
+    // Si tiene grant de company → panel de empresa
+    const tieneCompany = grants.some(g => g.scope_type === 'company');
     if (tieneCompany && companySlug) return { name: 'empresa-home', params: { companySlug } };
 
     // Si tiene grant de branch → ir a la sucursal

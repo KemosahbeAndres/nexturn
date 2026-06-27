@@ -2,6 +2,7 @@ import { Timestamp } from 'firebase/firestore';
 import type { DocumentData, FirestoreDataConverter, QueryDocumentSnapshot, SnapshotOptions } from 'firebase/firestore';
 import { Contacto } from './Contacto';
 import { Empresa } from './Empresa';
+import type { Cliente } from './Cliente';
 
 export type SystemRole = 'super_admin' | 'client_user';
 export type UserEstado = 'invitado' | 'activo' | 'suspendido';
@@ -10,6 +11,7 @@ export class Usuario {
   // Propiedades relacionales anidadas (hidratadas localmente al iniciar sesión)
   public contacto?: Contacto;
   public empresa?: Empresa;
+  public cliente?: Cliente;
 
   constructor(
     public id: string,

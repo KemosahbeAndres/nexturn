@@ -15,6 +15,7 @@ export const useGrantStore = defineStore('grant', () => {
   const empresaSlugToId = ref<Record<string, string>>({});
   const ubicacionSlugToId = ref<Record<string, { id: string; zone_id: string | null }>>({});
   const zonaSlugToId = ref<Record<string, string>>({});
+  const clienteSlugToId = ref<Record<string, string>>({});
 
   async function cargarGrants(userId: string): Promise<void> {
     const snap = await getDocs(
@@ -40,8 +41,16 @@ export const useGrantStore = defineStore('grant', () => {
     zonaSlugToId.value[slug] = id;
   }
 
+  function registrarClienteSlug(slug: string, id: string): void {
+    clienteSlugToId.value[slug] = id;
+  }
+
   function resolverZonaId(slug: string): string | null {
     return zonaSlugToId.value[slug] ?? null;
+  }
+
+  function resolverClienteId(slug: string): string | null {
+    return clienteSlugToId.value[slug] ?? null;
   }
 
   function resolverEmpresaId(slug: string): string | null {
@@ -57,6 +66,7 @@ export const useGrantStore = defineStore('grant', () => {
     empresaSlugToId.value = {};
     ubicacionSlugToId.value = {};
     zonaSlugToId.value = {};
+    clienteSlugToId.value = {};
   }
 
   // Wrappers que reciben usuario desde fuera (evita dependencia circular con sessionStore)
@@ -131,14 +141,17 @@ export const useGrantStore = defineStore('grant', () => {
     empresaSlugToId,
     ubicacionSlugToId,
     zonaSlugToId,
+    clienteSlugToId,
     cargarGrants,
     limpiarGrants,
     registrarEmpresaSlug,
     registrarUbicacionSlug,
     registrarZonaSlug,
+    registrarClienteSlug,
     resolverEmpresaId,
     resolverUbicacion,
     resolverZonaId,
+    resolverClienteId,
     puedeAccederScope,
     canDo,
     crearGrant,

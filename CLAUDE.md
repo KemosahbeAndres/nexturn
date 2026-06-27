@@ -466,7 +466,7 @@ Orden: 7 → 8 → 9 → **10 (MVP testeable)** → 11 → 12. Cada fase cierra 
 | 4 | Estaciones + scheduling | ✅ | — |
 | 5 | Facturación (DTE/MercadoPago) | ✅ | — |
 | 🔍 | **Revisión integral** (gate previo a F6) | ✅ | — |
-| 6 | Multiempresa UX | ⬜ | `ClienteLayout` + selector (tras el gate) |
+| 6 | Multiempresa UX | ✅ | — |
 | 7 | Congregación · tipo de tenant + helper | ⬜ | `isCongregacion` + doc |
 | 8 | Congregación · disponibilidad | ⬜ | editor de ventanas + `updateDisponibilidad()` |
 | 9 | Congregación · demanda sin estación | ⬜ | modo `cantidad` en `TurnosView` |
@@ -474,7 +474,7 @@ Orden: 7 → 8 → 9 → **10 (MVP testeable)** → 11 → 12. Cada fase cierra 
 | 11 | Congregación · gating UI | ⬜ | ocultar módulos empresa-only |
 | 12 | Congregación · publicar + e2e | ⬜ | smoke test end-to-end |
 
-> **Estado actual:** Fases 0–5 y Revisión integral cerradas. Próximo: **Fase 6 (Multiempresa UX)**, luego bloque Congregaciones (7–12).
+> **Estado actual:** Fases 0–6 y Revisión integral cerradas. Próximo: **Bloque Congregaciones (Fases 7–12)**.
 > **MVP de congregación operativo tras Fase 10** (ya se ingresan datos y se prueban turnos).
 
 ### Fase 0 — Fundaciones ✅ (2026-06-19)
@@ -570,8 +570,16 @@ Orden: 7 → 8 → 9 → **10 (MVP testeable)** → 11 → 12. Cada fase cierra 
 - `firebase.json` — sección `"storage"` agregada
 - `src/router/index.ts` — enforcement dunning con `requiresActiveSubscription`
 
-### Fase 6 — Multiempresa UX ⬜
-- **Falta:** `ClienteLayout`, selector de empresa, default si hay una sola (§10). Iniciar **solo tras** cerrar la Revisión integral.
+### Fase 6 — Multiempresa UX ✅ (2026-06-27)
+- `src/models/Cliente.ts`: campo `nombre` agregado al modelo y converter existente.
+- `src/models/Usuario.ts`: propiedad `cliente?: Cliente` agregada para hidratar el doc del cliente al login.
+- `src/stores/grantStore.ts`: mapa `clienteSlugToId`, `registrarClienteSlug()`, `resolverClienteId()`, limpieza en `limpiarGrants()`.
+- `src/stores/empresaStore.ts`: `listarEmpresas()` acepta `clienteId` adicional; modo `'cliente'` genera query `where('cliente_id','==',clienteId)` para listar N empresas.
+- `src/stores/sessionStore.ts`: al login y `validateSession()`, si hay grant `scope_type='client'`, carga el doc del cliente y registra su slug. `resolverHomeRoute()` redirige a `cliente-empresas` si el usuario tiene grant de cliente o múltiples empresas.
+- `src/router/index.ts`: nueva rama `/c/:clienteSlug` con `ClienteLayout` y rutas `cliente-empresas` / `cliente-perfil`. Guard `requiresCliente` con helper `resolverYRegistrarCliente()`. Redirige a `empresa-home` si el usuario solo tiene una empresa.
+- `src/layouts/ClienteLayout.vue`: nuevo layout usando `AppShell`. Muestra nombre/slug del cliente como `contextLabel`. Slot `sidebar-top` con botón "Panel Admin" (solo super_admin).
+- `src/views/cliente/ClienteEmpresasView.vue`: nueva vista. Carga empresas del cliente vía `empresaStore.listarEmpresas('cliente', null, clienteId)`. Tarjetas con nombre, plan, estado de suscripción. Click → registra slug y navega a `empresa-home`.
+- `src/layouts/EmpresaLayout.vue`: slots `#sidebar-top` y `#topbar-left` ahora muestran condicionalmente "← Mis Empresas" (si owner con grant 'client') o "← Panel Admin" (si super_admin).
 
 ### Fase 7 — Congregación · Tipo de tenant + helper ⬜
 - **Falta:** computed `isCongregacion` / `activeTenantType` en `empresaStore` (o `sessionStore`) resolviendo `empresas[activeCompanyId].type`. Confirmar que el converter de `Empresa` deserializa `type` (default `'empresa'`) y `facturable` (default `true`). Caso documentado en §7.

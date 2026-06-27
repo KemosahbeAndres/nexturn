@@ -117,6 +117,26 @@ const router = createRouter({
           ]
         }
       ]
+    },
+    {
+      path: '/c/:clienteSlug',
+      component: () => import('../layouts/ClienteLayout.vue'),
+      meta: { requiresAuth: true, requiresCliente: true },
+      children: [
+        { path: '', redirect: 'empresas' },
+        {
+          path: 'empresas',
+          name: 'cliente-empresas',
+          meta: { title: 'Mis Empresas', subtitle: 'Selector de empresa' },
+          component: () => import('../views/cliente/ClienteEmpresasView.vue')
+        },
+        {
+          path: 'perfil',
+          name: 'cliente-perfil',
+          meta: { title: 'Mi perfil', subtitle: 'Configuración de tu cuenta' },
+          component: () => import('../views/shared/PerfilView.vue')
+        }
+      ]
     }
   ]
 });
@@ -168,6 +188,40 @@ router.beforeEach(async (to, _from) => {
 
   // Rutas exclusivas del super_admin
   if (to.meta.requiresSuperAdmin && !isSuperAdmin) return deny();
+
+  if (to.meta.requiresCliente) {
+    const clienteSlug = to.params.clienteSlug as string;
+
+    if (!isSuperAdmin) {
+      const grantStore = useGrantStore();
+      let clienteId = grantStore.resolverClienteId(clienteSlug);
+
+      // Si no está en caché: resolver con lectura puntual y registrar
+      if (!clienteId) {
+        const resolved = await resolverYRegistrarCliente(clienteSlug, grantStore);
+        if (!resolved) return { name: 'login' };
+        clienteId = resolved;
+      }
+
+      // Verificar que el usuario tiene grant 'client' sobre este cliente
+      const tieneAccesoCliente = grantStore.grants.some(
+        g => g.scope_type === 'client' && g.scope_id === clienteId && g.active && g.deletedAt === null
+      );
+      if (!tieneAccesoCliente) return deny();
+
+      // Si solo tiene una empresa bajo este cliente, redirigir directamente
+      const empresasDelCliente = grantStore.grants.filter(
+        g => g.company_id && g.active && g.deletedAt === null
+      );
+      const companyIds = [...new Set(empresasDelCliente.map(g => g.company_id!))];
+      if (companyIds.length === 1 && to.name === 'cliente-empresas') {
+        const slugEntry = Object.entries(grantStore.empresaSlugToId).find(([, id]) => id === companyIds[0]);
+        if (slugEntry) {
+          return { name: 'empresa-home', params: { companySlug: slugEntry[0] } };
+        }
+      }
+    }
+  }
 
   if (to.meta.requiresCompany) {
     const companySlug = to.params.companySlug as string;
@@ -297,6 +351,24 @@ async function resolverYRegistrarZona(
   const data = snap.docs[0].data();
   useGrantStore().registrarZonaSlug(zonaSlug, data.id);
   return { id: data.id };
+}
+
+async function resolverYRegistrarCliente(
+  clienteSlug: string,
+  grantStore: ReturnType<typeof useGrantStore>
+): Promise<string | null> {
+  const { clienteConverter } = await import('../models/Cliente');
+  const snap = await getDocs(
+    query(
+      collection(db, 'clientes').withConverter(clienteConverter),
+      where('slug', '==', clienteSlug),
+      where('deletedAt', '==', null)
+    )
+  );
+  if (snap.empty) return null;
+  const data = snap.docs[0].data();
+  grantStore.registrarClienteSlug(clienteSlug, data.id);
+  return data.id;
 }
 
 export default router;

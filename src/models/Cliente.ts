@@ -26,6 +26,7 @@ export class Cliente {
     public id: string,
     public contact_id: string,
     public slug: string,
+    public nombre: string = '',
     public plan: ClientePlan = 'free',
     public subscription_status: SubscriptionStatus = 'trialing',
     public entitlements: ClienteEntitlements = { ...DEFAULT_ENTITLEMENTS },
@@ -54,6 +55,7 @@ export const clienteConverter: FirestoreDataConverter<Cliente> = {
     return {
       contact_id: cliente.contact_id,
       slug: cliente.slug,
+      nombre: cliente.nombre,
       plan: cliente.plan,
       subscription_status: cliente.subscription_status,
       entitlements: cliente.entitlements,
@@ -70,6 +72,7 @@ export const clienteConverter: FirestoreDataConverter<Cliente> = {
       snapshot.id,
       data.contact_id,
       data.slug || '',
+      data.nombre || '',
       data.plan as ClientePlan || 'free',
       data.subscription_status as SubscriptionStatus || 'trialing',
       data.entitlements || { ...DEFAULT_ENTITLEMENTS },

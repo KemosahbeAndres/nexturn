@@ -12,20 +12,28 @@ import type { ScopeRoleTemplate } from '../models/Role';
 export const useEmpresaStore = defineStore('empresa', () => {
   const empresasRef = collection(db, 'empresas').withConverter(empresaConverter);
 
-  const queryParams = ref<{ role: string | null; empresaId: string | null }>({ role: null, empresaId: null });
+  const queryParams = ref<{ role: string | null; empresaId: string | null; clienteId: string | null }>({ role: null, empresaId: null, clienteId: null });
 
-  function listarEmpresas(role: string, empresaId?: string | null) {
-    queryParams.value = { role, empresaId: empresaId || null };
+  function listarEmpresas(role: string, empresaId?: string | null, clienteId?: string | null) {
+    queryParams.value = { role, empresaId: empresaId || null, clienteId: clienteId || null };
   }
 
   const empresasQuery = computed(() => {
     if (!queryParams.value.role) return null;
     let q = query(empresasRef, where('deletedAt', '==', null));
 
-    if (queryParams.value.role !== 'super_admin') {
-      if (!queryParams.value.empresaId) return null;
-      q = query(q, where(documentId(), '==', queryParams.value.empresaId));
+    if (queryParams.value.role === 'super_admin') {
+      return q;
     }
+
+    // Modo cliente: listar todas las empresas del cliente
+    if (queryParams.value.clienteId) {
+      return query(q, where('cliente_id', '==', queryParams.value.clienteId));
+    }
+
+    // Modo empresa individual
+    if (!queryParams.value.empresaId) return null;
+    q = query(q, where(documentId(), '==', queryParams.value.empresaId));
     return q;
   });
 
