@@ -280,6 +280,26 @@ Tres capas; el solape de turnos es **intencional** (cobertura escalonada + rotac
 - El empleado **ve su calendario** (requiere usuario provisionado). El calendario se carga con **una lectura puntual al abrir la vista**, no con listener en tiempo real (§9).
 - **Excepciones = `solicitudes`** con estados. El empleado solicita (licencia médica / feriado legal / emergencia). El **encargado de sucursal** aprueba/rechaza y, al aprobar, **define el reemplazo** (quién y cuándo). No hay recálculo automático: se alerta y se reasigna a mano.
 
+### Borrador reactivo (Fase 6-bis — decisión de diseño)
+El borrador **se genera automáticamente** en el servidor cada vez que cambia la oferta o la demanda de la sucursal. No existe el botón "Generar borrador" en la UI. El gerente abre el calendario y ve siempre una propuesta vigente que puede aprobar segmento a segmento (o en bloque) o rechazar.
+
+**Disparadores de regeneración** (Cloud Function `onWrite` o `onCall` equivalente):
+- Se guarda o edita una `ConfiguracionTurnos` (cambio de demanda).
+- Se guarda o edita `Empleado.disponibilidad` (cambio de oferta base).
+- Se crea, edita o elimina una `Excepcion` (cambio de oferta puntual).
+- El gerente entra a la vista de Turnos/Calendario (regeneración on-demand silenciosa si no hay borrador vigente para esa semana).
+
+**Flujo UI del gerente:**
+1. Abre Turnos o Calendario → ve el borrador de la semana en curso (o selecciona semana).
+2. Cada segmento tiene chip de estado: `sugerido` (naranja) · `aprobado` (verde) · `rechazado` (rojo tachado).
+3. Puede aprobar/rechazar individualmente o con "Aprobar todo". Puede reasignar (arrastrar/editar) un segmento sugerido antes de aprobar.
+4. Al aprobar todos los segmentos de un día → la `Asignacion` pasa a `published` → empleados notificados.
+5. Si cambia algo que afecta días ya publicados, se regenera solo en `draft` los segmentos afectados y se alerta al gerente (no se borra lo publicado).
+
+**Estado de segmento extendido:** `'sugerido' | 'aprobado' | 'rechazado' | 'publicado'` (reemplaza el anterior `'draft' | 'published'` binario). La `Asignacion` sigue siendo el agrupador por día/sucursal; su `status` refleja si todos los segmentos están aprobados/publicados.
+
+**Regla de oro:** el algoritmo nunca sobreescribe un segmento en estado `aprobado` o `publicado`. Solo regenera los `sugerido` del rango afectado.
+
 ### Caso congregación (reuso del motor — decisión fijada)
 
 La congregación **no tiene modelos propios**: es el mismo tenant `Empresa` (`type: 'congregacion'`, `facturable: false`) reutilizando el motor y los primitivos compartidos. El vocabulario y una rama simplificada del algoritmo son la única divergencia.
@@ -405,6 +425,8 @@ Una vez que `config/setup.initialized == true`, `sistemaNoInicializado()` devuel
 
 **Fase 6 — Multiempresa UX**: `ClienteLayout`, selector de empresa, default si hay una sola.
 
+**Fase 6-bis — Borrador reactivo**: quitar el botón "Generar borrador" de `TurnosView`; el borrador se genera automáticamente en el servidor al detectar cambios en demanda (`ConfiguracionTurnos`) u oferta (`disponibilidad` / `excepciones`), o al entrar a la vista sin borrador vigente. Estado de segmento extendido a `sugerido|aprobado|rechazado|publicado`; UI de aprobación individual y en bloque en el calendario del gerente. Ver §7 *Borrador reactivo* para detalle completo.
+
 ---
 
 ### Bloque Congregaciones (Fases 7–12) — reuso de `Empleado` (§7)
@@ -465,6 +487,7 @@ Orden: 7 → 8 → 9 → **10 (MVP testeable)** → 11 → 12. Cada fase cierra 
 | 5 | Facturación (DTE/MercadoPago) | ✅ | — |
 | 🔍 | **Revisión integral** (gate previo a F6) | ✅ | — |
 | 6 | Multiempresa UX | ✅ | — |
+| 6-bis | Borrador reactivo (scheduling UX) | ⬜ | quitar botón; CF on-demand; estado sugerido/aprobado/rechazado/publicado |
 | 7 | Congregación · tipo de tenant + helper | ⬜ | `isCongregacion` + doc |
 | 8 | Congregación · disponibilidad | 🚧 | ventanas + derivación de presencias hechas; falta edición en `PersonalView` |
 | 9 | Congregación · demanda sin estación | ⬜ | modo `cantidad` en `TurnosView` |
@@ -472,7 +495,7 @@ Orden: 7 → 8 → 9 → **10 (MVP testeable)** → 11 → 12. Cada fase cierra 
 | 11 | Congregación · gating UI | ⬜ | ocultar módulos empresa-only |
 | 12 | Congregación · publicar + e2e | ⬜ | smoke test end-to-end |
 
-> **Estado actual:** Fases 0–6 y Revisión integral cerradas. Próximo: **Bloque Congregaciones (Fases 7–12)**.
+> **Estado actual:** Fases 0–6 y Revisión integral cerradas. Próximo: **Fase 6-bis (borrador reactivo)** y luego el **Bloque Congregaciones (Fases 7–12)**.
 > **MVP de congregación operativo tras Fase 10** (ya se ingresan datos y se prueban turnos).
 
 ### Fase 0 — Fundaciones ✅ (2026-06-19)
@@ -579,6 +602,17 @@ Orden: 7 → 8 → 9 → **10 (MVP testeable)** → 11 → 12. Cada fase cierra 
 - `src/views/cliente/ClienteEmpresasView.vue`: nueva vista. Carga empresas del cliente vía `empresaStore.listarEmpresas('cliente', null, clienteId)`. Tarjetas con nombre, plan, estado de suscripción. Click → registra slug y navega a `empresa-home`.
 - `src/layouts/EmpresaLayout.vue`: slots `#sidebar-top` y `#topbar-left` ahora muestran condicionalmente "← Mis Empresas" (si owner con grant 'client') o "← Panel Admin" (si super_admin).
 
+### Fase 6-bis — Borrador reactivo ⬜
+- **Decisión de diseño:** eliminado el botón "Generar borrador" de `TurnosView`. El borrador se genera automáticamente al detectar cambios relevantes o al abrir el calendario sin borrador vigente. El gerente ve siempre una propuesta y la va aprobando.
+- **Falta:**
+  - `src/models/Segmento.ts`: extender `status` a `'sugerido' | 'aprobado' | 'rechazado' | 'publicado'` (reemplaza `'draft' | 'published'`).
+  - `functions/src/index.ts`: nueva CF `actualizarBorrador` (`onCall`) — punto de entrada único que llama al greedy para el rango pedido (una semana por defecto). Solo regenera segmentos en `sugerido`; los `aprobado`/`publicado` son intocables.
+  - Triggers on-demand: la CF se llama (a) al guardar `ConfiguracionTurnos`, (b) al guardar `Empleado.disponibilidad`, (c) al crear/editar/borrar `Excepcion` — todos desde el cliente, inmediatamente después del write, pasando `{ empresa_id, ubicacion_id, week_start }`.
+  - Al abrir `TurnosView` o `CalendarioView` (gerente): si no existen segmentos para la semana en curso, llamar `actualizarBorrador` silenciosamente.
+  - `src/views/sucursal/TurnosView.vue`: quitar toolbar de "Generar borrador" y date picker de generación; mostrar el calendario semanal con segmentos en chip de estado (`sugerido` naranja · `aprobado` verde · `rechazado` rojo). Botones "Aprobar" / "Rechazar" por segmento + "Aprobar todo el día".
+  - `src/stores/segmentoStore.ts`: acción `aprobarSegmento(id)` → `status = 'aprobado'`; `rechazarSegmento(id)` → `status = 'rechazado'`; `publicarDia(ubicacion_id, date)` → todos los `aprobado` del día pasan a `publicado` + actualiza `Asignacion.status = 'published'` + notifica empleados.
+- **Aceptación:** abrir Turnos → aparece propuesta sin pulsar ningún botón; aprobar/rechazar funciona; publicar un día notifica. `tsc` 0.
+
 ### Fase 7 — Congregación · Tipo de tenant + helper ⬜
 - **Falta:** computed `isCongregacion` / `activeTenantType` en `empresaStore` (o `sessionStore`) resolviendo `empresas[activeCompanyId].type`. Confirmar que el converter de `Empresa` deserializa `type` (default `'empresa'`) y `facturable` (default `true`). Caso documentado en §7.
 - **Aceptación:** `isCongregacion` disponible para ramificar vistas. `tsc` 0.
@@ -602,7 +636,7 @@ Orden: 7 → 8 → 9 → **10 (MVP testeable)** → 11 → 12. Cada fase cierra 
 ### Fase 10 — Congregación · Greedy congregación (MVP) ⬜
 - **Falta:** en `functions/src/index.ts`, `generarBorrador` carga `empresas/{empresa_id}` y bifurca: `type === 'congregacion'` → `greedyCongregacion` (sin buckets de rotación, estaciones, `max_continuo`, reglas). Oferta = `Empleado.disponibilidad`; por turno toma `requerimiento.cantidad` voluntarios cuya ventana **contiene** el turno; dura: no doble-asignación solapada; orden por equidad; marca huecos. Escribe `Segmento { estacion_id: null, tipo: 'estacion' }`; reusa `Asignacion`. **Ruta empresa intacta.**
 - **Casos de prueba:** (1) 3 vols, req 2 → 2 segmentos, 0 huecos; (2) 1 vol, req 2 → 1 segmento, 1 hueco; (3) ventana 09–11 vs turno 09–12 → no elegible; (4) ya asignado solapado → excluido; (5) equidad: menor contador entra antes.
-- **Aceptación:** "Generar borrador" crea asignación + segmentos + huecos. **MVP: aquí ya se prueban turnos.** `tsc` 0.
+- **Aceptación:** al abrir Turnos de una congregación aparece la propuesta automáticamente; aprobar/rechazar funciona. **MVP: aquí ya se prueban turnos.** `tsc` 0.
 
 ### Fase 11 — Congregación · Gating UI empresa-only ⬜
 - **Falta:** ocultar/deshabilitar por `isCongregacion`: estaciones, `reglas_asignacion`, intensidad, tarjeta "Riesgo de horas semanales" (40h), facturación/DTE. Ajustar `navItems` del `AppShell`.
