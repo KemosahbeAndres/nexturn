@@ -3,8 +3,8 @@ import { useCollection } from 'vuefire';
 import { collection, doc, setDoc, updateDoc, query, where, Timestamp, getDoc, documentId } from 'firebase/firestore';
 import { ref, computed, watch } from 'vue';
 import { db } from '../firebase';
-import { Empresa, empresaConverter } from '../models/Empresa';
-import type { EmpresaType } from '../models/Empresa';
+import { Empresa, empresaConverter, PLAN_ENTITLEMENTS } from '../models/Empresa';
+import type { EmpresaType, EmpresaPlan } from '../models/Empresa';
 import { contactoConverter } from '../models/Contacto';
 import { Role, roleToFirestore } from '../models/Role';
 import type { ScopeRoleTemplate } from '../models/Role';
@@ -50,15 +50,46 @@ export const useEmpresaStore = defineStore('empresa', () => {
     }
   }, { deep: true });
 
-  async function createEmpresa(data: { active: boolean; contact_id: string; type: EmpresaType; cargos: Role[]; slug: string }) {
+  async function createEmpresa(data: {
+    active: boolean;
+    contact_id: string;
+    type: EmpresaType;
+    cargos: Role[];
+    slug: string;
+    cliente_id?: string | null;
+    rut?: string | null;
+    razon_social?: string | null;
+    giro?: string | null;
+    direccion?: string | null;
+    plan?: EmpresaPlan | null;
+  }) {
     const docRef = doc(empresasRef);
+    const facturable = data.type !== 'congregacion';
+    const plan = data.type === 'congregacion' ? null : (data.plan ?? null);
+    const entitlements = plan ? PLAN_ENTITLEMENTS[plan] : { max_empleados: 25, max_sucursales: 3, features: [] };
+
     const newEmpresa = new Empresa(
       docRef.id,
       data.active,
       data.contact_id,
       data.type,
       data.cargos,
-      data.slug
+      data.slug,
+      new Date(),
+      new Date(),
+      null,
+      data.cliente_id ?? null,
+      data.rut ?? null,
+      data.razon_social ?? null,
+      data.giro ?? null,
+      data.direccion ?? null,
+      plan,
+      facturable,
+      null,
+      null,
+      facturable ? 'pending' : 'active',
+      entitlements,
+      null,
     );
     await setDoc(docRef, newEmpresa);
     return docRef.id;

@@ -192,6 +192,39 @@ service cloud.firestore {
         (isSignedIn() && tieneAccesoEmpresa(resource.data.empresa_id));
     }
 
+    // ── presencias ────────────────────────────────────────────────────────────
+    match /presencias/{presenciaId} {
+      allow read: if isSuperAdmin() ||
+        (isSignedIn() && tieneAccesoEmpresa(resource.data.empresa_id));
+      allow write: if isSuperAdmin() ||
+        (isSignedIn() && tieneAccesoEmpresa(resource.data.empresa_id));
+    }
+
+    // ── segmentos ─────────────────────────────────────────────────────────────
+    match /segmentos/{segmentoId} {
+      allow read: if isSuperAdmin() ||
+        (isSignedIn() && tieneAccesoEmpresa(resource.data.empresa_id));
+      allow write: if isSuperAdmin() ||
+        (isSignedIn() && tieneAccesoEmpresa(resource.data.empresa_id));
+    }
+
+    // ── solicitudes ───────────────────────────────────────────────────────────
+    match /solicitudes/{solicitudId} {
+      allow read: if isSuperAdmin() ||
+        (isSignedIn() && tieneAccesoEmpresa(resource.data.empresa_id));
+      allow write: if isSuperAdmin() ||
+        (isSignedIn() && tieneAccesoEmpresa(resource.data.empresa_id));
+    }
+
+    // ── documentos_tributarios ────────────────────────────────────────────────
+    // Solo super_admin puede escribir (los webhooks usan Firebase Admin SDK que bypass las rules).
+    // El owner del cliente puede leer los DTE de sus empresas.
+    match /documentos_tributarios/{dteId} {
+      allow read: if isSuperAdmin() ||
+        (isSignedIn() && tieneAccesoEmpresa(resource.data.empresa_id));
+      allow write: if isSuperAdmin();
+    }
+
     // ── Denegación por defecto ────────────────────────────────────────────────
     match /{document=**} {
       allow read, write: if false;

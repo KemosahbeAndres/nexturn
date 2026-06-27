@@ -461,3 +461,16 @@ Una vez que `config/setup.initialized == true`, `sistemaNoInicializado()` devuel
 - `src/views/sucursal/PresenciasView.vue`: nueva vista para managers. Date picker → carga presencias del día → registrar/eliminar presencia por empleado.
 - `src/router/index.ts`: rutas `sucursal-presencias` y `sucursal-calendario` agregadas.
 - `src/layouts/SucursalLayout.vue`: navItems "Presencias" (solo managers) y "Mi Calendario" (todos) agregados con iconos SVG inline.
+
+### Fase 5 — Facturación (por empresa) ✅ (2026-06-27)
+- `src/models/Empresa.ts`: extendido con campos tributarios (`rut`, `razon_social`, `giro`, `direccion`), suscripción (`plan`, `facturable`, `mp_preapproval_id`, `mp_preapproval_plan_id`, `subscription_status`, `entitlements`, `trial_ends_at`). Tipos `EmpresaPlan`, `SubscriptionStatus`, `DTEProvider`, `EmpresaEntitlements`. Constantes `PLAN_ENTITLEMENTS` y `PLAN_PRECIOS_NETO`. Métodos `isPastDue`, `isActive`, `hasFeature`.
+- `src/models/DocumentoTributario.ts`: nuevo modelo con `payment_ref`, `periodo`, `tipo_dte`, `monto_neto/iva/total`, `folio`, `origen`, `estado`, `archivo_pdf_url`, `archivo_xml_url`, `emitido_at`, `notificado_at` + converter.
+- `src/stores/facturaStore.ts`: nuevo store con `iniciarSuscripcion()` (llama CF `crearSuscripcion`), `cancelarSuscripcion()`, `cargarDocumentos()`, `cargarTodosDocumentos()`, `subirDTEManual()` (upload + notificar), `verificarLimiteEmpleados/Sucursales()`, `actualizarPlan()`, `actualizarDTEProvider()`.
+- `src/stores/empresaStore.ts`: `createEmpresa()` extendido con campos tributarios, `facturable`, `entitlements` y `subscription_status` por tipo.
+- `functions/src/index.ts`: Cloud Functions `crearSuscripcion` (crea preapproval MP con 7 días de prueba, actualiza empresa), `cancelarSuscripcion` (PUT status=cancelled), `webhookMercadoPago` (onRequest, valida firma `x-signature`, maneja `subscription_preapproval` y `subscription_authorized_payment`, idempotencia, crea `documentos_tributarios`, emite DTE automático vía OpenFactura si configurado), `notificarDTEEmitido` (onCall).
+- `src/views/empresa/AjustesFacturacionView.vue`: nueva vista con banner dunning (`past_due`), selector de planes (Basic/Pro/Business) con precios netos, checkout redirect, datos tributarios editable, historial de DTE con chips de estado. Visible solo a `billing.manage`.
+- `src/views/admin/AdminDTEView.vue`: nueva vista super_admin. Tabla de todos los DTE con filtros por estado/origen. Modal "Subir DTE" para modo `sii_manual`: sube PDF+XML a Firebase Storage (`dte/{id}/`), guarda URLs, marca como emitido y notifica.
+- `src/router/index.ts`: ruta `empresa-facturacion` en scope empresa; ruta `admin-dte` en scope super_admin.
+- `src/layouts/EmpresaLayout.vue`: ítem "Facturación" en menú (condicionado a `billing.manage` vía `can()`). Importa `grantStore` y `can`.
+- `src/layouts/MainLayout.vue`: ítem "DTE" en sidebar y bottombar del super_admin.
+- `firestore.rules`: reglas para `presencias`, `segmentos`, `solicitudes` y `documentos_tributarios` (lectura = `tieneAccesoEmpresa`; escritura = `isSuperAdmin` — los webhooks usan Firebase Admin SDK que bypass las rules).

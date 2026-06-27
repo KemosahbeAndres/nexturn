@@ -47,6 +47,12 @@ const router = createRouter({
           name: 'admin-perfil',
           meta: { title: 'Mi perfil', subtitle: 'Configuración de tu cuenta' },
           component: () => import('../views/shared/PerfilView.vue')
+        },
+        {
+          path: 'dte',
+          name: 'admin-dte',
+          meta: { title: 'Documentos Tributarios', subtitle: 'Gestión de DTE emitidos' },
+          component: () => import('../views/admin/AdminDTEView.vue')
         }
       ]
     },
@@ -70,6 +76,7 @@ const router = createRouter({
         { path: 'empresa-ajustes', name: 'empresa-ajustes-empresa', meta: { title: 'Empresa', subtitle: 'Datos generales de la organización' }, component: () => import('../views/empresa/AjustesEmpresaView.vue') },
         { path: 'usuarios', name: 'empresa-ajustes-usuarios', meta: { title: 'Usuarios', subtitle: 'Control de acceso y permisos' }, component: () => import('../views/empresa/AjustesUsuariosView.vue') },
         { path: 'cargos', name: 'empresa-ajustes-cargos', meta: { title: 'Cargos', subtitle: 'Roles de trabajo personalizados' }, component: () => import('../views/empresa/AjustesRolesView.vue') },
+        { path: 'facturacion', name: 'empresa-facturacion', meta: { title: 'Facturación', subtitle: 'Plan, suscripción y documentos tributarios' }, component: () => import('../views/empresa/AjustesFacturacionView.vue') },
       ]
     },
     {

@@ -1,6 +1,7 @@
 import { setGlobalOptions } from "firebase-functions";
-import { onCall, HttpsError } from "firebase-functions/v2/https";
+import { onCall, HttpsError, onRequest } from "firebase-functions/v2/https";
 import * as admin from "firebase-admin";
+import * as crypto from "crypto";
 
 admin.initializeApp();
 setGlobalOptions({ maxInstances: 10 });
@@ -516,3 +517,393 @@ export const generarBorrador = onCall<
     huecos,
   };
 });
+
+// ─── Facturación — MercadoPago ────────────────────────────────────────────────
+
+const PLAN_PRECIOS_NETO: Record<string, number> = {
+  basic: 10000,
+  pro: 30000,
+  business: 100000,
+};
+
+const PLAN_ENTITLEMENTS: Record<string, { max_empleados: number; max_sucursales: number; features: string[] }> = {
+  basic:    { max_empleados: 25,  max_sucursales: 3,  features: [] },
+  pro:      { max_empleados: 100, max_sucursales: 10, features: ["algoritmo", "reglas", "exportaciones"] },
+  business: { max_empleados: -1,  max_sucursales: -1, features: ["algoritmo", "reglas", "exportaciones", "roles_finos", "sso", "api"] },
+};
+
+// Crea un preapproval (suscripción) en MercadoPago y guarda el init_point
+export const crearSuscripcion = onCall<
+  { empresa_id: string; plan: string },
+  Promise<{ init_point: string }>
+>({ region: "southamerica-west1" }, async (request) => {
+  const { empresa_id, plan } = request.data;
+
+  if (!empresa_id || !plan || !PLAN_PRECIOS_NETO[plan]) {
+    throw new HttpsError("invalid-argument", "empresa_id y plan son requeridos.");
+  }
+
+  const empresaSnap = await db.collection("empresas").doc(empresa_id).get();
+  if (!empresaSnap.exists) throw new HttpsError("not-found", "Empresa no encontrada.");
+  const empresa = empresaSnap.data()!;
+
+  if (!empresa.facturable) {
+    throw new HttpsError("failed-precondition", "Esta empresa no es facturable.");
+  }
+
+  const MP_ACCESS_TOKEN = process.env.MP_ACCESS_TOKEN;
+  if (!MP_ACCESS_TOKEN) throw new HttpsError("internal", "MercadoPago no configurado.");
+
+  const montoNeto = PLAN_PRECIOS_NETO[plan];
+  const iva = Math.round(montoNeto * 0.19);
+  const montoTotal = montoNeto + iva;
+
+  // Calcular trial end (7 días)
+  const trialEnds = new Date();
+  trialEnds.setDate(trialEnds.getDate() + 7);
+
+  const backUrl = process.env.APP_BASE_URL ?? "https://nexturn.app";
+
+  const body = {
+    auto_recurring: {
+      frequency: 1,
+      frequency_type: "months",
+      transaction_amount: montoTotal,
+      currency_id: "CLP",
+      free_trial: {
+        frequency: 7,
+        frequency_type: "days",
+      },
+    },
+    back_url: `${backUrl}/${empresa.slug}/facturacion`,
+    payer_email: empresa.mp_payer_email ?? null,
+    reason: `Nexturn ${plan.charAt(0).toUpperCase() + plan.slice(1)} — ${empresa.razon_social ?? empresa.slug}`,
+    external_reference: empresa_id,
+  };
+
+  const mpRes = await fetch("https://api.mercadopago.com/preapproval", {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${MP_ACCESS_TOKEN}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(body),
+  });
+
+  if (!mpRes.ok) {
+    const err = await mpRes.text();
+    throw new HttpsError("internal", `MercadoPago error: ${err}`);
+  }
+
+  const mpData = await mpRes.json() as { id: string; init_point: string };
+
+  const now = admin.firestore.FieldValue.serverTimestamp();
+  await db.collection("empresas").doc(empresa_id).update({
+    plan,
+    mp_preapproval_id: mpData.id,
+    subscription_status: "trialing",
+    entitlements: PLAN_ENTITLEMENTS[plan],
+    trial_ends_at: admin.firestore.Timestamp.fromDate(trialEnds),
+    updatedAt: now,
+  });
+
+  return { init_point: mpData.init_point };
+});
+
+// Cancela la suscripción activa de una empresa
+export const cancelarSuscripcion = onCall<
+  { empresa_id: string },
+  Promise<{ ok: boolean }>
+>({ region: "southamerica-west1" }, async (request) => {
+  const { empresa_id } = request.data;
+  if (!empresa_id) throw new HttpsError("invalid-argument", "empresa_id requerido.");
+
+  const empresaSnap = await db.collection("empresas").doc(empresa_id).get();
+  if (!empresaSnap.exists) throw new HttpsError("not-found", "Empresa no encontrada.");
+  const empresa = empresaSnap.data()!;
+
+  const preapprovalId = empresa.mp_preapproval_id;
+  if (!preapprovalId) throw new HttpsError("failed-precondition", "No hay suscripción activa.");
+
+  const MP_ACCESS_TOKEN = process.env.MP_ACCESS_TOKEN;
+  if (!MP_ACCESS_TOKEN) throw new HttpsError("internal", "MercadoPago no configurado.");
+
+  const res = await fetch(`https://api.mercadopago.com/preapproval/${preapprovalId}`, {
+    method: "PUT",
+    headers: {
+      Authorization: `Bearer ${MP_ACCESS_TOKEN}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ status: "cancelled" }),
+  });
+
+  if (!res.ok) {
+    const err = await res.text();
+    throw new HttpsError("internal", `MercadoPago error: ${err}`);
+  }
+
+  await db.collection("empresas").doc(empresa_id).update({
+    subscription_status: "canceled",
+    updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+  });
+
+  return { ok: true };
+});
+
+// Webhook de MercadoPago — recibe notificaciones de pago y suscripción
+export const webhookMercadoPago = onRequest(
+  { region: "southamerica-west1" },
+  async (req, res) => {
+    // Validar firma x-signature para prevenir spoofing
+    const xSignature = req.headers["x-signature"] as string | undefined;
+    const xRequestId = req.headers["x-request-id"] as string | undefined;
+    const MP_WEBHOOK_SECRET = process.env.MP_WEBHOOK_SECRET;
+
+    if (MP_WEBHOOK_SECRET && xSignature) {
+      const parts = xSignature.split(",");
+      const ts = parts.find(p => p.startsWith("ts="))?.split("=")[1];
+      const v1 = parts.find(p => p.startsWith("v1="))?.split("=")[1];
+      const dataId = (req.query.data?.toString() && typeof req.query["data.id"] === "string")
+        ? req.query["data.id"]
+        : req.body?.data?.id;
+      const manifest = `id:${dataId ?? ""};request-id:${xRequestId ?? ""};ts:${ts ?? ""};`;
+      const expected = crypto.createHmac("sha256", MP_WEBHOOK_SECRET).update(manifest).digest("hex");
+      if (v1 !== expected) {
+        res.status(401).send("Firma inválida");
+        return;
+      }
+    }
+
+    const topic = req.query.topic ?? req.body?.type;
+    const resourceId = req.body?.data?.id ?? req.query.id;
+
+    if (!topic || !resourceId) {
+      res.status(400).send("topic e id son requeridos.");
+      return;
+    }
+
+    const MP_ACCESS_TOKEN = process.env.MP_ACCESS_TOKEN;
+    if (!MP_ACCESS_TOKEN) {
+      res.status(500).send("MP_ACCESS_TOKEN no configurado.");
+      return;
+    }
+
+    try {
+      if (topic === "subscription_preapproval" || topic === "preapproval") {
+        await handlePreapprovalWebhook(resourceId as string, MP_ACCESS_TOKEN);
+      } else if (topic === "subscription_authorized_payment" || topic === "authorized_payment") {
+        await handlePagoAutorizadoWebhook(resourceId as string, MP_ACCESS_TOKEN);
+      }
+      res.status(200).send("OK");
+    } catch (e) {
+      console.error("Error procesando webhook MP:", e);
+      res.status(500).send("Error interno");
+    }
+  }
+);
+
+async function handlePreapprovalWebhook(preapprovalId: string, token: string) {
+  const mpRes = await fetch(`https://api.mercadopago.com/preapproval/${preapprovalId}`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  if (!mpRes.ok) return;
+  const data = await mpRes.json() as { status: string; external_reference: string };
+
+  const empresaId = data.external_reference;
+  if (!empresaId) return;
+
+  const statusMap: Record<string, string> = {
+    authorized: "active",
+    paused: "paused",
+    cancelled: "canceled",
+    pending: "pending",
+  };
+  const newStatus = statusMap[data.status] ?? data.status;
+
+  await db.collection("empresas").doc(empresaId).update({
+    subscription_status: newStatus,
+    updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+  });
+}
+
+async function handlePagoAutorizadoWebhook(pagoId: string, token: string) {
+  // Idempotencia: verificar si ya procesamos este pago
+  const existente = await db.collection("documentos_tributarios")
+    .where("payment_ref", "==", pagoId)
+    .limit(1)
+    .get();
+  if (!existente.empty) return; // Ya procesado
+
+  const mpRes = await fetch(`https://api.mercadopago.com/authorized_payments/${pagoId}`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  if (!mpRes.ok) return;
+
+  const pago = await mpRes.json() as {
+    preapproval_id: string;
+    transaction_amount: number;
+    date_approved: string;
+  };
+
+  // Buscar empresa por preapproval_id
+  const empSnap = await db.collection("empresas")
+    .where("mp_preapproval_id", "==", pago.preapproval_id)
+    .limit(1)
+    .get();
+  if (empSnap.empty) return;
+
+  const empresaId = empSnap.docs[0].id;
+  const empresa = empSnap.docs[0].data();
+
+  const montoTotal = pago.transaction_amount;
+  const montoNeto = Math.round(montoTotal / 1.19);
+  const iva = montoTotal - montoNeto;
+  const periodo = pago.date_approved.slice(0, 7); // YYYY-MM
+
+  // Determinar proveedor DTE configurado
+  const dteProvider = empresa.dte_provider_default ?? "sii_manual";
+
+  const now = admin.firestore.FieldValue.serverTimestamp();
+  const docRef = db.collection("documentos_tributarios").doc();
+  await docRef.set({
+    empresa_id: empresaId,
+    payment_ref: pagoId,
+    periodo,
+    tipo_dte: empresa.tipo_dte_default ?? "boleta",
+    monto_neto: montoNeto,
+    iva,
+    monto_total: montoTotal,
+    folio: null,
+    origen: dteProvider,
+    estado: "pendiente",
+    archivo_pdf_url: null,
+    archivo_xml_url: null,
+    emitido_at: null,
+    notificado_at: null,
+    createdAt: now,
+    updatedAt: now,
+  });
+
+  // Si el proveedor es OpenFactura, emitir automáticamente
+  if (dteProvider === "openfactura") {
+    await emitirDTEOpenFactura(docRef.id, empresaId, empresa, montoNeto, iva, montoTotal, periodo);
+  }
+
+  // Marcar empresa como activa si estaba en past_due o trialing
+  if (empresa.subscription_status !== "active") {
+    await db.collection("empresas").doc(empresaId).update({
+      subscription_status: "active",
+      updatedAt: now,
+    });
+  }
+}
+
+async function emitirDTEOpenFactura(
+  documentoId: string,
+  empresaId: string,
+  empresa: admin.firestore.DocumentData,
+  montoNeto: number,
+  iva: number,
+  montoTotal: number,
+  periodo: string
+) {
+  const OF_API_KEY = process.env.OPENFACTURA_API_KEY;
+  if (!OF_API_KEY) {
+    console.warn("OPENFACTURA_API_KEY no configurado, DTE queda pendiente.");
+    return;
+  }
+
+  try {
+    const body = {
+      Encabezado: {
+        IdDoc: { TipoDTE: 39 },
+        Emisor: {
+          RUTEmisor: process.env.EMISOR_RUT,
+          RznSoc: process.env.EMISOR_RAZON_SOCIAL,
+          GiroEmis: process.env.EMISOR_GIRO,
+          DirOrigen: process.env.EMISOR_DIRECCION,
+        },
+        Receptor: {
+          RUTRecep: empresa.rut,
+          RznSocRecep: empresa.razon_social,
+          GiroRecep: empresa.giro,
+          DirRecep: empresa.direccion,
+        },
+        Totales: { MntNeto: montoNeto, TasaIVA: 19, IVA: iva, MntTotal: montoTotal },
+      },
+      Detalle: [{
+        NroLinDet: 1,
+        NmbItem: `Suscripción Nexturn ${empresa.plan ?? ""} — ${periodo}`,
+        QtyItem: 1,
+        PrcItem: montoNeto,
+        MontoItem: montoNeto,
+      }],
+    };
+
+    const res = await fetch("https://api.haulmer.com/v2/dte/document", {
+      method: "POST",
+      headers: {
+        "apikey": OF_API_KEY,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(body),
+    });
+
+    if (!res.ok) {
+      console.error("OpenFactura error:", await res.text());
+      await db.collection("documentos_tributarios").doc(documentoId).update({
+        estado: "error",
+        updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+      });
+      return;
+    }
+
+    const result = await res.json() as { FOLIO: string | number; PDF: string; XML: string };
+
+    await db.collection("documentos_tributarios").doc(documentoId).update({
+      folio: String(result.FOLIO),
+      archivo_pdf_url: result.PDF ?? null,
+      archivo_xml_url: result.XML ?? null,
+      estado: "emitido",
+      emitido_at: admin.firestore.FieldValue.serverTimestamp(),
+      updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+    });
+
+    // Notificar al cliente/empresa
+    await notificarDTE(documentoId, empresaId);
+
+  } catch (e) {
+    console.error("Error emitiendo DTE OpenFactura:", e);
+    await db.collection("documentos_tributarios").doc(documentoId).update({
+      estado: "error",
+      updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+    });
+  }
+}
+
+// Notifica al cliente y empresa que su DTE fue emitido
+export const notificarDTEEmitido = onCall<
+  { documento_id: string },
+  Promise<{ ok: boolean }>
+>({ region: "southamerica-west1" }, async (request) => {
+  const { documento_id } = request.data;
+  if (!documento_id) throw new HttpsError("invalid-argument", "documento_id requerido.");
+
+  const docSnap = await db.collection("documentos_tributarios").doc(documento_id).get();
+  if (!docSnap.exists) throw new HttpsError("not-found", "Documento no encontrado.");
+
+  await notificarDTE(documento_id, docSnap.data()!.empresa_id);
+
+  await db.collection("documentos_tributarios").doc(documento_id).update({
+    estado: "notificado",
+    notificado_at: admin.firestore.FieldValue.serverTimestamp(),
+    updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+  });
+
+  return { ok: true };
+});
+
+async function notificarDTE(documentoId: string, empresaId: string) {
+  // Por ahora registra en consola. Integrar SendGrid/Firebase Email Extension aquí.
+  console.log(`DTE ${documentoId} emitido para empresa ${empresaId}. Notificación pendiente de integración de email.`);
+}
