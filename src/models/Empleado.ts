@@ -3,9 +3,16 @@ import type { DocumentData, FirestoreDataConverter, QueryDocumentSnapshot, Snaps
 import type { Contacto } from './Contacto';
 import { Contrato, contratoFromPlain, contratoToPlain } from './Contrato';
 
+export interface VentanaDisponibilidad {
+  day_of_week: string;   // 'Lunes' … 'Domingo' (mismo vocabulario que dateToSpanishDay)
+  start: string;         // 'HH:MM'
+  end: string;           // 'HH:MM'
+}
+
 export interface Disponibilidad {
   id: string;
-  days: string[];
+  ventanas: VentanaDisponibilidad[];   // oferta base: ventanas horarias por día
+  days: string[];                      // resumen (días únicos con ventana); legado de UI
   monthly_frequency: number;
   weekly_frequency: number;
   special_rule: string;
@@ -53,7 +60,16 @@ export const empleadoConverter: FirestoreDataConverter<Empleado> = {
       estacion_ids: empleado.estacion_ids,
       contratos: (empleado.contratos ?? []).map(contratoToPlain),
       disponibilidad: disp ? {
-        ...disp,
+        id: disp.id,
+        ventanas: (disp.ventanas ?? []).map(v => ({
+          day_of_week: v.day_of_week,
+          start: v.start,
+          end: v.end,
+        })),
+        days: disp.days ?? [],
+        monthly_frequency: disp.monthly_frequency,
+        weekly_frequency: disp.weekly_frequency,
+        special_rule: disp.special_rule,
         createdAt: disp.createdAt ? Timestamp.fromDate(disp.createdAt) : Timestamp.now(),
         updatedAt: Timestamp.now(),
         deletedAt: disp.deletedAt ? Timestamp.fromDate(disp.deletedAt) : null,
@@ -68,6 +84,13 @@ export const empleadoConverter: FirestoreDataConverter<Empleado> = {
     const d = data.disponibilidad;
     const disponibilidad: Disponibilidad | null = d ? {
       id: d.id || '',
+      ventanas: Array.isArray(d.ventanas)
+        ? d.ventanas.map((v: any) => ({
+            day_of_week: v.day_of_week || '',
+            start: v.start || '',
+            end: v.end || '',
+          }))
+        : [],
       days: d.days || [],
       monthly_frequency: d.monthly_frequency ?? 0,
       weekly_frequency: d.weekly_frequency ?? 0,

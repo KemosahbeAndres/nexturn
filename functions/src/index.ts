@@ -45,6 +45,12 @@ interface Presencia {
   end: string;
 }
 
+interface VentanaDisponibilidad {
+  day_of_week: string;
+  start: string;
+  end: string;
+}
+
 type ReglaType = "juntos" | "nunca_juntos";
 
 interface Regla {
@@ -147,6 +153,37 @@ function seProlapan(
   );
 }
 
+// Intervalo en minutos [start, end). Usado para restar ausencias de la oferta.
+interface Intervalo {
+  start: number;
+  end: number;
+}
+
+// Resta un conjunto de ausencias a una ventana, devolviendo los tramos libres
+// (ordenados, sin solapes). Si las ausencias cubren toda la ventana → [].
+function restarIntervalos(
+  ventana: Intervalo,
+  ausencias: Intervalo[]
+): Intervalo[] {
+  // Normalizar y ordenar las ausencias que tocan la ventana.
+  const cortes = ausencias
+    .map((a) => ({
+      start: Math.max(a.start, ventana.start),
+      end: Math.min(a.end, ventana.end),
+    }))
+    .filter((a) => a.end > a.start)
+    .sort((a, b) => a.start - b.start);
+
+  const libres: Intervalo[] = [];
+  let cursor = ventana.start;
+  for (const a of cortes) {
+    if (a.start > cursor) libres.push({ start: cursor, end: a.start });
+    cursor = Math.max(cursor, a.end);
+  }
+  if (cursor < ventana.end) libres.push({ start: cursor, end: ventana.end });
+  return libres;
+}
+
 // ─── Selección de ConfiguracionTurnos activa ──────────────────────────────────
 
 function resolverConfigActiva(
@@ -232,27 +269,92 @@ export const generarBorrador = onCall<
     });
   });
 
-  // 4. Cargar presencias del día
-  const presenciasSnap = await db
-    .collection("presencias")
-    .where("ubicacion_id", "==", ubicacion_id)
-    .where("date", "==", date)
+  // 4. Cargar la OFERTA del día (cuándo puede cada empleado).
+  //    Regla: "reemplazo total del día". Si hay ≥1 presencia manual para esta
+  //    (ubicacion, date), se usan SOLO esas (override del día). Si no hay ninguna,
+  //    se DERIVAN en memoria desde la disponibilidad (ventanas) de los empleados
+  //    activos de la sucursal — sin escribir documentos `presencias`.
+  // Oferta base = ventanas de disponibilidad de empleados activos con contrato
+  // activo en ESTA sucursal, para el día de la semana de `date`.
+  const empleadosSnap = await db
+    .collection("empleados")
+    .where("company_id", "==", empresa_id)
+    .where("active", "==", true)
     .where("deletedAt", "==", null)
     .get();
-  const presencias: Presencia[] = presenciasSnap.docs.map((d) => {
-    const p = d.data();
-    return {
-      id: d.id,
-      empleado_id: p.empleado_id,
-      start: p.start,
-      end: p.end,
-    };
+
+  // empleado_id → ventanas del día (en minutos)
+  const ventanasPorEmpleado = new Map<string, Intervalo[]>();
+  empleadosSnap.docs.forEach((doc) => {
+    const e = doc.data();
+
+    // Debe tener un contrato activo en ESTA sucursal.
+    const contratos: any[] = e.contratos ?? [];
+    const enSucursal = contratos.some(
+      (c) => c?.active && c?.ubicacion_id === ubicacion_id
+    );
+    if (!enSucursal) return;
+
+    const ventanas: VentanaDisponibilidad[] = e.disponibilidad?.ventanas ?? [];
+    const delDia = ventanas
+      .filter((v) => v.day_of_week === diaEsp && v.start && v.end)
+      .map((v) => ({ start: toMinutes(v.start), end: toMinutes(v.end) }))
+      .filter((iv) => iv.end > iv.start);
+    if (delDia.length > 0) ventanasPorEmpleado.set(doc.id, delDia);
   });
+
+  // Restar las excepciones (ausencias) del día a la oferta de cada empleado.
+  const empleadoIdsConOferta = [...ventanasPorEmpleado.keys()];
+  if (empleadoIdsConOferta.length > 0) {
+    // Firestore limita `in` a 30 valores → trocear en lotes.
+    const ausenciasPorEmpleado = new Map<string, Intervalo[]>();
+    for (let i = 0; i < empleadoIdsConOferta.length; i += 30) {
+      const lote = empleadoIdsConOferta.slice(i, i + 30);
+      const excSnap = await db
+        .collection("excepciones")
+        .where("date", "==", date)
+        .where("active", "==", true)
+        .where("deletedAt", "==", null)
+        .where("employee_id", "in", lote)
+        .get();
+      excSnap.docs.forEach((d) => {
+        const x = d.data();
+        if (!x.time_start || !x.time_end) return;
+        const iv = { start: toMinutes(x.time_start), end: toMinutes(x.time_end) };
+        if (iv.end <= iv.start) return;
+        const arr = ausenciasPorEmpleado.get(x.employee_id) ?? [];
+        arr.push(iv);
+        ausenciasPorEmpleado.set(x.employee_id, arr);
+      });
+    }
+
+    for (const [empId, ventanas] of ventanasPorEmpleado) {
+      const ausencias = ausenciasPorEmpleado.get(empId);
+      if (!ausencias?.length) continue;
+      const libres: Intervalo[] = [];
+      for (const v of ventanas) libres.push(...restarIntervalos(v, ausencias));
+      if (libres.length > 0) ventanasPorEmpleado.set(empId, libres);
+      else ventanasPorEmpleado.delete(empId);
+    }
+  }
+
+  // Aplanar a la lista de presencias efectivas que consume el resto del algoritmo.
+  const presencias: Presencia[] = [];
+  for (const [empId, intervalos] of ventanasPorEmpleado) {
+    intervalos.forEach((iv) => {
+      presencias.push({
+        id: `oferta-${empId}-${iv.start}-${iv.end}`,
+        empleado_id: empId,
+        start: fromMinutes(iv.start),
+        end: fromMinutes(iv.end),
+      });
+    });
+  }
 
   if (presencias.length === 0) {
     throw new HttpsError(
       "failed-precondition",
-      "No hay presencias registradas para esta fecha. Registra la disponibilidad del equipo primero."
+      "No hay disponibilidad efectiva para esta fecha. Revisa las ventanas de disponibilidad del equipo y sus excepciones (ausencias) de este día."
     );
   }
 

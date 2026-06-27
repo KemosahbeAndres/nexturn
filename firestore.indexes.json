@@ -38,12 +38,13 @@
       ]
     },
     {
-      "collectionGroup": "presencias",
+      "collectionGroup": "excepciones",
       "queryScope": "COLLECTION",
       "fields": [
-        { "fieldPath": "ubicacion_id", "order": "ASCENDING" },
         { "fieldPath": "date", "order": "ASCENDING" },
-        { "fieldPath": "deletedAt", "order": "ASCENDING" }
+        { "fieldPath": "active", "order": "ASCENDING" },
+        { "fieldPath": "deletedAt", "order": "ASCENDING" },
+        { "fieldPath": "employee_id", "order": "ASCENDING" }
       ]
     },
     {

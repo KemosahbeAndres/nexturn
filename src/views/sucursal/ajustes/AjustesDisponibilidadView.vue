@@ -101,10 +101,13 @@
           </button>
         </div>
 
-        <!-- Días de la semana -->
+        <!-- Días de la semana + ventanas horarias -->
         <div>
-          <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Días disponibles</label>
-          <div class="flex flex-wrap gap-2">
+          <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Días y horarios disponibles</label>
+          <p class="text-xs text-gray-400 dark:text-gray-500 mb-2">Define de qué hora a qué hora puede trabajar cada día. Estas franjas alimentan la generación de turnos.</p>
+
+          <!-- Selector de días -->
+          <div class="flex flex-wrap gap-2 mb-3">
             <button
               v-for="dia in diasSemana"
               :key="dia"
@@ -112,12 +115,43 @@
               :disabled="!canManage"
               @click="toggleDia(dia)"
               class="px-3 py-1.5 text-xs font-medium rounded-lg border transition-colors disabled:cursor-not-allowed"
-              :class="form.days.includes(dia)
+              :class="diaTieneVentanas(dia)
                 ? 'bg-blue-600 border-blue-600 text-white'
                 : 'bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-600 text-gray-600 dark:text-gray-400 hover:border-blue-400 hover:text-blue-600'"
             >
               {{ dia }}
             </button>
+          </div>
+
+          <!-- Editor de franjas por día activo -->
+          <div class="space-y-2">
+            <div
+              v-for="dia in diasSemana.filter(diaTieneVentanas)"
+              :key="dia"
+              class="p-3 rounded-lg bg-gray-50 dark:bg-gray-700/40 border border-gray-100 dark:border-gray-700">
+              <div class="flex items-center justify-between mb-2">
+                <span class="text-xs font-semibold text-gray-700 dark:text-gray-300">{{ dia }}</span>
+                <button v-if="canManage" type="button" @click="agregarVentana(dia)"
+                  class="text-[11px] font-medium text-blue-600 dark:text-blue-400 hover:text-blue-800 dark:hover:text-blue-300 transition-colors">
+                  + Franja
+                </button>
+              </div>
+              <div class="space-y-1.5">
+                <div v-for="ventana in ventanasDeDia(dia)" :key="ventana.day_of_week + ventana.start + ventana.end" class="flex items-center gap-2">
+                  <input v-model="ventana.start" type="time" :disabled="!canManage"
+                    class="px-2 py-1.5 text-xs bg-white dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 dark:text-white tabular-nums disabled:opacity-60" />
+                  <span class="text-xs text-gray-400">—</span>
+                  <input v-model="ventana.end" type="time" :disabled="!canManage"
+                    class="px-2 py-1.5 text-xs bg-white dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 dark:text-white tabular-nums disabled:opacity-60" />
+                  <button v-if="canManage" type="button" @click="quitarVentana(ventana)"
+                    class="shrink-0 w-7 h-7 flex items-center justify-center rounded-lg text-gray-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors">
+                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" class="w-3.5 h-3.5">
+                      <path stroke-linecap="round" stroke-linejoin="round" d="M6 18 18 6M6 6l12 12" />
+                    </svg>
+                  </button>
+                </div>
+              </div>
+            </div>
           </div>
         </div>
 
@@ -233,9 +267,11 @@ const empleadosFiltrados = computed(() => {
 
 const selected = ref<Empleado | null>(null);
 
-type FormState = { days: string[]; monthly_frequency: number; weekly_frequency: number; special_rule: string };
+// Ventana editable en el formulario (una franja horaria para un día).
+type Ventana = { day_of_week: string; start: string; end: string };
+type FormState = { ventanas: Ventana[]; monthly_frequency: number; weekly_frequency: number; special_rule: string };
 
-const emptyForm = (): FormState => ({ days: [], monthly_frequency: 0, weekly_frequency: 1, special_rule: '' });
+const emptyForm = (): FormState => ({ ventanas: [], monthly_frequency: 0, weekly_frequency: 1, special_rule: '' });
 
 const form = ref<FormState>(emptyForm());
 const snapshot = ref<FormState>(emptyForm());
@@ -245,16 +281,25 @@ function selectEmpleado(emp: Empleado) {
   selected.value = emp;
 }
 
+function cloneForm(f: FormState): FormState {
+  return { ...f, ventanas: f.ventanas.map(v => ({ ...v })) };
+}
+
 watch(selected, (emp) => {
   errorMsg.value = '';
   successMsg.value = '';
   if (!emp) return;
   const d = emp.disponibilidad;
   const f: FormState = d
-    ? { days: [...d.days], monthly_frequency: d.monthly_frequency, weekly_frequency: d.weekly_frequency, special_rule: d.special_rule }
+    ? {
+        ventanas: (d.ventanas ?? []).map(v => ({ ...v })),
+        monthly_frequency: d.monthly_frequency,
+        weekly_frequency: d.weekly_frequency,
+        special_rule: d.special_rule,
+      }
     : emptyForm();
-  form.value = { ...f };
-  snapshot.value = { ...f, days: [...f.days] };
+  form.value = cloneForm(f);
+  snapshot.value = cloneForm(f);
 });
 
 const isDirty = computed(() =>
@@ -262,13 +307,37 @@ const isDirty = computed(() =>
 );
 
 function resetForm() {
-  form.value = { ...snapshot.value, days: [...snapshot.value.days] };
+  form.value = cloneForm(snapshot.value);
 }
 
+// ── Edición de ventanas por día ────────────────────────────────────────────────
+
+// ¿Tiene el día al menos una ventana?
+function diaTieneVentanas(dia: string): boolean {
+  return form.value.ventanas.some(v => v.day_of_week === dia);
+}
+
+function ventanasDeDia(dia: string): Ventana[] {
+  return form.value.ventanas.filter(v => v.day_of_week === dia);
+}
+
+// Activar/desactivar un día: al activarlo agrega una ventana por defecto; al desactivarlo
+// elimina todas sus ventanas.
 function toggleDia(dia: string) {
-  const idx = form.value.days.indexOf(dia);
-  if (idx >= 0) form.value.days.splice(idx, 1);
-  else form.value.days.push(dia);
+  if (diaTieneVentanas(dia)) {
+    form.value.ventanas = form.value.ventanas.filter(v => v.day_of_week !== dia);
+  } else {
+    form.value.ventanas.push({ day_of_week: dia, start: '09:00', end: '18:00' });
+  }
+}
+
+function agregarVentana(dia: string) {
+  form.value.ventanas.push({ day_of_week: dia, start: '09:00', end: '18:00' });
+}
+
+function quitarVentana(ventana: Ventana) {
+  const idx = form.value.ventanas.indexOf(ventana);
+  if (idx >= 0) form.value.ventanas.splice(idx, 1);
 }
 
 function diasLabel(days: string[]): string {
@@ -277,31 +346,52 @@ function diasLabel(days: string[]): string {
   return `${days.slice(0, 2).join(', ')} +${days.length - 2} más`;
 }
 
+// ── Validación ─────────────────────────────────────────────────────────────────
+
+// Devuelve un mensaje de error si las ventanas son inválidas, o null si están OK.
+function validarVentanas(ventanas: Ventana[]): string | null {
+  for (const v of ventanas) {
+    if (!v.start || !v.end) return 'Completa las horas de inicio y fin de cada ventana.';
+    if (v.start >= v.end) return `En ${v.day_of_week}, la hora de inicio debe ser menor que la de fin.`;
+  }
+  // Solapes intra-día
+  for (const dia of diasSemana) {
+    const delDia = ventanas
+      .filter(v => v.day_of_week === dia)
+      .slice()
+      .sort((a, b) => a.start.localeCompare(b.start));
+    for (let i = 1; i < delDia.length; i++) {
+      if (delDia[i].start < delDia[i - 1].end) {
+        return `En ${dia} hay franjas horarias que se solapan.`;
+      }
+    }
+  }
+  return null;
+}
+
 const saving = ref(false);
 const errorMsg = ref('');
 const successMsg = ref('');
 
 async function guardar() {
   if (!selected.value || !isDirty.value) return;
+  const err = validarVentanas(form.value.ventanas);
+  if (err) { errorMsg.value = err; return; }
   saving.value = true;
   errorMsg.value = '';
   try {
+    const payload = {
+      ventanas: form.value.ventanas.map(v => ({ ...v })),
+      monthly_frequency: form.value.monthly_frequency,
+      weekly_frequency: form.value.weekly_frequency,
+      special_rule: form.value.special_rule,
+    };
     if (selected.value.disponibilidad) {
-      await disponibilidadStore.updateDisponibilidad(selected.value.id, {
-        days: form.value.days,
-        monthly_frequency: form.value.monthly_frequency,
-        weekly_frequency: form.value.weekly_frequency,
-        special_rule: form.value.special_rule,
-      });
+      await disponibilidadStore.updateDisponibilidad(selected.value.id, payload);
     } else {
-      await disponibilidadStore.setDisponibilidad(selected.value.id, {
-        days: form.value.days,
-        monthly_frequency: form.value.monthly_frequency,
-        weekly_frequency: form.value.weekly_frequency,
-        special_rule: form.value.special_rule,
-      });
+      await disponibilidadStore.setDisponibilidad(selected.value.id, payload);
     }
-    snapshot.value = { ...form.value, days: [...form.value.days] };
+    snapshot.value = cloneForm(form.value);
     successMsg.value = 'Disponibilidad guardada.';
     setTimeout(() => { successMsg.value = ''; }, 3000);
   } catch (e: any) {

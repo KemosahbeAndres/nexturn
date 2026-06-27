@@ -7,7 +7,7 @@
 
         <div>
           <p class="text-xs font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-widest">Excepciones</p>
-          <p class="text-xs text-gray-500 dark:text-gray-400 mt-1">Ausencias y días fuera de rutina del personal.</p>
+          <p class="text-xs text-gray-500 dark:text-gray-400 mt-1">Ausencias puntuales (feriado, emergencia…). Restan la disponibilidad del empleado ese día; el algoritmo las respeta al generar el horario.</p>
         </div>
 
         <!-- Búsqueda -->
