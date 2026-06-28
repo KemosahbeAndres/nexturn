@@ -3,7 +3,7 @@ import type { DocumentData, FirestoreDataConverter, QueryDocumentSnapshot, Snaps
 
 // Requiere índice compuesto en Firestore: (empleado_id ASC, date ASC)
 export type SegmentoTipo = 'estacion' | 'descanso';
-export type SegmentoStatus = 'draft' | 'published';
+export type SegmentoStatus = 'sugerido' | 'aprobado' | 'rechazado' | 'publicado';
 
 export class Segmento {
   constructor(
@@ -22,6 +22,13 @@ export class Segmento {
     public updatedAt: Date = new Date(),
     public deletedAt: Date | null = null
   ) {}
+}
+
+function normalizeStatus(raw: string | undefined): SegmentoStatus {
+  if (raw === 'draft') return 'sugerido';
+  if (raw === 'published') return 'publicado';
+  if (raw === 'sugerido' || raw === 'aprobado' || raw === 'rechazado' || raw === 'publicado') return raw;
+  return 'sugerido';
 }
 
 export const segmentoConverter: FirestoreDataConverter<Segmento> = {
@@ -55,7 +62,7 @@ export const segmentoConverter: FirestoreDataConverter<Segmento> = {
       data.start || '',
       data.end || '',
       data.asignacion_id || '',
-      data.status || 'draft',
+      normalizeStatus(data.status),
       data.createdAt?.toDate() || new Date(),
       data.updatedAt?.toDate() || new Date(),
       data.deletedAt?.toDate() ?? null

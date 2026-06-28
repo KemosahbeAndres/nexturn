@@ -627,6 +627,7 @@ import { useEmpleadoStore } from '../../stores/empleadoStore';
 import { useUbicacionStore } from '../../stores/ubicacionStore';
 import { useEstacionStore } from '../../stores/estacionStore';
 import { useGrantStore } from '../../stores/grantStore';
+import { useSegmentoStore } from '../../stores/segmentoStore';
 import { useRut } from '../../composables/useRut';
 import { db, firebaseApp } from '../../firebase';
 import { contactoConverter, Contacto } from '../../models/Contacto';
@@ -658,6 +659,7 @@ const empleadoStore = useEmpleadoStore();
 const ubicacionStore = useUbicacionStore();
 const estacionStore = useEstacionStore();
 const grantStore = useGrantStore();
+const segmentoStore = useSegmentoStore();
 
 const activeCompanyId = computed(() => {
   if (sessionStore.userRole !== 'super_admin') return sessionStore.activeCompanyId;
@@ -849,6 +851,9 @@ async function guardarEstaciones() {
   guardandoEstaciones.value = true;
   try {
     await empleadoStore.updateEmpleado(empleadoSeleccionado.value.id, { estacion_ids: [...form.estacion_ids] });
+    const compId = sessionStore.activeCompanyId;
+    const ubicId = sessionStore.activeUbicacionId;
+    if (compId && ubicId) segmentoStore.regenerarBorradorMes(compId, ubicId);
   } finally {
     guardandoEstaciones.value = false;
   }

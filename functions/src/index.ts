@@ -70,7 +70,7 @@ interface SegmentoToWrite {
   start: string;
   end: string;
   asignacion_id: string;
-  status: "draft";
+  status: "sugerido" | "draft";
 }
 
 export interface HuecoReporte {
@@ -270,12 +270,12 @@ export const generarBorrador = onCall<
   });
 
   // 4. Cargar la OFERTA del día (cuándo puede cada empleado).
-  //    Regla: "reemplazo total del día". Si hay ≥1 presencia manual para esta
-  //    (ubicacion, date), se usan SOLO esas (override del día). Si no hay ninguna,
-  //    se DERIVAN en memoria desde la disponibilidad (ventanas) de los empleados
-  //    activos de la sucursal — sin escribir documentos `presencias`.
-  // Oferta base = ventanas de disponibilidad de empleados activos con contrato
-  // activo en ESTA sucursal, para el día de la semana de `date`.
+  //    Oferta base = ventanas de disponibilidad de empleados activos que tienen
+  //    contrato activo en ESTA sucursal O son el encargado de sucursal
+  //    (ubicacion.manager_id). El encargado de zona (zona.manager_id) queda
+  //    excluido — opera a nivel de zona, no de sucursal.
+  const managerId: string | null = ubicacionData.manager_id ?? null;
+
   const empleadosSnap = await db
     .collection("empleados")
     .where("company_id", "==", empresa_id)
@@ -288,11 +288,11 @@ export const generarBorrador = onCall<
   empleadosSnap.docs.forEach((doc) => {
     const e = doc.data();
 
-    // Debe tener un contrato activo en ESTA sucursal.
+    // Incluir si tiene contrato activo en esta sucursal O es el encargado de sucursal.
     const contratos: any[] = e.contratos ?? [];
-    const enSucursal = contratos.some(
-      (c) => c?.active && c?.ubicacion_id === ubicacion_id
-    );
+    const enSucursal =
+      contratos.some((c) => c?.active && c?.ubicacion_id === ubicacion_id) ||
+      doc.id === managerId;
     if (!enSucursal) return;
 
     const ventanas: VentanaDisponibilidad[] = e.disponibilidad?.ventanas ?? [];
@@ -617,6 +617,376 @@ export const generarBorrador = onCall<
     asignacion_id: asignacionId,
     segmentos_creados: segmentosAccumulados.length,
     huecos,
+  };
+});
+
+// ─── actualizarBorrador — greedy por semana, respeta aprobado/publicado ──────
+
+interface ActualizarBorradorInput {
+  empresa_id: string;
+  ubicacion_id: string;
+  week_start: string;   // YYYY-MM-DD — primer día del rango a generar
+  dias?: number;        // cuántos días hacia adelante (default 28 = 4 semanas)
+}
+
+interface ActualizarBorradorOutput {
+  semana: string;
+  dias_procesados: number;
+  segmentos_creados: number;
+  huecos: HuecoReporte[];
+}
+
+function addDays(dateStr: string, n: number): string {
+  const [y, m, d] = dateStr.split("-").map(Number);
+  const dt = new Date(Date.UTC(y, m - 1, d));
+  dt.setUTCDate(dt.getUTCDate() + n);
+  return dt.toISOString().slice(0, 10);
+}
+
+export const actualizarBorrador = onCall<
+  ActualizarBorradorInput,
+  Promise<ActualizarBorradorOutput>
+>({ region: "southamerica-west1", timeoutSeconds: 120 }, async (request) => {
+  const { empresa_id, ubicacion_id, week_start } = request.data;
+  const dias = Math.min(request.data.dias ?? 28, 56); // máximo 8 semanas
+
+  if (!empresa_id || !ubicacion_id || !week_start) {
+    throw new HttpsError("invalid-argument", "Faltan parámetros requeridos.");
+  }
+
+  // Construir el rango de días a procesar
+  const fechas = Array.from({ length: dias }, (_, i) => addDays(week_start, i));
+
+  // Cargar ubicación una vez
+  const ubicacionSnap = await db.collection("ubicaciones").doc(ubicacion_id).get();
+  if (!ubicacionSnap.exists) {
+    throw new HttpsError("not-found", "Ubicación no encontrada.");
+  }
+  const ubicacionDataSemanal = ubicacionSnap.data()!;
+  const configuraciones: ConfiguracionTurnos[] = ubicacionDataSemanal.configuraciones ?? [];
+  const managerIdSemanal: string | null = ubicacionDataSemanal.manager_id ?? null;
+
+  // Cargar estaciones de la empresa
+  const estacionesSnap = await db
+    .collection("estaciones")
+    .where("empresa_id", "==", empresa_id)
+    .where("active", "==", true)
+    .get();
+  const estacionesMap = new Map<string, Estacion>();
+  estacionesSnap.docs.forEach((d) => {
+    const e = d.data();
+    estacionesMap.set(d.id, {
+      id: d.id,
+      intensidad: e.intensidad ?? "media",
+      max_continuo_min: e.max_continuo_min ?? null,
+    });
+  });
+
+  // Cargar empleados con contrato activo en la sucursal o que sean encargado de sucursal.
+  // El encargado de zona (zona.manager_id) queda excluido — opera a nivel de zona.
+  const empleadosSnap = await db
+    .collection("empleados")
+    .where("company_id", "==", empresa_id)
+    .where("active", "==", true)
+    .where("deletedAt", "==", null)
+    .get();
+
+  const empleadosDocs = empleadosSnap.docs.filter((d) => {
+    const contratos: any[] = d.data().contratos ?? [];
+    return (
+      contratos.some((c) => c?.active && c?.ubicacion_id === ubicacion_id) ||
+      d.id === managerIdSemanal
+    );
+  });
+
+  // Cargar excepciones de la semana (lotes de 30 employee_ids)
+  const empleadoIds = empleadosDocs.map((d) => d.id);
+  const week_end = addDays(week_start, dias - 1);
+  const ausenciasPorEmpleadoFecha = new Map<string, Intervalo[]>(); // key: `${emp}_${date}`
+
+  if (empleadoIds.length > 0) {
+    for (let i = 0; i < empleadoIds.length; i += 30) {
+      const lote = empleadoIds.slice(i, i + 30);
+      const excSnap = await db
+        .collection("excepciones")
+        .where("date", ">=", week_start)
+        .where("date", "<=", week_end)
+        .where("active", "==", true)
+        .where("deletedAt", "==", null)
+        .where("employee_id", "in", lote)
+        .get();
+      excSnap.docs.forEach((d) => {
+        const x = d.data();
+        if (!x.time_start || !x.time_end) return;
+        const iv = { start: toMinutes(x.time_start), end: toMinutes(x.time_end) };
+        if (iv.end <= iv.start) return;
+        const key = `${x.employee_id}_${x.date}`;
+        const arr = ausenciasPorEmpleadoFecha.get(key) ?? [];
+        arr.push(iv);
+        ausenciasPorEmpleadoFecha.set(key, arr);
+      });
+    }
+  }
+
+  // Cargar reglas de asignación
+  const reglasMap = new Map<string, Regla[]>();
+  if (empleadoIds.length > 0) {
+    const allReglas: Regla[] = [];
+    for (let i = 0; i < empleadoIds.length; i += 30) {
+      const chunk = empleadoIds.slice(i, i + 30);
+      const [r1, r2] = await Promise.all([
+        db.collection("reglas_asignacion").where("person_uno_id", "in", chunk).where("deletedAt", "==", null).get(),
+        db.collection("reglas_asignacion").where("person_dos_id", "in", chunk).where("deletedAt", "==", null).get(),
+      ]);
+      r1.docs.forEach((d) => allReglas.push(d.data() as Regla));
+      r2.docs.forEach((d) => allReglas.push(d.data() as Regla));
+    }
+    empleadoIds.forEach((eid) => {
+      reglasMap.set(eid, allReglas.filter((r) => r.person_uno_id === eid || r.person_dos_id === eid));
+    });
+  }
+
+  // Cargar segmentos existentes de la semana para respetar aprobado/publicado
+  const segmentosExistentesSnap = await db
+    .collection("segmentos")
+    .where("ubicacion_id", "==", ubicacion_id)
+    .where("date", ">=", week_start)
+    .where("date", "<=", week_end)
+    .where("deletedAt", "==", null)
+    .get();
+
+  // Agrupar segmentos existentes por fecha
+  const segmentosPorFecha = new Map<string, { aprobados: Set<string>; asignacionId: string | null }>();
+  segmentosExistentesSnap.docs.forEach((d) => {
+    const s = d.data();
+    if (!segmentosPorFecha.has(s.date)) {
+      segmentosPorFecha.set(s.date, { aprobados: new Set(), asignacionId: s.asignacion_id ?? null });
+    }
+    const entry = segmentosPorFecha.get(s.date)!;
+    if (s.status === "aprobado" || s.status === "publicado") {
+      entry.aprobados.add(d.id);
+    }
+    if (s.asignacion_id && !entry.asignacionId) {
+      entry.asignacionId = s.asignacion_id;
+    }
+  });
+
+  const allHuecos: HuecoReporte[] = [];
+  let totalSegmentosCreados = 0;
+  let diasProcesados = 0;
+  const now = admin.firestore.FieldValue.serverTimestamp();
+
+  for (const fecha of fechas) {
+    const diaEsp = dateToSpanishDay(fecha);
+    const config = resolverConfigActiva(configuraciones, "", fecha);
+    if (!config) continue;
+
+    const turnosDelDia = config.turnos.filter((t) => t.day_of_week === diaEsp);
+    if (turnosDelDia.length === 0) continue;
+
+    // Borrar solo los segmentos `sugerido` de este día (los aprobado/publicado intocables)
+    const sugeridosDelDia = segmentosExistentesSnap.docs.filter(
+      (d) => d.data().date === fecha && d.data().status === "sugerido"
+    );
+    if (sugeridosDelDia.length > 0) {
+      const delBatch = db.batch();
+      sugeridosDelDia.forEach((d) => {
+        delBatch.update(d.ref, {
+          deletedAt: admin.firestore.FieldValue.serverTimestamp(),
+          updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+        });
+      });
+      await delBatch.commit();
+    }
+
+    // Calcular oferta del día
+    const ventanasPorEmpleado = new Map<string, Intervalo[]>();
+    empleadosDocs.forEach((doc) => {
+      const e = doc.data();
+      const ventanas: VentanaDisponibilidad[] = e.disponibilidad?.ventanas ?? [];
+      const delDia = ventanas
+        .filter((v) => v.day_of_week === diaEsp && v.start && v.end)
+        .map((v) => ({ start: toMinutes(v.start), end: toMinutes(v.end) }))
+        .filter((iv) => iv.end > iv.start);
+      if (delDia.length === 0) return;
+
+      const ausencias = ausenciasPorEmpleadoFecha.get(`${doc.id}_${fecha}`) ?? [];
+      let libres: Intervalo[] = [];
+      for (const v of delDia) libres.push(...restarIntervalos(v, ausencias));
+      if (libres.length > 0) ventanasPorEmpleado.set(doc.id, libres);
+    });
+
+    if (ventanasPorEmpleado.size === 0) continue;
+
+    const presencias: Presencia[] = [];
+    for (const [empId, intervalos] of ventanasPorEmpleado) {
+      intervalos.forEach((iv) => {
+        presencias.push({
+          id: `oferta-${empId}-${iv.start}-${iv.end}`,
+          empleado_id: empId,
+          start: fromMinutes(iv.start),
+          end: fromMinutes(iv.end),
+        });
+      });
+    }
+
+    // Determinar asignacion_id para este día
+    const entradaDia = segmentosPorFecha.get(fecha);
+    let asignacionId: string;
+
+    if (entradaDia?.asignacionId) {
+      asignacionId = entradaDia.asignacionId;
+    } else {
+      // Crear nueva Asignacion para este día
+      const asignacionRef = db.collection("asignaciones").doc();
+      asignacionId = asignacionRef.id;
+      const asigBatch = db.batch();
+      asigBatch.set(asignacionRef, {
+        empresa_id,
+        ubicacion_id,
+        date: fecha,
+        status: "draft",
+        createdAt: now,
+        updatedAt: now,
+        deletedAt: null,
+      });
+      await asigBatch.commit();
+    }
+
+    // Ejecutar greedy para este día
+    type EstadoEmpleado = { minConsecutivosEnAlta: number; segmentos: SegmentoToWrite[] };
+    const empleadoIdsDelDia = [...ventanasPorEmpleado.keys()];
+    const estadosEmpleado = new Map<string, EstadoEmpleado>();
+    empleadoIdsDelDia.forEach((eid) => {
+      estadosEmpleado.set(eid, { minConsecutivosEnAlta: 0, segmentos: [] });
+    });
+
+    const segmentosDelDia: SegmentoToWrite[] = [];
+    const huecosDelDia: HuecoReporte[] = [];
+
+    for (const turno of turnosDelDia) {
+      for (const req of turno.requerimientos) {
+        const estacion = estacionesMap.get(req.estacion_id);
+        if (!estacion) continue;
+
+        const buckets = generarBuckets(turno.start_time, turno.end_time);
+
+        for (const bucket of buckets) {
+          const disponibles = presencias
+            .filter(
+              (p) =>
+                toMinutes(p.start) <= toMinutes(bucket.start) &&
+                toMinutes(p.end) >= toMinutes(bucket.end)
+            )
+            .map((p) => p.empleado_id);
+
+          const sinSolape = disponibles.filter((eid) => {
+            const estado = estadosEmpleado.get(eid)!;
+            return !estado.segmentos.some((s) =>
+              seProlapan(s.start, s.end, bucket.start, bucket.end)
+            );
+          });
+
+          const sinSaturation = sinSolape.filter((eid) => {
+            const estado = estadosEmpleado.get(eid)!;
+            if (
+              estacion.max_continuo_min !== null &&
+              estado.minConsecutivosEnAlta >= estacion.max_continuo_min
+            ) {
+              const yaDescansa = estado.segmentos.some(
+                (s) =>
+                  s.tipo === "descanso" &&
+                  seProlapan(s.start, s.end, bucket.start, bucket.end)
+              );
+              if (!yaDescansa) {
+                const descanso: SegmentoToWrite = {
+                  empresa_id, ubicacion_id, empleado_id: eid, date: fecha,
+                  estacion_id: null, tipo: "descanso",
+                  start: bucket.start, end: bucket.end,
+                  asignacion_id: asignacionId, status: "sugerido",
+                };
+                estado.segmentos.push(descanso);
+                segmentosDelDia.push(descanso);
+                estado.minConsecutivosEnAlta = 0;
+              }
+              return false;
+            }
+            return true;
+          });
+
+          const candidatos = sinSaturation.filter((eid) => {
+            const reglas = reglasMap.get(eid) ?? [];
+            for (const regla of reglas) {
+              if (!regla.is_strict || regla.type !== "nunca_juntos") continue;
+              const otro = regla.person_uno_id === eid ? regla.person_dos_id : regla.person_uno_id;
+              const otroEstado = estadosEmpleado.get(otro);
+              if (otroEstado?.segmentos.some((s) => s.tipo === "estacion" && seProlapan(s.start, s.end, bucket.start, bucket.end))) {
+                return false;
+              }
+            }
+            return true;
+          });
+
+          candidatos.sort((a, b) => {
+            const fa = estadosEmpleado.get(a)?.minConsecutivosEnAlta ?? 0;
+            const fb = estadosEmpleado.get(b)?.minConsecutivosEnAlta ?? 0;
+            return fa - fb;
+          });
+
+          const asignados = candidatos.slice(0, req.cantidad);
+
+          if (asignados.length < req.cantidad) {
+            huecosDelDia.push({
+              date: fecha,
+              bucket_start: bucket.start,
+              bucket_end: bucket.end,
+              estacion_id: req.estacion_id,
+              requerido: req.cantidad,
+              asignado: asignados.length,
+            });
+          }
+
+          for (const eid of asignados) {
+            const seg: SegmentoToWrite = {
+              empresa_id, ubicacion_id, empleado_id: eid, date: fecha,
+              estacion_id: req.estacion_id, tipo: "estacion",
+              start: bucket.start, end: bucket.end,
+              asignacion_id: asignacionId, status: "sugerido",
+            };
+            const estado = estadosEmpleado.get(eid)!;
+            estado.segmentos.push(seg);
+            segmentosDelDia.push(seg);
+            if (estacion.intensidad === "alta") {
+              estado.minConsecutivosEnAlta += 30;
+            } else {
+              estado.minConsecutivosEnAlta = 0;
+            }
+          }
+        }
+      }
+    }
+
+    // Escribir segmentos del día en lotes
+    const BATCH_SIZE = 499;
+    for (let i = 0; i < segmentosDelDia.length; i += BATCH_SIZE) {
+      const batch = db.batch();
+      segmentosDelDia.slice(i, i + BATCH_SIZE).forEach((seg) => {
+        const ref = db.collection("segmentos").doc();
+        batch.set(ref, { ...seg, createdAt: now, updatedAt: now, deletedAt: null });
+      });
+      await batch.commit();
+    }
+
+    allHuecos.push(...huecosDelDia);
+    totalSegmentosCreados += segmentosDelDia.length;
+    diasProcesados++;
+  }
+
+  return {
+    semana: week_start,
+    dias_procesados: diasProcesados,
+    segmentos_creados: totalSegmentosCreados,
+    huecos: allHuecos,
   };
 });
 

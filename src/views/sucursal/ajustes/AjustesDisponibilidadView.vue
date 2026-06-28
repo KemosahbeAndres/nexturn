@@ -233,11 +233,13 @@ import { ref, computed, watch, onMounted } from 'vue';
 import { useSessionStore } from '../../../stores/sessionStore';
 import { useEmpleadoStore } from '../../../stores/empleadoStore';
 import { useDisponibilidadStore } from '../../../stores/disponibilidadStore';
+import { useSegmentoStore } from '../../../stores/segmentoStore';
 import type { Empleado } from '../../../models/Empleado';
 
 const sessionStore = useSessionStore();
 const empleadoStore = useEmpleadoStore();
 const disponibilidadStore = useDisponibilidadStore();
+const segmentoStore = useSegmentoStore();
 
 const canManage = computed(() => ['super_admin', 'admin'].includes(sessionStore.currentUser?.system_role ?? ''));
 
@@ -394,6 +396,10 @@ async function guardar() {
     snapshot.value = cloneForm(form.value);
     successMsg.value = 'Disponibilidad guardada.';
     setTimeout(() => { successMsg.value = ''; }, 3000);
+    // Regenerar borrador del mes en background tras cambio de disponibilidad
+    const compId = sessionStore.activeCompanyId;
+    const ubicId = sessionStore.activeUbicacionId;
+    if (compId && ubicId) segmentoStore.regenerarBorradorMes(compId, ubicId);
   } catch (e: any) {
     errorMsg.value = e.message ?? 'Error al guardar.';
   } finally {
