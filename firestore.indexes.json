@@ -41,10 +41,10 @@
       "collectionGroup": "excepciones",
       "queryScope": "COLLECTION",
       "fields": [
-        { "fieldPath": "date", "order": "ASCENDING" },
         { "fieldPath": "active", "order": "ASCENDING" },
         { "fieldPath": "deletedAt", "order": "ASCENDING" },
-        { "fieldPath": "employee_id", "order": "ASCENDING" }
+        { "fieldPath": "employee_id", "order": "ASCENDING" },
+        { "fieldPath": "date", "order": "ASCENDING" }
       ]
     },
     {

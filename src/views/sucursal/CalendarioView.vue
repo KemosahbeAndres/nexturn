@@ -418,7 +418,6 @@ import { httpsCallable } from 'firebase/functions';
 import { getDocs, getDoc, doc as fsDoc, query, collection, where, updateDoc, addDoc, Timestamp } from 'firebase/firestore';
 import { useSessionStore } from '../../stores/sessionStore';
 import { useSegmentoStore } from '../../stores/segmentoStore';
-import { useEstacionStore } from '../../stores/estacionStore';
 import { useGrantStore } from '../../stores/grantStore';
 import { ubicacionConverter } from '../../models/Ubicacion';
 import { estacionConverter } from '../../models/Estacion';
@@ -430,7 +429,6 @@ import type { Turno } from '../../models/Ubicacion';
 
 const sessionStore = useSessionStore();
 const segmentoStore = useSegmentoStore();
-const estacionStore = useEstacionStore();
 const grantStore = useGrantStore();
 
 // ── Permisos ──────────────────────────────────────────────────────────────────
@@ -473,8 +471,8 @@ async function resolverMiEmpleadoId(): Promise<string | null> {
 
 const puedeVer = computed(() => canManage.value || !!miEmpleadoId.value);
 
-// ── Caché de empleados (cargada en calcularDiagnostico con sus contactos) ────
-// Esto evita depender del timing de la hidratación reactiva del store.
+// ── Caché local (llenado en calcularDiagnostico vía getDocs, nunca del store reactivo) ──
+// Los stores de useCollection llegan vacíos en el primer render; el caché los evita.
 
 interface EmpleadoCacheEntry {
   id: string;
@@ -486,6 +484,7 @@ interface EmpleadoCacheEntry {
 }
 
 const empleadosCache = ref<EmpleadoCacheEntry[]>([]);
+const estacionesCache = ref<Map<string, string>>(new Map()); // id → nombre
 
 function nombreById(id: string): string {
   return empleadosCache.value.find(e => e.id === id)?.nombre ?? id.slice(0, 8) + '…';
@@ -493,6 +492,11 @@ function nombreById(id: string): string {
 
 function inicialesById(id: string): string {
   return empleadosCache.value.find(e => e.id === id)?.iniciales ?? '?';
+}
+
+function nombreEstacion(id: string | null): string {
+  if (!id) return 'General';
+  return estacionesCache.value.get(id) ?? id.slice(0, 8);
 }
 
 // ── Estado ────────────────────────────────────────────────────────────────────
@@ -570,15 +574,29 @@ function segmentosDia(diaIdx: number): Segmento[] {
     .sort((a, b) => a.start.localeCompare(b.start));
 }
 
-function segmentoParaCupo(diaIdx: number, turno: Turno, estacionId: string, cupoOffset: number): Segmento | undefined {
+// Devuelve un segmento representante por empleado para el cupo N.
+// El algoritmo escribe N buckets de 30 min por empleado por turno; aquí
+// los colapsamos: un cupo = un empleado distinto. El representante es el
+// primer bucket de ese empleado en el turno (para tener id, status, empleado_id).
+function empleadosPorTurno(diaIdx: number, turno: Turno, estacionId: string): Segmento[] {
   const fecha = fechaDia(diaIdx);
-  const candidatos = segmentos.value.filter(s =>
+  // Segmentos que solapan con el turno en esa estación
+  const del_turno = segmentos.value.filter(s =>
     s.date === fecha &&
     s.estacion_id === estacionId &&
     s.status !== 'rechazado' &&
     s.start < turno.end_time && s.end > turno.start_time
-  ).sort((a, b) => a.empleado_id.localeCompare(b.empleado_id));
-  return candidatos[cupoOffset];
+  );
+  // Un representante por empleado (el de menor start)
+  const porEmpleado = new Map<string, Segmento>();
+  for (const s of del_turno.sort((a, b) => a.start.localeCompare(b.start))) {
+    if (!porEmpleado.has(s.empleado_id)) porEmpleado.set(s.empleado_id, s);
+  }
+  return [...porEmpleado.values()].sort((a, b) => a.empleado_id.localeCompare(b.empleado_id));
+}
+
+function segmentoParaCupo(diaIdx: number, turno: Turno, estacionId: string, cupoOffset: number): Segmento | undefined {
+  return empleadosPorTurno(diaIdx, turno, estacionId)[cupoOffset];
 }
 
 const haySegmentosSugeridos = computed(() => segmentos.value.some(s => s.status === 'sugerido'));
@@ -643,6 +661,24 @@ function toMin(hhmm: string): number {
   return h * 60 + m;
 }
 
+function fromMin(mins: number): string {
+  const h = Math.floor(mins / 60) % 24;
+  const m = mins % 60;
+  return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
+}
+
+function generarBuckets30(start: string, end: string): { start: string; end: string }[] {
+  const buckets: { start: string; end: string }[] = [];
+  let cur = toMin(start);
+  const fin = toMin(end);
+  while (cur < fin) {
+    const next = Math.min(cur + 30, fin);
+    buckets.push({ start: fromMin(cur), end: fromMin(next) });
+    cur = next;
+  }
+  return buckets;
+}
+
 function cargarEmpleadosSidebar(turno: Turno, estacionId: string, fecha: string) {
   const diasES = ['Domingo', 'Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado'];
   const [y, mo, d] = fecha.split('-').map(Number);
@@ -677,35 +713,63 @@ function cargarEmpleadosSidebar(turno: Turno, estacionId: string, fecha: string)
   empleadosSidebar.value = lista;
 }
 
+// Devuelve todos los buckets de un empleado en un turno+estación+fecha
+function bucketsDeTurno(empleadoId: string, turno: Turno, estacionId: string, fecha: string): Segmento[] {
+  return segmentos.value.filter(s =>
+    s.date === fecha &&
+    s.empleado_id === empleadoId &&
+    s.estacion_id === estacionId &&
+    s.start < turno.end_time && s.end > turno.start_time
+  );
+}
+
 async function aprobarDesideSidebar() {
-  if (!sidebarSeg.value) return;
-  await aprobar(sidebarSeg.value.id);
-  // Actualizar el objeto en sidebar para reflejar el nuevo estado
-  const seg = segmentos.value.find(s => s.id === sidebarSeg.value!.id);
-  if (seg) sidebarSeg.value = { ...seg };
+  if (!sidebarSeg.value || !sidebarTurno.value) return;
+  accionando.value = true;
+  try {
+    // Aprobar todos los buckets de este empleado en este turno
+    const buckets = bucketsDeTurno(
+      sidebarSeg.value.empleado_id,
+      sidebarTurno.value,
+      sidebarEstacionId.value,
+      sidebarFecha.value
+    );
+    await Promise.all(buckets.map(s => segmentoStore.aprobarSegmento(s.id)));
+    buckets.forEach(s => { s.status = 'aprobado'; });
+    sidebarSeg.value = { ...sidebarSeg.value, status: 'aprobado' };
+  } finally {
+    accionando.value = false;
+  }
 }
 
 async function reasignar(nuevoEmpleadoId: string) {
   if (!sidebarTurno.value || !sidebarFecha.value) return;
-  if (nuevoEmpleadoId === sidebarSeg.value?.empleado_id) return; // ya asignado
+  if (nuevoEmpleadoId === sidebarSeg.value?.empleado_id) return;
   accionando.value = true;
   try {
     if (sidebarSeg.value) {
-      // Cambiar empleado en el segmento existente
-      await updateDoc(fsDoc(db, 'segmentos', sidebarSeg.value.id), {
-        empleado_id: nuevoEmpleadoId,
-        status: 'sugerido',
-        updatedAt: Timestamp.now(),
+      // Actualizar TODOS los buckets del empleado actual en este turno
+      const buckets = bucketsDeTurno(
+        sidebarSeg.value.empleado_id,
+        sidebarTurno.value,
+        sidebarEstacionId.value,
+        sidebarFecha.value
+      );
+      await Promise.all(buckets.map(s =>
+        updateDoc(fsDoc(db, 'segmentos', s.id), {
+          empleado_id: nuevoEmpleadoId,
+          status: 'sugerido',
+          updatedAt: Timestamp.now(),
+        })
+      ));
+      // Actualizar estado local
+      buckets.forEach(s => {
+        s.empleado_id = nuevoEmpleadoId;
+        s.status = 'sugerido';
       });
-      const seg = segmentos.value.find(s => s.id === sidebarSeg.value!.id);
-      if (seg) {
-        seg.empleado_id = nuevoEmpleadoId;
-        seg.status = 'sugerido';
-      }
       sidebarSeg.value = { ...sidebarSeg.value, empleado_id: nuevoEmpleadoId, status: 'sugerido' };
     } else {
-      // Cupo vacío: crear nuevo segmento
-      // Necesitamos la asignacion_id del día. Buscar o crear.
+      // Cupo vacío: generar buckets de 30 min para el turno completo
       let asignacionId = segmentos.value.find(s =>
         s.date === sidebarFecha.value && s.ubicacion_id === ubicacionId.value
       )?.asignacion_id ?? '';
@@ -723,28 +787,46 @@ async function reasignar(nuevoEmpleadoId: string) {
         asignacionId = aRef.id;
       }
 
-      const newSegRef = await addDoc(collection(db, 'segmentos'), {
+      // Crear buckets de 30 min igual que el algoritmo
+      const buckets = generarBuckets30(sidebarTurno.value.start_time, sidebarTurno.value.end_time);
+      const primeroRef = await addDoc(collection(db, 'segmentos'), {
         empresa_id: companyId.value,
         ubicacion_id: ubicacionId.value,
         empleado_id: nuevoEmpleadoId,
         date: sidebarFecha.value,
         estacion_id: sidebarEstacionId.value,
         tipo: 'estacion',
-        start: sidebarTurno.value.start_time,
-        end: sidebarTurno.value.end_time,
+        start: buckets[0].start,
+        end: buckets[0].end,
         asignacion_id: asignacionId,
         status: 'sugerido',
         createdAt: Timestamp.now(),
         updatedAt: Timestamp.now(),
         deletedAt: null,
       });
+      await Promise.all(buckets.slice(1).map(b =>
+        addDoc(collection(db, 'segmentos'), {
+          empresa_id: companyId.value,
+          ubicacion_id: ubicacionId.value,
+          empleado_id: nuevoEmpleadoId,
+          date: sidebarFecha.value,
+          estacion_id: sidebarEstacionId.value,
+          tipo: 'estacion',
+          start: b.start,
+          end: b.end,
+          asignacion_id: asignacionId,
+          status: 'sugerido',
+          createdAt: Timestamp.now(),
+          updatedAt: Timestamp.now(),
+          deletedAt: null,
+        })
+      ));
 
-      // Recargar segmentos para que aparezca en grilla
+      // Recargar y apuntar al representante
       segmentos.value = await segmentoStore.cargarSegmentosManager(
         ubicacionId.value, fechaInicio.value, fechaFin.value
       );
-      // Apuntar sidebar al nuevo segmento
-      const nuevo = segmentos.value.find(s => s.id === newSegRef.id);
+      const nuevo = segmentos.value.find(s => s.id === primeroRef.id);
       if (nuevo) sidebarSeg.value = nuevo;
     }
   } finally {
@@ -758,11 +840,6 @@ function formatRango(ini: string, fin: string): string {
   const meses = ['Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic'];
   const fmt = (d: string) => { const [, m, dd] = d.split('-'); return `${parseInt(dd)} ${meses[parseInt(m) - 1]}`; };
   return `${fmt(ini)} – ${fmt(fin)}`;
-}
-
-function nombreEstacion(id: string | null): string {
-  if (!id) return 'General';
-  return estacionStore.estacionesActivas.find(e => e.id === id)?.nombre ?? id.slice(0, 8);
 }
 
 function claseSeg(status: SegmentoStatus): string {
@@ -861,6 +938,12 @@ async function calcularDiagnostico() {
       where('active', '==', true)
     ));
     const estaciones = estSnap.docs.map(d => d.data());
+
+    // Poblar caché de estaciones (id → nombre) para que el template no dependa del store reactivo
+    const cacheEst = new Map<string, string>();
+    estaciones.forEach(e => cacheEst.set(e.id, e.nombre));
+    estacionesCache.value = cacheEst;
+
     const nombresEstaciones = estaciones.map(e => e.nombre).join(', ') || '(ninguna)';
     const nombresEstacionesRequeridas = [...estacionIdsRequeridas]
       .map(id => estaciones.find(e => e.id === id)?.nombre ?? id).join(', ') || '(ninguna)';
@@ -992,12 +1075,21 @@ async function cargar() {
 
 // ── Acciones ──────────────────────────────────────────────────────────────────
 
-async function aprobar(id: string) {
+// Aprobar el cupo completo: busca todos los buckets del mismo empleado+estación+turno
+async function aprobar(segRepresentanteId: string) {
   accionando.value = true;
   try {
-    await segmentoStore.aprobarSegmento(id);
-    const seg = segmentos.value.find(s => s.id === id);
-    if (seg) seg.status = 'aprobado';
+    const rep = segmentos.value.find(s => s.id === segRepresentanteId);
+    if (!rep) return;
+    // Todos los buckets de este empleado en esta estación y fecha que se solapen
+    const todos = segmentos.value.filter(s =>
+      s.date === rep.date &&
+      s.empleado_id === rep.empleado_id &&
+      s.estacion_id === rep.estacion_id &&
+      s.status === 'sugerido'
+    );
+    await Promise.all(todos.map(s => segmentoStore.aprobarSegmento(s.id)));
+    todos.forEach(s => { s.status = 'aprobado'; });
   } finally { accionando.value = false; }
 }
 
@@ -1026,7 +1118,6 @@ async function publicarDia(diaIdx: number) {
 
 onMounted(async () => {
   miEmpleadoId.value = await resolverMiEmpleadoId();
-  if (companyId.value) estacionStore.listarEstaciones(companyId.value);
   await cargar();
 });
 </script>

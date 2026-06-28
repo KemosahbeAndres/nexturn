@@ -681,7 +681,6 @@ export const actualizarBorrador = onCall<
       max_continuo_min: e.max_continuo_min ?? null,
     });
   });
-
   // Cargar empleados con contrato activo en la sucursal o que sean encargado de sucursal.
   // El encargado de zona (zona.manager_id) queda excluido — opera a nivel de zona.
   const empleadosSnap = await db
