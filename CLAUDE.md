@@ -487,15 +487,15 @@ Orden: 7 → 8 → 9 → **10 (MVP testeable)** → 11 → 12. Cada fase cierra 
 | 5 | Facturación (DTE/MercadoPago) | ✅ | — |
 | 🔍 | **Revisión integral** (gate previo a F6) | ✅ | — |
 | 6 | Multiempresa UX | ✅ | — |
-| 6-bis | Borrador reactivo (scheduling UX) | ⬜ | quitar botón; CF on-demand; estado sugerido/aprobado/rechazado/publicado |
-| 7 | Congregación · tipo de tenant + helper | ⬜ | `isCongregacion` + doc |
-| 8 | Congregación · disponibilidad | 🚧 | ventanas + derivación de presencias hechas; falta edición en `PersonalView` |
-| 9 | Congregación · demanda sin estación | ⬜ | modo `cantidad` en `TurnosView` |
+| 6-bis | Borrador reactivo (scheduling UX) | ✅ | — |
+| 7 | Congregación · tipo de tenant + helper | ✅ | — |
+| 8 | Congregación · disponibilidad | ✅ | — |
+| 9 | Congregación · demanda sin estación | ✅ | — |
 | 10 | Congregación · greedy (MVP) | ⬜ | rama `congregacion` en `generarBorrador` |
 | 11 | Congregación · gating UI | ⬜ | ocultar módulos empresa-only |
 | 12 | Congregación · publicar + e2e | ⬜ | smoke test end-to-end |
 
-> **Estado actual:** Fases 0–6 y Revisión integral cerradas. Próximo: **Fase 6-bis (borrador reactivo)** y luego el **Bloque Congregaciones (Fases 7–12)**.
+> **Estado actual:** Fases 0–9 y Revisión integral cerradas. Próximo: **Fase 10 (greedy congregación en Cloud Function)**.
 > **MVP de congregación operativo tras Fase 10** (ya se ingresan datos y se prueban turnos).
 
 ### Fase 0 — Fundaciones ✅ (2026-06-19)
@@ -602,22 +602,25 @@ Orden: 7 → 8 → 9 → **10 (MVP testeable)** → 11 → 12. Cada fase cierra 
 - `src/views/cliente/ClienteEmpresasView.vue`: nueva vista. Carga empresas del cliente vía `empresaStore.listarEmpresas('cliente', null, clienteId)`. Tarjetas con nombre, plan, estado de suscripción. Click → registra slug y navega a `empresa-home`.
 - `src/layouts/EmpresaLayout.vue`: slots `#sidebar-top` y `#topbar-left` ahora muestran condicionalmente "← Mis Empresas" (si owner con grant 'client') o "← Panel Admin" (si super_admin).
 
-### Fase 6-bis — Borrador reactivo ⬜
-- **Decisión de diseño:** eliminado el botón "Generar borrador" de `TurnosView`. El borrador se genera automáticamente al detectar cambios relevantes o al abrir el calendario sin borrador vigente. El gerente ve siempre una propuesta y la va aprobando.
-- **Falta:**
-  - `src/models/Segmento.ts`: extender `status` a `'sugerido' | 'aprobado' | 'rechazado' | 'publicado'` (reemplaza `'draft' | 'published'`).
-  - `functions/src/index.ts`: nueva CF `actualizarBorrador` (`onCall`) — punto de entrada único que llama al greedy para el rango pedido (una semana por defecto). Solo regenera segmentos en `sugerido`; los `aprobado`/`publicado` son intocables.
-  - Triggers on-demand: la CF se llama (a) al guardar `ConfiguracionTurnos`, (b) al guardar `Empleado.disponibilidad`, (c) al crear/editar/borrar `Excepcion` — todos desde el cliente, inmediatamente después del write, pasando `{ empresa_id, ubicacion_id, week_start }`.
-  - Al abrir `TurnosView` o `CalendarioView` (gerente): si no existen segmentos para la semana en curso, llamar `actualizarBorrador` silenciosamente.
-  - `src/views/sucursal/TurnosView.vue`: quitar toolbar de "Generar borrador" y date picker de generación; mostrar el calendario semanal con segmentos en chip de estado (`sugerido` naranja · `aprobado` verde · `rechazado` rojo). Botones "Aprobar" / "Rechazar" por segmento + "Aprobar todo el día".
-  - `src/stores/segmentoStore.ts`: acción `aprobarSegmento(id)` → `status = 'aprobado'`; `rechazarSegmento(id)` → `status = 'rechazado'`; `publicarDia(ubicacion_id, date)` → todos los `aprobado` del día pasan a `publicado` + actualiza `Asignacion.status = 'published'` + notifica empleados.
-- **Aceptación:** abrir Turnos → aparece propuesta sin pulsar ningún botón; aprobar/rechazar funciona; publicar un día notifica. `tsc` 0.
+### Fase 6-bis — Borrador reactivo ✅ (2026-06-29)
+- **Hecho:**
+  - `src/models/Segmento.ts`: `status` extendido a `'sugerido'|'aprobado'|'rechazado'|'publicado'` con `normalizeStatus()` para retrocompatibilidad (`draft→sugerido`, `published→publicado`).
+  - `functions/src/index.ts`: CF `actualizarBorrador` (`onCall`, línea 646) — recibe `{empresa_id, ubicacion_id, week_start, dias?}`; borra solo segmentos `sugerido` (soft delete); escribe nuevos con `status: 'sugerido'`; respeta `aprobado`/`publicado` intocables.
+  - `src/stores/segmentoStore.ts`: `aprobarSegmento`, `rechazarSegmento`, `publicarDia`, `regenerarBorradorMes` (fire-and-forget).
+  - `src/views/sucursal/CalendarioView.vue`: UI completa — chips de estado por color, botón aprobar inline por cupo, "Aprobar todo", "Publicar día"; sidebar de reasignación manual; generación automática al montar (`onMounted → cargar → actualizarBorradorFn`).
+  - `src/views/sucursal/TurnosView.vue`: sin botón "Generar borrador"; `triggerActualizarBorrador()` fire-and-forget al guardar/editar/eliminar turnos.
+  - `src/views/sucursal/ajustes/AjustesDisponibilidadView.vue`: llama `segmentoStore.regenerarBorradorMes` tras guardar disponibilidad.
+  - `src/views/sucursal/ajustes/AjustesExcepcionesView.vue`: llama `segmentoStore.regenerarBorradorMes` tras crear o eliminar excepción.
+  - `tsc` 0 (frontend y functions).
+- **Deuda técnica aceptada:** el greedy no verifica solapamiento contra segmentos `aprobado`/`publicado` en reasignación manual (flujo no frecuente). Diferido a post-MVP.
 
-### Fase 7 — Congregación · Tipo de tenant + helper ⬜
-- **Falta:** computed `isCongregacion` / `activeTenantType` en `empresaStore` (o `sessionStore`) resolviendo `empresas[activeCompanyId].type`. Confirmar que el converter de `Empresa` deserializa `type` (default `'empresa'`) y `facturable` (default `true`). Caso documentado en §7.
-- **Aceptación:** `isCongregacion` disponible para ramificar vistas. `tsc` 0.
+### Fase 7 — Congregación · Tipo de tenant + helper ✅ (2026-06-29)
+- **Hecho:**
+  - `src/models/Empresa.ts`: converter línea 128 corregida — `(data.type as EmpresaType) ?? 'empresa'` (default para docs viejos sin el campo). `facturable` ya tenía `?? true`.
+  - `src/stores/empresaStore.ts`: importa `useSessionStore`; agrega computeds `activeEmpresa`, `activeTenantType`, `isCongregacion` resolviendo la empresa activa por `sessionStore.activeCompanyId`. Exportados.
+  - `tsc` 0 (frontend).
 
-### Fase 8 — Congregación · Disponibilidad del voluntario 🚧 (2026-06-27, parcial)
+### Fase 8 — Congregación · Disponibilidad del voluntario ✅ (2026-06-29)
 > Adelantada al rediseñar la oferta del algoritmo: **oferta = `disponibilidad − excepciones`** (se eliminó el modelo `Presencia`). Aplica a empresa y congregación.
 - **Hecho:**
   - `src/models/Empleado.ts`: tipo `Disponibilidad` extendido con `ventanas: VentanaDisponibilidad[]` (`{ day_of_week, start, end }`); converter serializa/deserializa `ventanas` (default `[]` para docs viejos → no rompe). `days` queda como resumen derivado.
@@ -625,13 +628,17 @@ Orden: 7 → 8 → 9 → **10 (MVP testeable)** → 11 → 12. Cada fase cierra 
   - `src/views/sucursal/ajustes/AjustesDisponibilidadView.vue`: editor de ventanas horarias por día (inputs `type="time"`, "+ Franja" por día, quitar franja). Validación `start < end` + sin solapes intra-día.
   - `functions/src/index.ts` (`generarBorrador`): oferta del día = ventanas de disponibilidad (empleados activos con contrato activo en la sucursal) **menos** sus `excepciones` (ausencias) del día, vía helper `restarIntervalos`. Quita la lectura de `presencias`. Mensaje de error corregido.
   - **`Presencia` eliminada:** borrados `src/models/Presencia.ts`, `src/stores/presenciaStore.ts`, `src/views/sucursal/PresenciasView.vue`; quitada ruta `sucursal-presencias` e ítem del sidebar en `SucursalLayout.vue`. `firestore.indexes.json`: índice de `presencias` → reemplazado por índice de `excepciones (date, active, deletedAt, employee_id)`.
-  - `src/views/sucursal/ajustes/AjustesExcepcionesView.vue`: copy aclarado — excepción = ausencia que resta disponibilidad ese día (flujo empleado→fecha→hora ya existente).
-  - `tsc` 0 (frontend y functions).
-- **Falta / próximo paso:** mostrar/editar disponibilidad también desde `PersonalView`; gating empresa-only vs. congregación (Fase 11). `createEmpleado` sigue guardando `disponibilidad: null` (se puebla al editar). **Pendiente despliegue:** `firebase deploy --only functions,firestore:indexes`.
+  - `src/views/sucursal/ajustes/AjustesExcepcionesView.vue`: copy aclarado — excepción = ausencia que resta disponibilidad ese día.
+  - `src/views/sucursal/PersonalView.vue`: sección "Disponibilidad semanal" añadida en el panel derecho del empleado (debajo de "Estaciones que opera"). Vista de solo lectura con badges por franja; modo edición inline con lista de días, "+ Franja", quitar franja, inputs `type="time"`. Validación `start < end` + sin solapamiento intra-día. Al guardar llama `setDisponibilidad` o `updateDisponibilidad` según corresponda y dispara `regenerarBorradorMes` fire-and-forget. Reset al cambiar de empleado.
+  - `tsc` 0 (frontend).
+- **Deuda aceptada:** `createEmpleado` sigue guardando `disponibilidad: null` (se puebla al editar). Gating empresa-only vs. congregación difiere a Fase 11.
+- **Pendiente despliegue:** `firebase deploy --only functions,firestore:indexes` (no bloquea UI).
 
-### Fase 9 — Congregación · Demanda sin estación ⬜
-- **Falta:** en `TurnosView`, cuando `isCongregacion`: ocultar estaciones; turno con un único `Requerimiento { estacion_id: null, cantidad }`. Modelos `ConfiguracionTurnos` / `Turno` / `Requerimiento` sin cambios.
-- **Aceptación:** definir "Sáb 09:00–12:00 · N personas" sin estaciones. `tsc` 0.
+### Fase 9 — Congregación · Demanda sin estación ✅ (2026-06-29)
+- **Hecho:**
+  - `src/models/Ubicacion.ts`: `Requerimiento.estacion_id` tipado como `string | null` (null = congregación). `deserializeTurno` preserva `null` en vez de convertirlo a `''`.
+  - `src/views/sucursal/TurnosView.vue`: importa `useEmpresaStore`; `isCongregacion` computed. Panel editor bifurcado: congregación muestra sección "Voluntarios requeridos" (stepper cantidad único, `estacion_id: null`); empresa mantiene la sección "Estaciones requeridas" intacta. `abrirNuevo` inicializa `[{ estacion_id: null, cantidad: 2 }]` en congregación. Tarjetas de grilla muestran solo "N personas" en congregación (sin nombre de estación). `cantidadCongregacion` computed bidireccional sobre `form.requerimientos[0]`.
+  - `tsc` 0.
 
 ### Fase 10 — Congregación · Greedy congregación (MVP) ⬜
 - **Falta:** en `functions/src/index.ts`, `generarBorrador` carga `empresas/{empresa_id}` y bifurca: `type === 'congregacion'` → `greedyCongregacion` (sin buckets de rotación, estaciones, `max_continuo`, reglas). Oferta = `Empleado.disponibilidad`; por turno toma `requerimiento.cantidad` voluntarios cuya ventana **contiene** el turno; dura: no doble-asignación solapada; orden por equidad; marca huecos. Escribe `Segmento { estacion_id: null, tipo: 'estacion' }`; reusa `Asignacion`. **Ruta empresa intacta.**

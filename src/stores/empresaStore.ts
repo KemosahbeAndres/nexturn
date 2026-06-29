@@ -8,8 +8,10 @@ import type { EmpresaType, EmpresaPlan } from '../models/Empresa';
 import { contactoConverter } from '../models/Contacto';
 import { Role, roleToFirestore } from '../models/Role';
 import type { ScopeRoleTemplate } from '../models/Role';
+import { useSessionStore } from './sessionStore';
 
 export const useEmpresaStore = defineStore('empresa', () => {
+  const sessionStore = useSessionStore();
   const empresasRef = collection(db, 'empresas').withConverter(empresaConverter);
 
   const queryParams = ref<{ role: string | null; empresaId: string | null; clienteId: string | null }>({ role: null, empresaId: null, clienteId: null });
@@ -46,6 +48,13 @@ export const useEmpresaStore = defineStore('empresa', () => {
   const congregaciones = computed(() =>
     (empresas.value ?? []).filter(e => e.type === 'congregacion')
   );
+
+  // Empresa activa y helpers de tipo para ramificar UI y algoritmo
+  const activeEmpresa = computed(() =>
+    (empresas.value ?? []).find(e => e.id === sessionStore.activeCompanyId) ?? null
+  );
+  const activeTenantType = computed(() => activeEmpresa.value?.type ?? null);
+  const isCongregacion = computed(() => activeEmpresa.value?.type === 'congregacion');
 
   watch(empresas, async (nuevasEmpresas) => {
     if (!nuevasEmpresas) return;
@@ -188,6 +197,9 @@ export const useEmpresaStore = defineStore('empresa', () => {
     empresas,
     empresasTipo,
     congregaciones,
+    activeEmpresa,
+    activeTenantType,
+    isCongregacion,
     listarEmpresas,
     createEmpresa,
     updateEmpresa,

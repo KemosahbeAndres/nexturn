@@ -111,16 +111,22 @@
                 {{ calcDuracion(turno.start_time, turno.end_time) }}
               </p>
               <!-- Resumen requerimientos -->
-              <div v-if="turno.requerimientos.length" class="mt-1.5 space-y-0.5">
-                <p v-for="req in turno.requerimientos" :key="req.estacion_id"
-                  class="text-[9px] text-gray-500 dark:text-gray-400 leading-tight">
-                  {{ req.cantidad }}× {{ nombreEstacion(req.estacion_id) }}
+              <template v-if="isCongregacion">
+                <p class="text-[9px] text-gray-400 dark:text-gray-500 mt-1 font-medium">
+                  {{ totalPersonas(turno) }} persona{{ totalPersonas(turno) !== 1 ? 's' : '' }}
                 </p>
-              </div>
-              <!-- Total personas -->
-              <p class="text-[9px] text-gray-400 dark:text-gray-500 mt-1 font-medium">
-                {{ totalPersonas(turno) }} persona{{ totalPersonas(turno) !== 1 ? 's' : '' }}
-              </p>
+              </template>
+              <template v-else>
+                <div v-if="turno.requerimientos.length" class="mt-1.5 space-y-0.5">
+                  <p v-for="req in turno.requerimientos" :key="req.estacion_id"
+                    class="text-[9px] text-gray-500 dark:text-gray-400 leading-tight">
+                    {{ req.cantidad }}× {{ req.estacion_id ? nombreEstacion(req.estacion_id) : '—' }}
+                  </p>
+                </div>
+                <p class="text-[9px] text-gray-400 dark:text-gray-500 mt-1 font-medium">
+                  {{ totalPersonas(turno) }} persona{{ totalPersonas(turno) !== 1 ? 's' : '' }}
+                </p>
+              </template>
             </button>
 
             <!-- Agregar turno -->
@@ -199,8 +205,29 @@
 
             <hr class="border-gray-100 dark:border-gray-700" />
 
-            <!-- ── Estaciones requeridas ── -->
-            <section class="space-y-3">
+            <!-- ── Congregación: cantidad total de voluntarios ── -->
+            <section v-if="isCongregacion" class="space-y-3">
+              <p class="text-[10px] font-bold uppercase tracking-widest text-gray-400 dark:text-gray-500">Voluntarios requeridos</p>
+              <div class="flex items-center gap-3 px-3 py-3 rounded-lg bg-gray-50 dark:bg-gray-700/40 border border-gray-200 dark:border-gray-600">
+                <span class="flex-1 text-sm font-medium text-gray-700 dark:text-gray-200">Cantidad de personas</span>
+                <div class="flex items-center gap-2 shrink-0">
+                  <button type="button" @click="decrementarCantidadCongregacion"
+                    class="w-7 h-7 flex items-center justify-center rounded-lg bg-white dark:bg-gray-700 border border-gray-200 dark:border-gray-600 text-gray-500 hover:text-gray-800 dark:hover:text-white hover:border-gray-400 transition-colors text-base font-bold leading-none">
+                    −
+                  </button>
+                  <span class="w-6 text-center text-lg font-bold text-gray-900 dark:text-white tabular-nums">
+                    {{ cantidadCongregacion }}
+                  </span>
+                  <button type="button" @click="cantidadCongregacion++"
+                    class="w-7 h-7 flex items-center justify-center rounded-lg bg-white dark:bg-gray-700 border border-gray-200 dark:border-gray-600 text-gray-500 hover:text-gray-800 dark:hover:text-white hover:border-gray-400 transition-colors text-base font-bold leading-none">
+                    +
+                  </button>
+                </div>
+              </div>
+            </section>
+
+            <!-- ── Empresa: estaciones requeridas ── -->
+            <section v-else class="space-y-3">
               <div class="flex items-center justify-between">
                 <p class="text-[10px] font-bold uppercase tracking-widest text-gray-400 dark:text-gray-500">Estaciones requeridas</p>
                 <span class="text-[10px] text-gray-400 dark:text-gray-500">
@@ -212,7 +239,7 @@
               <div v-if="form.requerimientos.length" class="space-y-2">
                 <div v-for="(req, idx) in form.requerimientos" :key="idx"
                   class="flex items-center gap-2 px-3 py-2 rounded-lg bg-gray-50 dark:bg-gray-700/40 border border-gray-200 dark:border-gray-600">
-                  <span class="flex-1 text-sm font-medium text-gray-800 dark:text-gray-200 truncate">{{ nombreEstacion(req.estacion_id) }}</span>
+                  <span class="flex-1 text-sm font-medium text-gray-800 dark:text-gray-200 truncate">{{ req.estacion_id ? nombreEstacion(req.estacion_id) : '—' }}</span>
                   <!-- Stepper de cantidad -->
                   <div class="flex items-center gap-1 shrink-0">
                     <button type="button" @click="decrementarEstacion(idx)"
@@ -480,12 +507,16 @@ import { httpsCallable } from 'firebase/functions';
 import { useSessionStore } from '../../stores/sessionStore';
 import { useUbicacionStore } from '../../stores/ubicacionStore';
 import { useEstacionStore } from '../../stores/estacionStore';
+import { useEmpresaStore } from '../../stores/empresaStore';
 import { functions } from '../../firebase';
 import type { Turno, Requerimiento, ConfiguracionTurnos, ConfigScope } from '../../models/Ubicacion';
 
 const sessionStore = useSessionStore();
 const ubicacionStore = useUbicacionStore();
 const estacionStore = useEstacionStore();
+const empresaStore = useEmpresaStore();
+
+const isCongregacion = computed(() => empresaStore.isCongregacion);
 
 const canManage = computed(() => ['super_admin', 'admin'].includes(sessionStore.currentUser?.system_role ?? ''));
 const diasSemana = ['Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado', 'Domingo'];
@@ -643,6 +674,23 @@ function quitarEstacion(idx: number) {
   form.value.requerimientos.splice(idx, 1);
 }
 
+// Congregación: un único requerimiento con estacion_id = null
+const cantidadCongregacion = computed({
+  get: () => form.value.requerimientos[0]?.cantidad ?? 1,
+  set: (val: number) => {
+    if (!form.value.requerimientos.length) {
+      form.value.requerimientos = [{ estacion_id: null, cantidad: val }];
+    } else {
+      form.value.requerimientos[0].cantidad = val;
+    }
+  },
+});
+
+function decrementarCantidadCongregacion() {
+  const val = cantidadCongregacion.value;
+  if (val > 1) cantidadCongregacion.value = val - 1;
+}
+
 function resetForm() {
   form.value = snapshot(formSnap.value);
 }
@@ -663,6 +711,9 @@ function abrirNuevo(dia: string) {
   modoPanel.value = 'add';
   editandoId.value = null;
   const f = formVacio();
+  if (isCongregacion.value) {
+    f.requerimientos = [{ estacion_id: null, cantidad: 2 }];
+  }
   form.value = f;
   formSnap.value = snapshot(f);
   panelError.value = '';

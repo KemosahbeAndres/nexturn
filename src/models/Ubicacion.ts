@@ -4,7 +4,7 @@ import type { DocumentData, FirestoreDataConverter, QueryDocumentSnapshot, Snaps
 export type UbicacionCategory = 'sucursal' | 'territorio' | 'stand' | string;
 
 export interface Requerimiento {
-  estacion_id: string;
+  estacion_id: string | null;  // null en congregación (sin estaciones)
   cantidad: number;
 }
 
@@ -76,12 +76,12 @@ function deserializeTurno(t: any): Turno {
   let requerimientos: Requerimiento[] = [];
   if (Array.isArray(t.requerimientos)) {
     requerimientos = t.requerimientos.map((r: any) => ({
-      estacion_id: r.estacion_id ?? r.role ?? '',
+      estacion_id: r.estacion_id !== undefined ? (r.estacion_id ?? null) : (r.role ?? null),
       cantidad: r.cantidad ?? r.count ?? 1,
     }));
   } else if (Array.isArray(t.required_roles)) {
     requerimientos = t.required_roles.map((r: any) => ({
-      estacion_id: typeof r === 'string' ? r : (r.role ?? ''),
+      estacion_id: typeof r === 'string' ? r : (r.role ?? null),
       cantidad: typeof r === 'string' ? 1 : (r.count ?? 1),
     }));
   }

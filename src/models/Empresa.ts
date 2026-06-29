@@ -125,7 +125,7 @@ export const empresaConverter: FirestoreDataConverter<Empresa> = {
       snapshot.id,
       data.active,
       data.contact_id,
-      data.type as EmpresaType,
+      (data.type as EmpresaType) ?? 'empresa',
       (data.cargos || data.work_roles || []).map(roleFromFirestore),
       data.slug || '',
       data.createdAt?.toDate() || new Date(),

@@ -315,6 +315,75 @@
           </div>
         </section>
 
+        <!-- Sección: Disponibilidad -->
+        <section class="bg-white dark:bg-gray-800 rounded-xl border border-gray-100 dark:border-gray-700 overflow-hidden">
+          <div class="flex items-center justify-between px-4 py-3 border-b border-gray-100 dark:border-gray-700">
+            <div>
+              <p class="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">Disponibilidad semanal</p>
+              <p class="text-[10px] text-gray-400 dark:text-gray-500 mt-0.5">Franjas horarias base en que puede trabajar. El algoritmo usa esto como oferta.</p>
+            </div>
+            <div class="flex items-center gap-2">
+              <button v-if="!editandoDisponibilidad" type="button" @click="abrirEditorDisponibilidad"
+                class="text-xs text-blue-600 dark:text-blue-400 hover:underline">
+                {{ empleadoSeleccionado?.disponibilidad ? 'Editar' : 'Configurar' }}
+              </button>
+              <template v-else>
+                <button type="button" @click="cancelarDisponibilidad"
+                  class="text-xs text-gray-500 hover:text-gray-700 dark:hover:text-gray-300">Cancelar</button>
+                <button type="button" @click="guardarDisponibilidad" :disabled="guardandoDisponibilidad"
+                  class="text-xs text-blue-600 dark:text-blue-400 font-semibold hover:underline disabled:opacity-50">
+                  {{ guardandoDisponibilidad ? 'Guardando…' : 'Guardar' }}
+                </button>
+              </template>
+            </div>
+          </div>
+
+          <!-- Vista de solo lectura -->
+          <div v-if="!editandoDisponibilidad" class="p-4">
+            <div v-if="empleadoSeleccionado?.disponibilidad?.ventanas?.length" class="space-y-2">
+              <div v-for="dia in DIAS_SEMANA" :key="dia">
+                <div v-if="ventanasPorDia(empleadoSeleccionado.disponibilidad.ventanas, dia).length" class="flex items-start gap-2">
+                  <span class="shrink-0 text-[10px] font-semibold text-gray-500 dark:text-gray-400 uppercase w-10 pt-0.5">{{ dia.slice(0, 3) }}</span>
+                  <div class="flex flex-wrap gap-1">
+                    <span v-for="(v, i) in ventanasPorDia(empleadoSeleccionado.disponibilidad.ventanas, dia)" :key="i"
+                      class="px-2 py-0.5 text-xs rounded-full bg-blue-50 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 border border-blue-100 dark:border-blue-800">
+                      {{ v.start }} – {{ v.end }}
+                    </span>
+                  </div>
+                </div>
+              </div>
+            </div>
+            <p v-else class="text-xs text-gray-400 dark:text-gray-500 italic">Sin disponibilidad configurada. El algoritmo no podrá asignar turnos a este empleado.</p>
+          </div>
+
+          <!-- Editor de ventanas -->
+          <div v-else class="p-4 space-y-4">
+            <p v-if="errorDisponibilidad" class="text-xs text-red-500 dark:text-red-400">{{ errorDisponibilidad }}</p>
+            <div v-for="dia in DIAS_SEMANA" :key="dia" class="space-y-1.5">
+              <div class="flex items-center justify-between">
+                <span class="text-xs font-semibold text-gray-600 dark:text-gray-300">{{ dia }}</span>
+                <button type="button" @click="agregarVentana(dia)"
+                  class="text-[10px] text-blue-600 dark:text-blue-400 hover:underline">+ Franja</button>
+              </div>
+              <div v-for="(v, i) in formVentanas.filter(w => w.day_of_week === dia)" :key="i" class="flex items-center gap-2">
+                <input v-model="v.start" type="time"
+                  class="w-24 px-2 py-1 text-xs rounded-lg border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-1 focus:ring-blue-500" />
+                <span class="text-xs text-gray-400">–</span>
+                <input v-model="v.end" type="time"
+                  class="w-24 px-2 py-1 text-xs rounded-lg border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-1 focus:ring-blue-500" />
+                <button type="button" @click="quitarVentana(dia, i)"
+                  class="text-gray-400 hover:text-red-500 dark:hover:text-red-400 transition-colors">
+                  <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-3.5 h-3.5">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M6 18 18 6M6 6l12 12" />
+                  </svg>
+                </button>
+              </div>
+              <p v-if="!formVentanas.filter(w => w.day_of_week === dia).length"
+                class="text-[10px] text-gray-400 dark:text-gray-500 italic pl-0.5">Sin franjas para este día</p>
+            </div>
+          </div>
+        </section>
+
         <!-- Sección: Acceso al sistema -->
         <section class="bg-white dark:bg-gray-800 rounded-xl border border-gray-100 dark:border-gray-700 overflow-hidden">
           <div class="px-4 py-3 border-b border-gray-100 dark:border-gray-700">
@@ -628,7 +697,9 @@ import { useUbicacionStore } from '../../stores/ubicacionStore';
 import { useEstacionStore } from '../../stores/estacionStore';
 import { useGrantStore } from '../../stores/grantStore';
 import { useSegmentoStore } from '../../stores/segmentoStore';
+import { useDisponibilidadStore } from '../../stores/disponibilidadStore';
 import { useRut } from '../../composables/useRut';
+import type { VentanaDisponibilidad } from '../../models/Empleado';
 import { db, firebaseApp } from '../../firebase';
 import { contactoConverter, Contacto } from '../../models/Contacto';
 import { Usuario, usuarioConverter } from '../../models/Usuario';
@@ -660,6 +731,7 @@ const ubicacionStore = useUbicacionStore();
 const estacionStore = useEstacionStore();
 const grantStore = useGrantStore();
 const segmentoStore = useSegmentoStore();
+const disponibilidadStore = useDisponibilidadStore();
 
 const activeCompanyId = computed(() => {
   if (sessionStore.userRole !== 'super_admin') return sessionStore.activeCompanyId;
@@ -771,6 +843,8 @@ function seleccionar(emp: Empleado) {
   editandoContacto.value = false;
   editandoContratoId.value = null;
   agregandoContrato.value = false;
+  editandoDisponibilidad.value = false;
+  errorDisponibilidad.value = '';
   formContacto.first_name = emp.contacto?.first_name ?? '';
   formContacto.last_name  = emp.contacto?.last_name  ?? '';
   formContacto.email      = emp.contacto?.email      ?? '';
@@ -856,6 +930,86 @@ async function guardarEstaciones() {
     if (compId && ubicId) segmentoStore.regenerarBorradorMes(compId, ubicId);
   } finally {
     guardandoEstaciones.value = false;
+  }
+}
+
+// ── Disponibilidad ─────────────────────────────────────────────────────────────
+
+const DIAS_SEMANA = ['Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado', 'Domingo'];
+
+const editandoDisponibilidad = ref(false);
+const guardandoDisponibilidad = ref(false);
+const errorDisponibilidad = ref('');
+const formVentanas = ref<VentanaDisponibilidad[]>([]);
+
+function ventanasPorDia(ventanas: VentanaDisponibilidad[], dia: string): VentanaDisponibilidad[] {
+  return ventanas.filter(v => v.day_of_week === dia);
+}
+
+function abrirEditorDisponibilidad() {
+  const ventanas = empleadoSeleccionado.value?.disponibilidad?.ventanas ?? [];
+  formVentanas.value = ventanas.map(v => ({ ...v }));
+  errorDisponibilidad.value = '';
+  editandoDisponibilidad.value = true;
+}
+
+function cancelarDisponibilidad() {
+  editandoDisponibilidad.value = false;
+  errorDisponibilidad.value = '';
+}
+
+function agregarVentana(dia: string) {
+  formVentanas.value.push({ day_of_week: dia, start: '09:00', end: '17:00' });
+}
+
+function quitarVentana(dia: string, idx: number) {
+  const ventanasDia = formVentanas.value.filter(v => v.day_of_week === dia);
+  const ventana = ventanasDia[idx];
+  const globalIdx = formVentanas.value.indexOf(ventana);
+  if (globalIdx !== -1) formVentanas.value.splice(globalIdx, 1);
+}
+
+function validarVentanas(): string | null {
+  for (const dia of DIAS_SEMANA) {
+    const vs = formVentanas.value.filter(v => v.day_of_week === dia);
+    for (const v of vs) {
+      if (v.start >= v.end) return `${dia}: la hora de inicio debe ser anterior a la hora de fin.`;
+    }
+    const sorted = [...vs].sort((a, b) => a.start.localeCompare(b.start));
+    for (let i = 0; i < sorted.length - 1; i++) {
+      if (sorted[i].end > sorted[i + 1].start) return `${dia}: hay franjas que se solapan.`;
+    }
+  }
+  return null;
+}
+
+async function guardarDisponibilidad() {
+  if (!empleadoSeleccionado.value) return;
+  const error = validarVentanas();
+  if (error) { errorDisponibilidad.value = error; return; }
+  guardandoDisponibilidad.value = true;
+  errorDisponibilidad.value = '';
+  try {
+    const empId = empleadoSeleccionado.value.id;
+    const ventanas = [...formVentanas.value];
+    if (empleadoSeleccionado.value.disponibilidad) {
+      await disponibilidadStore.updateDisponibilidad(empId, { ventanas });
+    } else {
+      await disponibilidadStore.setDisponibilidad(empId, {
+        ventanas,
+        monthly_frequency: 0,
+        weekly_frequency: 0,
+        special_rule: '',
+      });
+    }
+    editandoDisponibilidad.value = false;
+    const compId = sessionStore.activeCompanyId;
+    const ubicId = sessionStore.activeUbicacionId;
+    if (compId && ubicId) segmentoStore.regenerarBorradorMes(compId, ubicId);
+  } catch (e: any) {
+    errorDisponibilidad.value = e.message ?? 'Error al guardar.';
+  } finally {
+    guardandoDisponibilidad.value = false;
   }
 }
 

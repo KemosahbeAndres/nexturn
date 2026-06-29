@@ -185,12 +185,14 @@ import { ref, computed, watch, onMounted } from 'vue';
 import { useSessionStore } from '../../../stores/sessionStore';
 import { useEmpleadoStore } from '../../../stores/empleadoStore';
 import { useExcepcionStore } from '../../../stores/excepcionStore';
+import { useSegmentoStore } from '../../../stores/segmentoStore';
 import type { Empleado } from '../../../models/Empleado';
 import type { ExcepcionType } from '../../../models/Excepcion';
 
 const sessionStore = useSessionStore();
 const empleadoStore = useEmpleadoStore();
 const excepcionStore = useExcepcionStore();
+const segmentoStore = useSegmentoStore();
 
 const canManage = computed(() => ['super_admin', 'admin'].includes(sessionStore.currentUser?.system_role ?? ''));
 
@@ -262,6 +264,9 @@ async function submitAdd() {
     });
     openAdd.value = false;
     addForm.value = { date: '', time_start: '08:00', time_end: '17:00', reason: '', type: 'otro' };
+    const compId = sessionStore.activeCompanyId;
+    const ubicId = sessionStore.activeUbicacionId;
+    if (compId && ubicId) segmentoStore.regenerarBorradorMes(compId, ubicId);
   } catch (e: any) {
     addError.value = e.message ?? 'Error al guardar.';
   } finally {
@@ -272,6 +277,9 @@ async function submitAdd() {
 async function eliminar(id: string) {
   if (!confirm('¿Eliminar esta excepción?')) return;
   await excepcionStore.softDeleteExcepcion(id);
+  const compId = sessionStore.activeCompanyId;
+  const ubicId = sessionStore.activeUbicacionId;
+  if (compId && ubicId) segmentoStore.regenerarBorradorMes(compId, ubicId);
 }
 
 // ── Helpers de visualización ──────────────────────────────────────────────
