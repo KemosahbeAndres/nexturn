@@ -30,7 +30,11 @@
 </template>
 
 <script setup lang="ts">
-import { defineComponent, h } from 'vue';
+import { defineComponent, h, computed } from 'vue';
+import { useEmpresaStore } from '../stores/empresaStore';
+
+const empresaStore = useEmpresaStore();
+const isCongregacion = computed(() => empresaStore.isCongregacion);
 
 const svgProps = {
   xmlns: 'http://www.w3.org/2000/svg',
@@ -53,11 +57,15 @@ const IconDisponibilidad = icon(['M6.75 3v2.25M17.25 3v2.25M3 18.75V7.5a2.25 2.2
 const IconExcepciones    = icon(['M12 9v3.75m9-.75a9 9 0 1 1-18 0 9 9 0 0 1 18 0Zm-9 3.75h.008v.008H12v-.008Z']);
 const IconReglas         = icon(['M9.568 3H5.25A2.25 2.25 0 0 0 3 5.25v4.318c0 .597.237 1.17.659 1.591l9.581 9.581c.699.699 1.78.872 2.607.33a18.095 18.095 0 0 0 5.223-5.223c.542-.827.369-1.908-.33-2.607L11.16 3.66A2.25 2.25 0 0 0 9.568 3Z', 'M6 6h.008v.008H6V6Z']);
 
-const menuItems = [
-  { name: 'Personal',       routeName: 'sucursal-mi-equipo-personal',       icon: IconPersonal },
-  { name: 'Estaciones',     routeName: 'sucursal-mi-equipo-estaciones',     icon: IconEstaciones },
-  { name: 'Disponibilidad', routeName: 'sucursal-mi-equipo-disponibilidad', icon: IconDisponibilidad },
-  { name: 'Excepciones',    routeName: 'sucursal-mi-equipo-excepciones',    icon: IconExcepciones },
-  { name: 'Reglas',         routeName: 'sucursal-mi-equipo-reglas',         icon: IconReglas },
+const ALL_ITEMS = [
+  { name: 'Personal',       routeName: 'sucursal-mi-equipo-personal',       icon: IconPersonal,       congregacion: true  },
+  { name: 'Estaciones',     routeName: 'sucursal-mi-equipo-estaciones',     icon: IconEstaciones,     congregacion: false },
+  { name: 'Disponibilidad', routeName: 'sucursal-mi-equipo-disponibilidad', icon: IconDisponibilidad, congregacion: true  },
+  { name: 'Excepciones',    routeName: 'sucursal-mi-equipo-excepciones',    icon: IconExcepciones,    congregacion: true  },
+  { name: 'Reglas',         routeName: 'sucursal-mi-equipo-reglas',         icon: IconReglas,         congregacion: false },
 ];
+
+const menuItems = computed(() =>
+  isCongregacion.value ? ALL_ITEMS.filter(i => i.congregacion) : ALL_ITEMS
+);
 </script>

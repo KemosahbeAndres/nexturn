@@ -11,7 +11,7 @@ const db = admin.firestore();
 // ─── Types (espejo de los modelos del frontend) ───────────────────────────────
 
 interface Requerimiento {
-  estacion_id: string;
+  estacion_id: string | null;
   cantidad: number;
 }
 
@@ -77,7 +77,7 @@ export interface HuecoReporte {
   date: string;
   bucket_start: string;
   bucket_end: string;
-  estacion_id: string;
+  estacion_id: string | null;
   requerido: number;
   asignado: number;
 }
@@ -444,8 +444,8 @@ export const generarBorrador = onCall<
 
   for (const turno of turnosDelDia) {
     for (const req of turno.requerimientos) {
-      const estacion = estacionesMap.get(req.estacion_id);
-      if (!estacion) continue;
+      const estacion = req.estacion_id ? estacionesMap.get(req.estacion_id) : null;
+      if (req.estacion_id && !estacion) continue;
 
       const buckets = generarBuckets(turno.start_time, turno.end_time);
 
@@ -467,8 +467,9 @@ export const generarBorrador = onCall<
           );
         });
 
-        // c. Anti-saturación: si exceden max_continuo_min, insertar descanso y excluir
+        // c. Anti-saturación (solo empresa — estación con max_continuo_min)
         const sinSaturation = sinSolape.filter((eid) => {
+          if (!estacion) return true;
           const estado = estadosEmpleado.get(eid)!;
           if (
             estacion.max_continuo_min !== null &&
@@ -501,34 +502,38 @@ export const generarBorrador = onCall<
           return true;
         });
 
-        // d. Aplicar reglas hard (is_strict === true, nunca_juntos)
-        const candidatos = sinSaturation.filter((eid) => {
-          const reglas = reglasMap.get(eid) ?? [];
-          for (const regla of reglas) {
-            if (!regla.is_strict || regla.type !== "nunca_juntos") continue;
-            const otro =
-              regla.person_uno_id === eid
-                ? regla.person_dos_id
-                : regla.person_uno_id;
-            const otroEstado = estadosEmpleado.get(otro);
-            if (
-              otroEstado?.segmentos.some(
-                (s) =>
-                  s.tipo === "estacion" &&
-                  seProlapan(s.start, s.end, bucket.start, bucket.end)
-              )
-            ) {
-              return false;
-            }
-          }
-          return true;
-        });
+        // d. Aplicar reglas hard (solo empresa)
+        const candidatos = estacion
+          ? sinSaturation.filter((eid) => {
+              const reglas = reglasMap.get(eid) ?? [];
+              for (const regla of reglas) {
+                if (!regla.is_strict || regla.type !== "nunca_juntos") continue;
+                const otro =
+                  regla.person_uno_id === eid
+                    ? regla.person_dos_id
+                    : regla.person_uno_id;
+                const otroEstado = estadosEmpleado.get(otro);
+                if (
+                  otroEstado?.segmentos.some(
+                    (s) =>
+                      s.tipo === "estacion" &&
+                      seProlapan(s.start, s.end, bucket.start, bucket.end)
+                  )
+                ) {
+                  return false;
+                }
+              }
+              return true;
+            })
+          : sinSaturation;
 
-        // e. Ordenar por menor fatiga
+        // e. Ordenar por equidad
         candidatos.sort((a, b) => {
           const fa = estadosEmpleado.get(a)?.minConsecutivosEnAlta ?? 0;
           const fb = estadosEmpleado.get(b)?.minConsecutivosEnAlta ?? 0;
-          return fa - fb;
+          if (fa !== fb) return fa - fb;
+          return (estadosEmpleado.get(a)?.segmentos.length ?? 0) -
+                 (estadosEmpleado.get(b)?.segmentos.length ?? 0);
         });
 
         // f. Asignar hasta `cantidad`
@@ -562,7 +567,7 @@ export const generarBorrador = onCall<
           estado.segmentos.push(seg);
           segmentosAccumulados.push(seg);
 
-          if (estacion.intensidad === "alta") {
+          if (estacion?.intensidad === "alta") {
             estado.minConsecutivosEnAlta += 30;
           } else {
             estado.minConsecutivosEnAlta = 0;
@@ -865,8 +870,8 @@ export const actualizarBorrador = onCall<
 
     for (const turno of turnosDelDia) {
       for (const req of turno.requerimientos) {
-        const estacion = estacionesMap.get(req.estacion_id);
-        if (!estacion) continue;
+        const estacion = req.estacion_id ? estacionesMap.get(req.estacion_id) : null;
+        if (req.estacion_id && !estacion) continue;
 
         const buckets = generarBuckets(turno.start_time, turno.end_time);
 
@@ -887,6 +892,7 @@ export const actualizarBorrador = onCall<
           });
 
           const sinSaturation = sinSolape.filter((eid) => {
+            if (!estacion) return true;
             const estado = estadosEmpleado.get(eid)!;
             if (
               estacion.max_continuo_min !== null &&
@@ -913,23 +919,29 @@ export const actualizarBorrador = onCall<
             return true;
           });
 
-          const candidatos = sinSaturation.filter((eid) => {
-            const reglas = reglasMap.get(eid) ?? [];
-            for (const regla of reglas) {
-              if (!regla.is_strict || regla.type !== "nunca_juntos") continue;
-              const otro = regla.person_uno_id === eid ? regla.person_dos_id : regla.person_uno_id;
-              const otroEstado = estadosEmpleado.get(otro);
-              if (otroEstado?.segmentos.some((s) => s.tipo === "estacion" && seProlapan(s.start, s.end, bucket.start, bucket.end))) {
-                return false;
-              }
-            }
-            return true;
-          });
+          // d. Aplicar reglas hard (solo empresa)
+          const candidatos = estacion
+            ? sinSaturation.filter((eid) => {
+                const reglas = reglasMap.get(eid) ?? [];
+                for (const regla of reglas) {
+                  if (!regla.is_strict || regla.type !== "nunca_juntos") continue;
+                  const otro = regla.person_uno_id === eid ? regla.person_dos_id : regla.person_uno_id;
+                  const otroEstado = estadosEmpleado.get(otro);
+                  if (otroEstado?.segmentos.some((s) => s.tipo === "estacion" && seProlapan(s.start, s.end, bucket.start, bucket.end))) {
+                    return false;
+                  }
+                }
+                return true;
+              })
+            : sinSaturation;
 
+          // e. Ordenar por equidad
           candidatos.sort((a, b) => {
             const fa = estadosEmpleado.get(a)?.minConsecutivosEnAlta ?? 0;
             const fb = estadosEmpleado.get(b)?.minConsecutivosEnAlta ?? 0;
-            return fa - fb;
+            if (fa !== fb) return fa - fb;
+            return (estadosEmpleado.get(a)?.segmentos.length ?? 0) -
+                   (estadosEmpleado.get(b)?.segmentos.length ?? 0);
           });
 
           const asignados = candidatos.slice(0, req.cantidad);
@@ -955,7 +967,7 @@ export const actualizarBorrador = onCall<
             const estado = estadosEmpleado.get(eid)!;
             estado.segmentos.push(seg);
             segmentosDelDia.push(seg);
-            if (estacion.intensidad === "alta") {
+            if (estacion?.intensidad === "alta") {
               estado.minConsecutivosEnAlta += 30;
             } else {
               estado.minConsecutivosEnAlta = 0;

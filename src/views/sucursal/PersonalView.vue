@@ -36,8 +36,8 @@
         </div>
       </div>
 
-      <!-- Filtro estaciones -->
-      <div class="px-3 pb-3 shrink-0">
+      <!-- Filtro estaciones (solo empresa) -->
+      <div v-if="!isCongregacion" class="px-3 pb-3 shrink-0">
         <select
           v-model="filtroEstacion"
           class="w-full px-2.5 py-1.5 text-xs rounded-lg border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
@@ -167,8 +167,8 @@
           </div>
         </section>
 
-        <!-- Sección: Estaciones -->
-        <section class="bg-white dark:bg-gray-800 rounded-xl border border-gray-100 dark:border-gray-700 overflow-hidden">
+        <!-- Sección: Estaciones (solo empresa) -->
+        <section v-if="!isCongregacion" class="bg-white dark:bg-gray-800 rounded-xl border border-gray-100 dark:border-gray-700 overflow-hidden">
           <div class="flex items-center justify-between px-4 py-3 border-b border-gray-100 dark:border-gray-700">
             <p class="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">Estaciones que opera</p>
             <button v-if="estacionesCambiadas" type="button" @click="guardarEstaciones" :disabled="guardandoEstaciones"
@@ -738,6 +738,8 @@ const activeCompanyId = computed(() => {
   const slug = route.params.companySlug as string;
   return empresaStore.empresas?.find(e => e.slug === slug)?.id ?? null;
 });
+
+const isCongregacion = computed(() => empresaStore.isCongregacion);
 
 onMounted(() => {
   if (activeCompanyId.value) {

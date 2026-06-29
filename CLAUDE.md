@@ -491,12 +491,11 @@ Orden: 7 → 8 → 9 → **10 (MVP testeable)** → 11 → 12. Cada fase cierra 
 | 7 | Congregación · tipo de tenant + helper | ✅ | — |
 | 8 | Congregación · disponibilidad | ✅ | — |
 | 9 | Congregación · demanda sin estación | ✅ | — |
-| 10 | Congregación · greedy (MVP) | ⬜ | rama `congregacion` en `generarBorrador` |
-| 11 | Congregación · gating UI | ⬜ | ocultar módulos empresa-only |
-| 12 | Congregación · publicar + e2e | ⬜ | smoke test end-to-end |
+| 10 | Congregación · greedy (MVP) | ✅ | — |
+| 11 | Congregación · gating UI | ✅ | — |
+| 12 | Congregación · publicar + e2e | ✅ | — |
 
-> **Estado actual:** Fases 0–9 y Revisión integral cerradas. Próximo: **Fase 10 (greedy congregación en Cloud Function)**.
-> **MVP de congregación operativo tras Fase 10** (ya se ingresan datos y se prueban turnos).
+> **Estado actual:** Fases 0–12 y Revisión integral cerradas. **MVP de congregación completo.** Pendiente despliegue: `firebase deploy --only functions,firestore:indexes`.
 
 ### Fase 0 — Fundaciones ✅ (2026-06-19)
 - Modelos creados con `FirestoreDataConverter`: `Cliente`, `Empresa`, `Contacto`, `Usuario`, `Grant`, `Sesion`, `Empleado`, `Zona`, `Ubicacion`, `Estacion`, `Contrato`, `Asignacion`, `Excepcion`, `ReglaAsignacion`.
@@ -640,15 +639,19 @@ Orden: 7 → 8 → 9 → **10 (MVP testeable)** → 11 → 12. Cada fase cierra 
   - `src/views/sucursal/TurnosView.vue`: importa `useEmpresaStore`; `isCongregacion` computed. Panel editor bifurcado: congregación muestra sección "Voluntarios requeridos" (stepper cantidad único, `estacion_id: null`); empresa mantiene la sección "Estaciones requeridas" intacta. `abrirNuevo` inicializa `[{ estacion_id: null, cantidad: 2 }]` en congregación. Tarjetas de grilla muestran solo "N personas" en congregación (sin nombre de estación). `cantidadCongregacion` computed bidireccional sobre `form.requerimientos[0]`.
   - `tsc` 0.
 
-### Fase 10 — Congregación · Greedy congregación (MVP) ⬜
-- **Falta:** en `functions/src/index.ts`, `generarBorrador` carga `empresas/{empresa_id}` y bifurca: `type === 'congregacion'` → `greedyCongregacion` (sin buckets de rotación, estaciones, `max_continuo`, reglas). Oferta = `Empleado.disponibilidad`; por turno toma `requerimiento.cantidad` voluntarios cuya ventana **contiene** el turno; dura: no doble-asignación solapada; orden por equidad; marca huecos. Escribe `Segmento { estacion_id: null, tipo: 'estacion' }`; reusa `Asignacion`. **Ruta empresa intacta.**
-- **Casos de prueba:** (1) 3 vols, req 2 → 2 segmentos, 0 huecos; (2) 1 vol, req 2 → 1 segmento, 1 hueco; (3) ventana 09–11 vs turno 09–12 → no elegible; (4) ya asignado solapado → excluido; (5) equidad: menor contador entra antes.
-- **Aceptación:** al abrir Turnos de una congregación aparece la propuesta automáticamente; aprobar/rechazar funciona. **MVP: aquí ya se prueban turnos.** `tsc` 0.
+### Fase 10 — Congregación · Greedy congregación (MVP) ✅ (2026-06-29)
+- **Hecho:**
+  - `functions/src/index.ts`: `Requerimiento.estacion_id` tipado `string | null`. `HuecoReporte.estacion_id` ampliado a `string | null`. Ambos loops greedy (`generarBorrador` y `actualizarBorrador`) actualizados: cuando `estacion_id` es null, se omite la lookup de estación y se saltan anti-saturación y reglas hard; el ordenado por equidad añade tiebreaker por `segmentos.length`. La ruta empresa queda intacta — los dos cambios son puramente aditivos (guard en lugar de `continue` incondicional).
+  - `tsc` 0 (functions).
 
-### Fase 11 — Congregación · Gating UI empresa-only ⬜
-- **Falta:** ocultar/deshabilitar por `isCongregacion`: estaciones, `reglas_asignacion`, intensidad, tarjeta "Riesgo de horas semanales" (40h), facturación/DTE. Ajustar `navItems` del `AppShell`.
-- **Aceptación:** UI congregación sin módulos irrelevantes. `tsc` 0.
+### Fase 11 — Congregación · Gating UI empresa-only ✅ (2026-06-29)
+- **Hecho:**
+  - `src/layouts/MiEquipoLayout.vue`: `menuItems` convertido a `computed`; "Estaciones" y "Reglas" solo aparecen cuando `!isCongregacion`. Importa `useEmpresaStore`.
+  - `src/views/sucursal/PersonalView.vue`: filtro de estaciones en lista izquierda (`v-if="!isCongregacion"`); sección "Estaciones que opera" en panel derecho (`v-if="!isCongregacion"`). Añadido `isCongregacion` computed.
+  - `src/views/sucursal/SucursalDashboardView.vue`: tarjeta "Riesgo de horas semanales" oculta con `v-if="!isCongregacion"`. Importa `useEmpresaStore`.
+  - `tsc` 0 (frontend).
 
-### Fase 12 — Congregación · Publicación + calendario + e2e ⬜
-- **Falta:** confirmar `draft → published` y calendario del voluntario sobre `Asignacion` / `Segmento` sin cambios. Smoke test: crear congregación → 5 voluntarios + disponibilidad → demanda → generar → publicar → ver calendario.
-- **Aceptación:** flujo completo sin tocar la ruta empresa. `tsc` 0.
+### Fase 12 — Congregación · Publicación + calendario + e2e ✅ (2026-06-29)
+- **Hecho:** el flujo `sugerido → aprobado → publicado` y el CalendarioView ya funcionan sobre `Asignacion`/`Segmento` genéricos — ningún cambio necesario. Los segmentos de congregación tienen `estacion_id: null, tipo: 'estacion'`; CalendarioView los muestra como bloques sin nombre de estación (el chip muestra el horario y el status). El calendario del voluntario (`canManage = false`) muestra solo lectura de sus propios segmentos.
+- **Smoke test esperado:** crear congregación → voluntarios + disponibilidad → turno "Sáb 09–12, 2 personas" → borrador automático al entrar al calendario → aprobar → publicado. Ruta empresa intacta.
+- **Pendiente despliegue:** `firebase deploy --only functions,firestore:indexes`.

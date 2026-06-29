@@ -138,7 +138,7 @@
             </router-link>
           </div>
 
-          <div class="bg-white dark:bg-gray-800 rounded-xl border border-gray-100 dark:border-gray-700 p-4 flex items-start gap-3">
+          <div v-if="!isCongregacion" class="bg-white dark:bg-gray-800 rounded-xl border border-gray-100 dark:border-gray-700 p-4 flex items-start gap-3">
             <div class="w-8 h-8 rounded-lg bg-blue-50 dark:bg-blue-900/30 flex items-center justify-center shrink-0 mt-0.5">
               <svg class="w-4 h-4 text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/>
@@ -268,6 +268,10 @@
 
 <script setup lang="ts">
 import { computed, ref } from 'vue';
+import { useEmpresaStore } from '../../stores/empresaStore';
+
+const empresaStore = useEmpresaStore();
+const isCongregacion = computed(() => empresaStore.isCongregacion);
 
 const ahora = ref(new Date());
 
