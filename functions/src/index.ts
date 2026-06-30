@@ -703,6 +703,19 @@ export const actualizarBorrador = onCall<
     );
   });
 
+  // Límite de horas semanales por empleado (del contrato activo en esta sucursal, o 0 = sin límite)
+  const limiteMinutosPorEmpleado = new Map<string, number>();
+  empleadosDocs.forEach((d) => {
+    const contratos: any[] = d.data().contratos ?? [];
+    const contrato = contratos.find((c: any) => c?.active && c?.ubicacion_id === ubicacion_id);
+    const limiteHoras = contrato?.limite_horas ?? 0;
+    limiteMinutosPorEmpleado.set(d.id, limiteHoras > 0 ? limiteHoras * 60 : 0);
+  });
+
+  // Acumulador de minutos asignados en la semana por empleado (para respetar límite_horas)
+  const minutosAsignadosSemana = new Map<string, number>();
+  empleadosDocs.forEach((d) => minutosAsignadosSemana.set(d.id, 0));
+
   // Cargar excepciones de la semana (lotes de 30 employee_ids)
   const empleadoIds = empleadosDocs.map((d) => d.id);
   const week_end = addDays(week_start, dias - 1);
@@ -761,7 +774,58 @@ export const actualizarBorrador = onCall<
 
   // Agrupar segmentos existentes por fecha
   const segmentosPorFecha = new Map<string, { aprobados: Set<string>; asignacionId: string | null }>();
+
+  // Detectar y eliminar duplicados: mismo empleado en más de un turno el mismo día.
+  // Aplica a aprobado, publicado Y sugerido. Se conserva el turno con menor start; el resto se borra.
+  const duplicadosABorrar = new Set<string>();
+  {
+    const porDiaEmpleado = new Map<string, { id: string; start: string; end: string }[]>();
+    segmentosExistentesSnap.docs.forEach((d) => {
+      const s = d.data();
+      if (s.tipo !== "estacion") return;
+      // Incluir aprobado, publicado Y sugerido/draft
+      const statusValido = ["aprobado", "publicado", "sugerido", "draft"].includes(s.status);
+      if (!statusValido) return;
+      const key = `${s.date}_${s.empleado_id}`;
+      const arr = porDiaEmpleado.get(key) ?? [];
+      arr.push({ id: d.id, start: s.start, end: s.end });
+      porDiaEmpleado.set(key, arr);
+    });
+
+    porDiaEmpleado.forEach((segs) => {
+      if (segs.length <= 1) return;
+      segs.sort((a, b) => a.start.localeCompare(b.start));
+      // Identificar turnos contiguos: buckets del mismo turno tienen start[i+1] == end[i]
+      const turnos: { id: string; start: string; end: string }[][] = [];
+      let grupo: typeof segs = [segs[0]];
+      for (let i = 1; i < segs.length; i++) {
+        if (segs[i].start === segs[i - 1].end) {
+          grupo.push(segs[i]);
+        } else {
+          turnos.push(grupo);
+          grupo = [segs[i]];
+        }
+      }
+      turnos.push(grupo);
+      if (turnos.length <= 1) return; // un solo turno, sin duplicado
+      // Conservar el primer turno (menor start), borrar el resto
+      for (let t = 1; t < turnos.length; t++) {
+        turnos[t].forEach((s) => duplicadosABorrar.add(s.id));
+      }
+    });
+  }
+
+  if (duplicadosABorrar.size > 0) {
+    const dupBatch = db.batch();
+    const now2 = admin.firestore.FieldValue.serverTimestamp();
+    duplicadosABorrar.forEach((id) => {
+      dupBatch.update(db.collection("segmentos").doc(id), { active: false, deletedAt: now2, updatedAt: now2 });
+    });
+    await dupBatch.commit();
+  }
+
   segmentosExistentesSnap.docs.forEach((d) => {
+    if (duplicadosABorrar.has(d.id)) return; // ya borrado
     const s = d.data();
     if (!segmentosPorFecha.has(s.date)) {
       segmentosPorFecha.set(s.date, { aprobados: new Set(), asignacionId: s.asignacion_id ?? null });
@@ -865,10 +929,16 @@ export const actualizarBorrador = onCall<
       estadosEmpleado.set(eid, { minConsecutivosEnAlta: 0, segmentos: [] });
     });
 
+    // Rastrear qué empleados ya fueron asignados a algún turno hoy (1 turno por día)
+    const turnoAsignadoHoy = new Set<string>();
+
     const segmentosDelDia: SegmentoToWrite[] = [];
     const huecosDelDia: HuecoReporte[] = [];
 
     for (const turno of turnosDelDia) {
+      // Duración del turno en minutos (para acumular en el límite semanal)
+      const duracionTurnoMin = toMinutes(turno.end_time) - toMinutes(turno.start_time);
+
       for (const req of turno.requerimientos) {
         const estacion = req.estacion_id ? estacionesMap.get(req.estacion_id) : null;
         if (req.estacion_id && !estacion) continue;
@@ -884,6 +954,7 @@ export const actualizarBorrador = onCall<
             )
             .map((p) => p.empleado_id);
 
+          // b. Excluir empleados con segmento solapado en este bucket
           const sinSolape = disponibles.filter((eid) => {
             const estado = estadosEmpleado.get(eid)!;
             return !estado.segmentos.some((s) =>
@@ -891,7 +962,18 @@ export const actualizarBorrador = onCall<
             );
           });
 
-          const sinSaturation = sinSolape.filter((eid) => {
+          // b2. Excluir empleados ya asignados a otro turno hoy (1 turno por día)
+          const sinTurnoRepetido = sinSolape.filter((eid) => !turnoAsignadoHoy.has(eid));
+
+          // b3. Excluir empleados que superarían su límite de horas semanal
+          const sinExcederLimite = sinTurnoRepetido.filter((eid) => {
+            const limMin = limiteMinutosPorEmpleado.get(eid) ?? 0;
+            if (limMin === 0) return true; // 0 = sin límite
+            const yaMinutos = minutosAsignadosSemana.get(eid) ?? 0;
+            return yaMinutos + duracionTurnoMin <= limMin;
+          });
+
+          const sinSaturation = sinExcederLimite.filter((eid) => {
             if (!estacion) return true;
             const estado = estadosEmpleado.get(eid)!;
             if (
@@ -935,8 +1017,11 @@ export const actualizarBorrador = onCall<
               })
             : sinSaturation;
 
-          // e. Ordenar por equidad
+          // e. Ordenar por equidad (menos minutos acumulados en la semana primero)
           candidatos.sort((a, b) => {
+            const ma = minutosAsignadosSemana.get(a) ?? 0;
+            const mb = minutosAsignadosSemana.get(b) ?? 0;
+            if (ma !== mb) return ma - mb;
             const fa = estadosEmpleado.get(a)?.minConsecutivosEnAlta ?? 0;
             const fb = estadosEmpleado.get(b)?.minConsecutivosEnAlta ?? 0;
             if (fa !== fb) return fa - fb;
@@ -967,6 +1052,7 @@ export const actualizarBorrador = onCall<
             const estado = estadosEmpleado.get(eid)!;
             estado.segmentos.push(seg);
             segmentosDelDia.push(seg);
+            turnoAsignadoHoy.add(eid); // marcar como ocupado hoy
             if (estacion?.intensidad === "alta") {
               estado.minConsecutivosEnAlta += 30;
             } else {
@@ -976,6 +1062,15 @@ export const actualizarBorrador = onCall<
         }
       }
     }
+
+    // Acumular minutos de este día al contador semanal
+    turnoAsignadoHoy.forEach((eid) => {
+      // Sumar la duración total de los segmentos de estación asignados hoy
+      const minHoy = segmentosDelDia
+        .filter((s) => s.empleado_id === eid && s.tipo === "estacion")
+        .reduce((acc, s) => acc + (toMinutes(s.end) - toMinutes(s.start)), 0);
+      minutosAsignadosSemana.set(eid, (minutosAsignadosSemana.get(eid) ?? 0) + minHoy);
+    });
 
     // Escribir segmentos del día en lotes
     const BATCH_SIZE = 499;

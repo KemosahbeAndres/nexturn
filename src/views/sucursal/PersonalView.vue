@@ -817,8 +817,15 @@ const busqueda = ref('');
 const filtroEstacion = ref('');
 
 const empleadosFiltrados = computed(() => {
+  const ubicId = sessionStore.activeUbicacionId;
   let lista = empleadoStore.empleados?.filter(e => e.active && !e.deletedAt) ?? [];
-  if (filtroEstacion.value) lista = lista.filter(e => e.estacion_ids.includes(filtroEstacion.value));
+  // Filtrar por sucursal activa: solo empleados con contrato activo en esta sucursal
+  if (ubicId) {
+    lista = lista.filter(e =>
+      (e.contratos ?? []).some(c => c.active && !c.deletedAt && c.ubicacion_id === ubicId)
+    );
+  }
+  if (!isCongregacion.value && filtroEstacion.value) lista = lista.filter(e => e.estacion_ids.includes(filtroEstacion.value));
   if (busqueda.value.trim()) {
     const q = busqueda.value.toLowerCase();
     lista = lista.filter(e =>

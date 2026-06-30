@@ -608,7 +608,7 @@ function tieneTodosAprobados(diaIdx: number): boolean {
 
 // ── Sidebar de asignación ─────────────────────────────────────────────────────
 
-const sidebarAbierta = ref(false);
+const sidebarAbierta = ref(true);
 const sidebarSeg = ref<Segmento | null>(null);         // null si cupo vacío
 const sidebarTurno = ref<Turno | null>(null);
 const sidebarEstacionId = ref<string>('');
@@ -686,21 +686,34 @@ function cargarEmpleadosSidebar(turno: Turno, estacionId: string, fecha: string)
   const tStart = toMin(turno.start_time);
   const tEnd = toMin(turno.end_time);
 
+  // IDs de empleados ya asignados en cualquier otro turno de este día (excluir el cupo actual)
+  const yaAsignadosHoy = new Set(
+    segmentos.value
+      .filter(s =>
+        s.date === fecha &&
+        s.status !== 'rechazado' &&
+        s.empleado_id !== sidebarSeg.value?.empleado_id  // el actual puede reasignarse a sí mismo
+      )
+      .map(s => s.empleado_id)
+  );
+
   // Empleados con contrato en esta sucursal (ya en caché)
   // Primero los que tienen la estación requerida y disponibilidad, luego el resto
-  const lista: EmpleadoSidebar[] = empleadosCache.value.map(emp => {
-    const tieneEstacion = emp.estacion_ids.includes(estacionId);
-    const ventanas: any[] = emp.disponibilidad?.ventanas ?? [];
-    const disponible = ventanas.some((v: any) =>
-      v.day_of_week === diaSemana &&
-      toMin(v.start) <= tStart && toMin(v.end) >= tEnd
-    );
-    const estacionesNombre = emp.estacion_ids
-      .map(id => nombreEstacion(id))
-      .filter(Boolean)
-      .join(', ');
-    return { id: emp.id, nombre: emp.nombre, iniciales: emp.iniciales, estacionesNombre, disponible: tieneEstacion && disponible };
-  });
+  const lista: EmpleadoSidebar[] = empleadosCache.value
+    .filter(emp => !yaAsignadosHoy.has(emp.id))  // excluir ya ocupados en el día
+    .map(emp => {
+      const tieneEstacion = emp.estacion_ids.includes(estacionId);
+      const ventanas: any[] = emp.disponibilidad?.ventanas ?? [];
+      const disponible = ventanas.some((v: any) =>
+        v.day_of_week === diaSemana &&
+        toMin(v.start) <= tStart && toMin(v.end) >= tEnd
+      );
+      const estacionesNombre = emp.estacion_ids
+        .map(id => nombreEstacion(id))
+        .filter(Boolean)
+        .join(', ');
+      return { id: emp.id, nombre: emp.nombre, iniciales: emp.iniciales, estacionesNombre, disponible: tieneEstacion && disponible };
+    });
 
   // Ordenar: asignado primero, luego disponibles con estación, luego el resto
   lista.sort((a, b) => {
@@ -744,7 +757,31 @@ async function aprobarDesideSidebar() {
 
 async function reasignar(nuevoEmpleadoId: string) {
   if (!sidebarTurno.value || !sidebarFecha.value) return;
-  if (nuevoEmpleadoId === sidebarSeg.value?.empleado_id) return;
+  // Click en el empleado ya asignado → deseleccionar (eliminar segmentos del turno)
+  if (nuevoEmpleadoId === sidebarSeg.value?.empleado_id && sidebarSeg.value) {
+    accionando.value = true;
+    try {
+      const buckets = bucketsDeTurno(
+        sidebarSeg.value.empleado_id,
+        sidebarTurno.value,
+        sidebarEstacionId.value,
+        sidebarFecha.value
+      );
+      await Promise.all(buckets.map(s =>
+        updateDoc(fsDoc(db, 'segmentos', s.id), {
+          active: false,
+          deletedAt: Timestamp.now(),
+          updatedAt: Timestamp.now(),
+        })
+      ));
+      segmentos.value = segmentos.value.filter(s => !buckets.some(b => b.id === s.id));
+      sidebarSeg.value = null;
+      cargarEmpleadosSidebar(sidebarTurno.value, sidebarEstacionId.value, sidebarFecha.value);
+    } finally {
+      accionando.value = false;
+    }
+    return;
+  }
   accionando.value = true;
   try {
     if (sidebarSeg.value) {
@@ -1074,12 +1111,70 @@ async function cargar() {
 
 // ── Acciones ──────────────────────────────────────────────────────────────────
 
+// Elimina segmentos duplicados sugeridos: si el mismo empleado aparece en más de un
+// turno el mismo día, conserva el turno con start más temprano y borra los demás.
+// Opera sobre segmentos.value en memoria y los sincroniza con Firestore.
+async function limpiarDuplicadosSugeridos(fechasFiltro?: Set<string>) {
+  // Agrupar sugeridos por (date, empleado_id) → lista de buckets
+  const porDiaEmpleado = new Map<string, Segmento[]>();
+  for (const s of segmentos.value) {
+    if (s.status !== 'sugerido' && s.status !== ('draft' as any)) continue;
+    if (fechasFiltro && !fechasFiltro.has(s.date)) continue;
+    const key = `${s.date}__${s.empleado_id}`;
+    const arr = porDiaEmpleado.get(key) ?? [];
+    arr.push(s);
+    porDiaEmpleado.set(key, arr);
+  }
+
+  const aBorrar: Segmento[] = [];
+  porDiaEmpleado.forEach((segs) => {
+    if (segs.length <= 1) return;
+    // Identificar los turnos distintos: agrupamos buckets por rango contiguo (mismo turno)
+    // Un "turno" = grupo de buckets donde cada uno empieza donde termina el anterior.
+    segs.sort((a, b) => a.start.localeCompare(b.start));
+    // Detectar cambios de turno: hay un salto si el start del siguiente != end del anterior
+    const turnos: Segmento[][] = [];
+    let grupoActual: Segmento[] = [segs[0]];
+    for (let i = 1; i < segs.length; i++) {
+      const prev = segs[i - 1];
+      const curr = segs[i];
+      // Si el bucket actual empieza exactamente donde terminó el anterior → mismo turno
+      if (curr.start === prev.end) {
+        grupoActual.push(curr);
+      } else {
+        turnos.push(grupoActual);
+        grupoActual = [curr];
+      }
+    }
+    turnos.push(grupoActual);
+    if (turnos.length <= 1) return; // solo 1 turno, sin duplicado
+    // Conservar el primer turno (menor start), borrar los demás
+    for (let t = 1; t < turnos.length; t++) aBorrar.push(...turnos[t]);
+  });
+
+  if (!aBorrar.length) return;
+
+  // Borrar en Firestore
+  await Promise.all(aBorrar.map(s =>
+    updateDoc(fsDoc(db, 'segmentos', s.id), {
+      active: false,
+      deletedAt: Timestamp.now(),
+      updatedAt: Timestamp.now(),
+    })
+  ));
+  // Eliminar del estado local
+  const idsBorrados = new Set(aBorrar.map(s => s.id));
+  segmentos.value = segmentos.value.filter(s => !idsBorrados.has(s.id));
+}
+
 // Aprobar el cupo completo: busca todos los buckets del mismo empleado+estación+turno
 async function aprobar(segRepresentanteId: string) {
   accionando.value = true;
   try {
     const rep = segmentos.value.find(s => s.id === segRepresentanteId);
     if (!rep) return;
+    // Limpiar duplicados sugeridos del mismo día antes de aprobar
+    await limpiarDuplicadosSugeridos(new Set([rep.date]));
     // Todos los buckets de este empleado en esta estación y fecha que se solapen
     const todos = segmentos.value.filter(s =>
       s.date === rep.date &&
@@ -1095,6 +1190,8 @@ async function aprobar(segRepresentanteId: string) {
 async function aprobarTodo() {
   accionando.value = true;
   try {
+    // Limpiar todos los duplicados sugeridos de la semana visible antes de aprobar
+    await limpiarDuplicadosSugeridos();
     const sugeridos = segmentos.value.filter(s => s.status === 'sugerido');
     await Promise.all(sugeridos.map(s => segmentoStore.aprobarSegmento(s.id)));
     sugeridos.forEach(s => { s.status = 'aprobado'; });
