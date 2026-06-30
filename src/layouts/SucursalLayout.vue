@@ -109,35 +109,38 @@ const currentPageTitle = computed(() => {
 });
 
 onMounted(() => {
-  if (!empresaStore.empresas || empresaStore.empresas.length === 0) {
-    empresaStore.listarEmpresas(
-      sessionStore.userRole,
-      sessionStore.userRole === 'super_admin' ? null : sessionStore.currentUser?.empresa_id
-    );
-  }
+  // Arrancar carga de empresas siempre, para que el watchEffect pueda resolver companySlug → id
+  empresaStore.listarEmpresas(
+    sessionStore.userRole,
+    sessionStore.userRole === 'super_admin' ? null : sessionStore.currentUser?.empresa_id
+  );
 });
 
+// Paso 1: resolver companyId y arrancar la carga de ubicaciones
 watchEffect(() => {
   const companySlug = route.params.companySlug as string;
-  const ubicacionSlug = route.params.ubicacionSlug as string;
 
   let companyId: string | null = null;
   if (sessionStore.userRole !== 'super_admin') {
     companyId = sessionStore.currentUser?.empresa_id ?? null;
-  } else if (empresaStore.empresas) {
-    companyId = empresaStore.empresas.find(e => e.slug === companySlug)?.id ?? null;
+  } else {
+    // Para super_admin: buscar en el store si ya está cargado; si no, esperar
+    companyId = (empresaStore.empresas ?? []).find(e => e.slug === companySlug)?.id ?? null;
   }
 
   if (companyId) {
     sessionStore.activeCompanyId = companyId;
     ubicacionStore.listarUbicaciones(companyId);
   }
+});
 
-  const lista = ubicacionStore.ubicaciones;
-  if (ubicacionSlug && lista && lista.length > 0) {
-    const found = lista.find(u => (u.slug || slugify(u.name)) === ubicacionSlug);
-    sessionStore.activeUbicacionId = found?.id ?? null;
-  }
+// Paso 2: resolver activeUbicacionId cuando las ubicaciones lleguen (pueden tardar)
+watchEffect(() => {
+  const ubicacionSlug = route.params.ubicacionSlug as string;
+  const lista = ubicacionStore.ubicaciones; // dependencia reactiva rastreada aquí
+  if (!ubicacionSlug || !lista || lista.length === 0) return;
+  const found = lista.find(u => (u.slug || slugify(u.name)) === ubicacionSlug);
+  if (found) sessionStore.activeUbicacionId = found.id;
 });
 
 onUnmounted(() => {

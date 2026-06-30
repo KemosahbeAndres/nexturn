@@ -229,11 +229,12 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, watch, onMounted } from 'vue';
+import { ref, computed, watch, watchEffect } from 'vue';
 import { useSessionStore } from '../../../stores/sessionStore';
 import { useEmpleadoStore } from '../../../stores/empleadoStore';
 import { useDisponibilidadStore } from '../../../stores/disponibilidadStore';
 import { useSegmentoStore } from '../../../stores/segmentoStore';
+import { can } from '../../../auth/access';
 import type { Empleado } from '../../../models/Empleado';
 
 const sessionStore = useSessionStore();
@@ -241,11 +242,17 @@ const empleadoStore = useEmpleadoStore();
 const disponibilidadStore = useDisponibilidadStore();
 const segmentoStore = useSegmentoStore();
 
-const canManage = computed(() => ['super_admin', 'admin'].includes(sessionStore.currentUser?.system_role ?? ''));
+const canManage = computed(() => {
+  if (sessionStore.currentUser?.system_role === 'super_admin') return true;
+  const companyId = sessionStore.activeCompanyId;
+  const ubicacionId = sessionStore.activeUbicacionId;
+  if (!companyId) return false;
+  return can('schedule.write', { companyId, ubicacionId: ubicacionId ?? undefined });
+});
 
 const diasSemana = ['Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado', 'Domingo'];
 
-onMounted(() => {
+watchEffect(() => {
   const companyId = sessionStore.activeCompanyId;
   if (companyId) empleadoStore.listarEmpleados(companyId);
 });

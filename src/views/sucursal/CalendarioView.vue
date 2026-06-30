@@ -413,7 +413,7 @@
 </style>
 
 <script setup lang="ts">
-import { ref, computed, onMounted } from 'vue';
+import { ref, computed, onMounted, watch } from 'vue';
 import { httpsCallable } from 'firebase/functions';
 import { getDocs, getDoc, doc as fsDoc, query, collection, where, updateDoc, addDoc, Timestamp } from 'firebase/firestore';
 import { useSessionStore } from '../../stores/sessionStore';
@@ -463,10 +463,10 @@ async function resolverMiEmpleadoId(): Promise<string | null> {
     collection(db, 'empleados'),
     where('company_id', '==', companyId.value),
     where('contact_id', '==', user.contact_id),
-    where('active', '==', true),
-    where('deletedAt', '==', null)
+    where('active', '==', true)
   ));
-  return snap.empty ? null : snap.docs[0].id;
+  const doc = snap.docs.find(d => !d.data().deletedAt);
+  return doc?.id ?? null;
 }
 
 const puedeVer = computed(() => canManage.value || !!miEmpleadoId.value);
@@ -951,11 +951,10 @@ async function calcularDiagnostico() {
     const empSnap = await getDocs(query(
       collection(db, 'empleados').withConverter(empleadoConverter),
       where('company_id', '==', companyId.value),
-      where('active', '==', true),
-      where('deletedAt', '==', null)
+      where('active', '==', true)
     ));
 
-    const todos = empSnap.docs.map(d => d.data());
+    const todos = empSnap.docs.map(d => d.data()).filter(e => !e.deletedAt);
     const conContrato = todos.filter(e =>
       e.contratos.some((c: any) => c.active && !c.deletedAt && c.ubicacion_id === ubicacionId.value) ||
       e.id === managerId
@@ -1118,6 +1117,15 @@ async function publicarDia(diaIdx: number) {
 
 onMounted(async () => {
   miEmpleadoId.value = await resolverMiEmpleadoId();
-  await cargar();
+  // Esperar a que SucursalLayout resuelva activeUbicacionId antes de cargar.
+  // Si ya está disponible, cargar de inmediato; si no, observar hasta que llegue.
+  if (sessionStore.activeUbicacionId) {
+    await cargar();
+  } else {
+    const stop = watch(
+      () => sessionStore.activeUbicacionId,
+      async (val) => { if (val) { stop(); await cargar(); } }
+    );
+  }
 });
 </script>
