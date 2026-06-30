@@ -214,13 +214,16 @@
         <!-- Celdas del mes -->
         <div class="grid grid-cols-7 gap-px bg-gray-100 dark:bg-gray-700/50 rounded-xl overflow-hidden border border-gray-100 dark:border-gray-700">
           <div v-for="celda in diasDelMes" :key="celda.date"
-            class="min-h-[80px] p-1.5 flex flex-col gap-1"
-            :class="celda.esMes
-              ? 'bg-white dark:bg-gray-800/80'
-              : 'bg-gray-50/60 dark:bg-gray-800/30'">
+            class="min-h-[90px] p-1.5 flex flex-col gap-0.5 transition-colors"
+            :class="[
+              celda.esMes ? 'bg-white dark:bg-gray-800/80' : 'bg-gray-50/60 dark:bg-gray-800/30',
+              canManage && celda.esMes && turnosEnFecha(celda.date) ? 'cursor-pointer hover:bg-blue-50/40 dark:hover:bg-blue-900/10' : '',
+              sidebarFechaCong === celda.date ? 'ring-2 ring-inset ring-blue-400 dark:ring-blue-600' : ''
+            ]"
+            @click="canManage && celda.esMes && turnosEnFecha(celda.date) ? abrirSidebarCong(celda.date) : undefined">
 
             <!-- Número del día -->
-            <div class="flex items-center justify-between">
+            <div class="flex items-center justify-between mb-0.5">
               <span class="text-xs font-semibold tabular-nums w-6 h-6 flex items-center justify-center rounded-full"
                 :class="celda.esHoy
                   ? 'bg-violet-600 text-white'
@@ -229,38 +232,42 @@
                     : 'text-gray-300 dark:text-gray-600'">
                 {{ celda.date.slice(8) }}
               </span>
-              <!-- Botón publicar si todos aprobados (manager) -->
               <button v-if="canManage && celda.esMes && tieneTodosAprobadosPorFecha(celda.date)"
-                @click="publicarFecha(celda.date)" :disabled="accionando"
+                @click.stop="publicarFecha(celda.date)" :disabled="accionando"
                 class="text-[9px] font-semibold text-emerald-700 dark:text-emerald-400 hover:underline disabled:opacity-40">
-                Publicar
+                Pub.
               </button>
             </div>
 
-            <!-- Vista manager: nombre + check de aprobación -->
+            <!-- Manager: chips por turno agrupados -->
             <template v-if="canManage && celda.esMes">
-              <div v-for="emp in empleadosPorFecha(celda.date)" :key="emp.id"
-                class="flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium border"
-                :class="claseSeg(emp.status)">
-                <span class="flex-1 truncate leading-tight">{{ emp.nombre }}</span>
-                <button v-if="emp.status === 'sugerido'"
-                  @click="aprobarPorSegId(emp.id)"
-                  :disabled="accionando"
-                  class="w-4 h-4 flex items-center justify-center rounded bg-emerald-100 dark:bg-emerald-900/30 text-emerald-600 hover:bg-emerald-200 transition-colors disabled:opacity-40 shrink-0"
-                  title="Aprobar">
-                  <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="3" stroke="currentColor" class="w-2 h-2">
-                    <path stroke-linecap="round" stroke-linejoin="round" d="m4.5 12.75 6 6 9-13.5" />
-                  </svg>
-                </button>
-              </div>
-              <p v-if="!empleadosPorFecha(celda.date).length && turnosEnFecha(celda.date)"
-                class="text-[9px] text-amber-400 italic leading-tight">Sin asignar</p>
+              <template v-for="turno in turnosDeFecha(celda.date)" :key="turno.start_time">
+                <div class="text-[8px] font-bold text-gray-400 dark:text-gray-500 leading-none mt-0.5 px-0.5">
+                  {{ turno.start_time }}–{{ turno.end_time }}
+                </div>
+                <div v-for="emp in empleadosPorTurnoFecha(celda.date, turno)" :key="emp.segId"
+                  class="flex items-center gap-0.5 px-1 py-0.5 rounded text-[9px] font-medium border leading-tight"
+                  :class="claseSeg(emp.status)"
+                  @click.stop="abrirSidebarCong(celda.date)">
+                  <span class="flex-1 truncate">{{ emp.nombre }}</span>
+                  <button v-if="emp.status === 'sugerido'" @click.stop="aprobarPorSegId(emp.segId)" :disabled="accionando"
+                    class="w-3.5 h-3.5 flex items-center justify-center rounded bg-emerald-100 dark:bg-emerald-900/30 text-emerald-600 hover:bg-emerald-200 disabled:opacity-40 shrink-0">
+                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="3" stroke="currentColor" class="w-2 h-2">
+                      <path stroke-linecap="round" stroke-linejoin="round" d="m4.5 12.75 6 6 9-13.5" />
+                    </svg>
+                  </button>
+                </div>
+                <div v-if="!empleadosPorTurnoFecha(celda.date, turno).length"
+                  class="px-1 py-0.5 text-[9px] text-amber-400 italic leading-tight">
+                  Sin asignar
+                </div>
+              </template>
             </template>
 
-            <!-- Vista empleado: sus turnos publicados -->
+            <!-- Voluntario: sus turnos publicados -->
             <template v-else-if="!canManage && celda.esMes">
               <div v-for="seg in segmentosFecha(celda.date).filter(s => s.status === 'publicado')" :key="seg.id"
-                class="px-1.5 py-0.5 rounded text-[10px] font-medium bg-violet-50 dark:bg-violet-900/20 border border-violet-200 dark:border-violet-800 text-violet-700 dark:text-violet-300 leading-tight truncate">
+                class="px-1 py-0.5 rounded text-[9px] font-medium bg-violet-50 dark:bg-violet-900/20 border border-violet-200 dark:border-violet-800 text-violet-700 dark:text-violet-300 leading-tight truncate">
                 {{ seg.start }}–{{ seg.end }}
               </div>
             </template>
@@ -397,14 +404,14 @@
       <div v-if="sidebarAbierta && canManage"
         class="w-72 shrink-0 border-l border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 flex flex-col h-full overflow-hidden">
 
-        <!-- Cabecera sidebar -->
+        <!-- Cabecera -->
         <div class="flex items-center justify-between px-4 py-3 border-b border-gray-100 dark:border-gray-700 shrink-0">
           <div class="min-w-0">
             <p class="text-xs font-bold text-gray-700 dark:text-gray-200 truncate">
-              {{ nombreEstacion(sidebarEstacionId) }}
+              {{ isCongregacion ? labelFechaCong : nombreEstacion(sidebarEstacionId) }}
             </p>
             <p class="text-[10px] text-gray-400 tabular-nums mt-0.5">
-              {{ sidebarFecha }} · {{ sidebarTurno?.start_time }} – {{ sidebarTurno?.end_time }}
+              {{ isCongregacion ? sidebarFechaCong : `${sidebarFecha} · ${sidebarTurno?.start_time} – ${sidebarTurno?.end_time}` }}
             </p>
           </div>
           <button @click="cerrarSidebar" class="ml-2 p-1 rounded text-gray-400 hover:text-gray-600 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors shrink-0">
@@ -414,83 +421,162 @@
           </button>
         </div>
 
-        <!-- Empleado asignado actualmente -->
-        <div v-if="sidebarSeg" class="px-4 py-3 border-b border-gray-100 dark:border-gray-700 shrink-0">
-          <p class="text-[10px] font-semibold uppercase tracking-widest text-gray-400 mb-2">Asignado actualmente</p>
-          <div class="flex items-center gap-2 p-2 rounded-lg"
-            :class="claseSeg(sidebarSeg.status)">
-            <div class="w-7 h-7 rounded-full bg-current/20 flex items-center justify-center text-xs font-bold shrink-0">
-              {{ inicialesById(sidebarSeg.empleado_id) }}
+        <!-- ── Sidebar CONGREGACIÓN: vista por turno del día ── -->
+        <template v-if="isCongregacion">
+          <div class="flex-1 overflow-y-auto">
+            <div v-for="turno in turnosDeFecha(sidebarFechaCong)" :key="turno.start_time" class="border-b border-gray-100 dark:border-gray-700 last:border-b-0">
+              <!-- Encabezado del turno -->
+              <div class="px-4 py-2 bg-gray-50 dark:bg-gray-800/60 flex items-center justify-between">
+                <div>
+                  <p class="text-xs font-bold text-gray-700 dark:text-gray-200 tabular-nums">{{ turno.start_time }} – {{ turno.end_time }}</p>
+                  <p class="text-[10px] text-gray-400">
+                    {{ empleadosPorTurnoFecha(sidebarFechaCong, turno).length }} /
+                    {{ turno.requerimientos[0]?.cantidad ?? 0 }} voluntarios
+                  </p>
+                </div>
+                <button v-if="tieneTodosAprobadosPorTurnoFecha(sidebarFechaCong, turno)"
+                  @click="publicarFecha(sidebarFechaCong)" :disabled="accionando"
+                  class="text-[9px] px-2 py-1 rounded bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-400 font-semibold hover:bg-emerald-200 disabled:opacity-40">
+                  Publicar
+                </button>
+              </div>
+
+              <!-- Voluntarios asignados -->
+              <div class="px-3 py-2 space-y-1">
+                <p class="text-[9px] font-semibold uppercase tracking-widest text-gray-400 mb-1">Asignados</p>
+                <div v-if="!empleadosPorTurnoFecha(sidebarFechaCong, turno).length"
+                  class="text-[10px] text-gray-400 italic py-1">Sin asignar</div>
+                <div v-for="emp in empleadosPorTurnoFecha(sidebarFechaCong, turno)" :key="emp.segId"
+                  class="flex items-center gap-2 px-2 py-1.5 rounded-lg border"
+                  :class="claseSeg(emp.status)">
+                  <div class="w-6 h-6 rounded-full bg-current/20 flex items-center justify-center text-[9px] font-bold shrink-0">
+                    {{ inicialesById(emp.empId) }}
+                  </div>
+                  <div class="flex-1 min-w-0">
+                    <p class="text-[10px] font-semibold truncate">{{ emp.nombre }}</p>
+                    <p class="text-[9px] opacity-60">{{ labelStatus(emp.status) }}</p>
+                  </div>
+                  <div class="flex gap-1 shrink-0">
+                    <button v-if="emp.status === 'sugerido'" @click="aprobarPorSegId(emp.segId)" :disabled="accionando"
+                      class="w-5 h-5 flex items-center justify-center rounded bg-emerald-100 dark:bg-emerald-900/30 text-emerald-600 hover:bg-emerald-200 disabled:opacity-40"
+                      title="Aprobar">
+                      <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="3" stroke="currentColor" class="w-2.5 h-2.5">
+                        <path stroke-linecap="round" stroke-linejoin="round" d="m4.5 12.75 6 6 9-13.5" />
+                      </svg>
+                    </button>
+                    <button v-if="emp.status !== 'publicado'" @click="quitarVoluntarioCong(emp.segId)" :disabled="accionando"
+                      class="w-5 h-5 flex items-center justify-center rounded bg-red-50 dark:bg-red-900/20 text-red-400 hover:bg-red-100 disabled:opacity-40"
+                      title="Quitar">
+                      <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="3" stroke="currentColor" class="w-2.5 h-2.5">
+                        <path stroke-linecap="round" stroke-linejoin="round" d="M6 18 18 6M6 6l12 12" />
+                      </svg>
+                    </button>
+                  </div>
+                </div>
+
+                <!-- Voluntarios disponibles para agregar -->
+                <p class="text-[9px] font-semibold uppercase tracking-widest text-gray-400 mt-2 mb-1">Disponibles</p>
+                <div class="relative mb-1">
+                  <input v-model="busquedaCong" type="text" placeholder="Buscar voluntario…"
+                    class="w-full pl-3 pr-3 py-1 text-[10px] rounded border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-200 placeholder-gray-400 focus:outline-none focus:ring-1 focus:ring-blue-400" />
+                </div>
+                <div v-if="!disponiblesParaTurno(sidebarFechaCong, turno).length"
+                  class="text-[10px] text-gray-400 italic py-1">Sin voluntarios disponibles</div>
+                <button v-for="vol in disponiblesParaTurno(sidebarFechaCong, turno)" :key="vol.id"
+                  @click="agregarVoluntarioCong(vol.id, turno, sidebarFechaCong)" :disabled="accionando"
+                  class="w-full flex items-center gap-2 px-2 py-1.5 rounded-lg border border-transparent hover:border-blue-200 dark:hover:border-blue-700 hover:bg-blue-50 dark:hover:bg-blue-900/20 transition-all text-left disabled:opacity-40"
+                  :class="vol.disponible ? '' : 'opacity-50'">
+                  <div class="w-6 h-6 rounded-full bg-gray-100 dark:bg-gray-700 flex items-center justify-center text-[9px] font-bold shrink-0 text-gray-600 dark:text-gray-300">
+                    {{ vol.iniciales }}
+                  </div>
+                  <div class="flex-1 min-w-0">
+                    <p class="text-[10px] font-medium truncate text-gray-800 dark:text-gray-200">{{ vol.nombre }}</p>
+                    <p v-if="!vol.disponible" class="text-[9px] text-amber-500">Sin disponibilidad en este horario</p>
+                  </div>
+                  <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2.5" stroke="currentColor"
+                    class="w-3 h-3 text-blue-400 shrink-0">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
+                  </svg>
+                </button>
+              </div>
             </div>
-            <div class="flex-1 min-w-0">
-              <p class="text-xs font-semibold truncate">{{ nombreById(sidebarSeg.empleado_id) }}</p>
-              <p class="text-[10px] opacity-70">{{ labelStatus(sidebarSeg.status) }}</p>
+          </div>
+        </template>
+
+        <!-- ── Sidebar EMPRESA: cupo individual ── -->
+        <template v-else>
+          <!-- Empleado asignado actualmente -->
+          <div v-if="sidebarSeg" class="px-4 py-3 border-b border-gray-100 dark:border-gray-700 shrink-0">
+            <p class="text-[10px] font-semibold uppercase tracking-widest text-gray-400 mb-2">Asignado actualmente</p>
+            <div class="flex items-center gap-2 p-2 rounded-lg" :class="claseSeg(sidebarSeg.status)">
+              <div class="w-7 h-7 rounded-full bg-current/20 flex items-center justify-center text-xs font-bold shrink-0">
+                {{ inicialesById(sidebarSeg.empleado_id) }}
+              </div>
+              <div class="flex-1 min-w-0">
+                <p class="text-xs font-semibold truncate">{{ nombreById(sidebarSeg.empleado_id) }}</p>
+                <p class="text-[10px] opacity-70">{{ labelStatus(sidebarSeg.status) }}</p>
+              </div>
+              <button v-if="sidebarSeg.status === 'sugerido'" @click="aprobarDesideSidebar" :disabled="accionando"
+                class="flex items-center gap-1 px-2 py-1 rounded-md bg-emerald-600 hover:bg-emerald-700 text-white text-[10px] font-semibold transition-colors disabled:opacity-40 shrink-0">
+                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2.5" stroke="currentColor" class="w-3 h-3">
+                  <path stroke-linecap="round" stroke-linejoin="round" d="m4.5 12.75 6 6 9-13.5" />
+                </svg>
+                Aprobar
+              </button>
             </div>
-            <!-- Aprobar desde sidebar -->
-            <button v-if="sidebarSeg.status === 'sugerido'"
-              @click="aprobarDesideSidebar"
-              :disabled="accionando"
-              class="flex items-center gap-1 px-2 py-1 rounded-md bg-emerald-600 hover:bg-emerald-700 text-white text-[10px] font-semibold transition-colors disabled:opacity-40 shrink-0">
-              <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2.5" stroke="currentColor" class="w-3 h-3">
+          </div>
+
+          <!-- Buscador -->
+          <div class="px-4 py-2.5 border-b border-gray-100 dark:border-gray-700 shrink-0">
+            <p class="text-[10px] font-semibold uppercase tracking-widest text-gray-400 mb-2">
+              {{ sidebarSeg ? 'Cambiar empleado' : 'Asignar empleado' }}
+            </p>
+            <div class="relative">
+              <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor"
+                class="w-3.5 h-3.5 absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none">
+                <path stroke-linecap="round" stroke-linejoin="round" d="m21 21-5.197-5.197m0 0A7.5 7.5 0 1 0 5.196 5.196a7.5 7.5 0 0 0 10.607 10.607Z" />
+              </svg>
+              <input v-model="busquedaEmpleado" type="text" placeholder="Buscar empleado…"
+                class="w-full pl-8 pr-3 py-1.5 text-xs rounded-lg border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-200 placeholder-gray-400 focus:outline-none focus:ring-1 focus:ring-violet-400 transition-colors" />
+            </div>
+          </div>
+
+          <!-- Lista de empleados empresa -->
+          <div class="flex-1 overflow-y-auto p-2 space-y-1">
+            <p v-if="!empleadosSidebar.length" class="text-[11px] text-gray-400 italic text-center py-4">
+              Sin empleados disponibles para este turno
+            </p>
+            <button v-for="emp in empleadosFiltrados" :key="emp.id"
+              @click="reasignar(emp.id)" :disabled="accionando"
+              class="w-full text-left flex items-center gap-2.5 px-3 py-2 rounded-lg border transition-all disabled:opacity-40"
+              :class="[
+                emp.id === sidebarSeg?.empleado_id
+                  ? 'border-violet-300 dark:border-violet-700 bg-violet-50 dark:bg-violet-900/20'
+                  : 'border-transparent hover:border-gray-200 dark:hover:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-800',
+                emp.disponible ? '' : 'opacity-50'
+              ]">
+              <div class="w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold shrink-0"
+                :class="emp.id === sidebarSeg?.empleado_id
+                  ? 'bg-violet-100 dark:bg-violet-900/40 text-violet-700 dark:text-violet-300'
+                  : 'bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300'">
+                {{ emp.iniciales }}
+              </div>
+              <div class="flex-1 min-w-0">
+                <p class="text-xs font-medium truncate text-gray-800 dark:text-gray-200">{{ emp.nombre }}</p>
+                <p class="text-[10px] text-gray-400 truncate">
+                  <span v-if="emp.id === sidebarSeg?.empleado_id" class="text-violet-500 font-semibold">Asignado · </span>
+                  <span v-if="!emp.disponible" class="text-amber-500">Sin disponibilidad · </span>
+                  {{ emp.estacionesNombre || '—' }}
+                </p>
+              </div>
+              <svg v-if="emp.id === sidebarSeg?.empleado_id"
+                xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2.5" stroke="currentColor"
+                class="w-3.5 h-3.5 text-violet-500 shrink-0">
                 <path stroke-linecap="round" stroke-linejoin="round" d="m4.5 12.75 6 6 9-13.5" />
               </svg>
-              Aprobar
             </button>
           </div>
-        </div>
-
-        <!-- Buscador -->
-        <div class="px-4 py-2.5 border-b border-gray-100 dark:border-gray-700 shrink-0">
-          <p class="text-[10px] font-semibold uppercase tracking-widest text-gray-400 mb-2">
-            {{ sidebarSeg ? 'Cambiar empleado' : 'Asignar empleado' }}
-          </p>
-          <div class="relative">
-            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor"
-              class="w-3.5 h-3.5 absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none">
-              <path stroke-linecap="round" stroke-linejoin="round" d="m21 21-5.197-5.197m0 0A7.5 7.5 0 1 0 5.196 5.196a7.5 7.5 0 0 0 10.607 10.607Z" />
-            </svg>
-            <input v-model="busquedaEmpleado" type="text" placeholder="Buscar empleado…"
-              class="w-full pl-8 pr-3 py-1.5 text-xs rounded-lg border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-200 placeholder-gray-400 focus:outline-none focus:ring-1 focus:ring-violet-400 transition-colors" />
-          </div>
-        </div>
-
-        <!-- Lista de empleados -->
-        <div class="flex-1 overflow-y-auto p-2 space-y-1">
-          <p v-if="!empleadosSidebar.length" class="text-[11px] text-gray-400 italic text-center py-4">
-            Sin empleados disponibles para este turno
-          </p>
-
-          <button v-for="emp in empleadosFiltrados" :key="emp.id"
-            @click="reasignar(emp.id)"
-            :disabled="accionando"
-            class="w-full text-left flex items-center gap-2.5 px-3 py-2 rounded-lg border transition-all disabled:opacity-40"
-            :class="[
-              emp.id === sidebarSeg?.empleado_id
-                ? 'border-violet-300 dark:border-violet-700 bg-violet-50 dark:bg-violet-900/20'
-                : 'border-transparent hover:border-gray-200 dark:hover:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-800',
-              emp.disponible ? '' : 'opacity-50'
-            ]">
-            <div class="w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold shrink-0"
-              :class="emp.id === sidebarSeg?.empleado_id
-                ? 'bg-violet-100 dark:bg-violet-900/40 text-violet-700 dark:text-violet-300'
-                : 'bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300'">
-              {{ emp.iniciales }}
-            </div>
-            <div class="flex-1 min-w-0">
-              <p class="text-xs font-medium truncate text-gray-800 dark:text-gray-200">{{ emp.nombre }}</p>
-              <p class="text-[10px] text-gray-400 truncate">
-                <span v-if="emp.id === sidebarSeg?.empleado_id" class="text-violet-500 font-semibold">Asignado · </span>
-                <span v-if="!emp.disponible" class="text-amber-500">Sin disponibilidad en este horario · </span>
-                {{ emp.estacionesNombre || 'Sin estaciones' }}
-              </p>
-            </div>
-            <svg v-if="emp.id === sidebarSeg?.empleado_id"
-              xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2.5" stroke="currentColor"
-              class="w-3.5 h-3.5 text-violet-500 shrink-0">
-              <path stroke-linecap="round" stroke-linejoin="round" d="m4.5 12.75 6 6 9-13.5" />
-            </svg>
-          </button>
-        </div>
+        </template>
 
       </div>
     </transition>
@@ -748,6 +834,7 @@ function abrirSidebarVacio(turno: Turno, estacionId: string | null, fecha: strin
 function cerrarSidebar() {
   sidebarAbierta.value = false;
   sidebarSeg.value = null;
+  sidebarFechaCong.value = '';
 }
 
 function toMin(hhmm: string): number {
@@ -1469,6 +1556,161 @@ function turnosEnFecha(date: string): boolean {
   const diasES = ['Domingo', 'Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado'];
   const diaSemana = diasES[new Date(Date.UTC(y, mo - 1, d)).getUTCDay()];
   return turnosConfiguracion.value.some(t => t.day_of_week === diaSemana);
+}
+
+// ── Sidebar congregación ──────────────────────────────────────────────────────
+
+const sidebarFechaCong = ref('');
+const busquedaCong = ref('');
+
+const labelFechaCong = computed(() => {
+  if (!sidebarFechaCong.value) return '';
+  const [y, m, d] = sidebarFechaCong.value.split('-').map(Number);
+  const diasES = ['Domingo', 'Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado'];
+  const dow = diasES[new Date(Date.UTC(y, m - 1, d)).getUTCDay()];
+  return `${dow} ${d}/${m}/${y}`;
+});
+
+function turnosDeFecha(fecha: string): Turno[] {
+  if (!fecha) return [];
+  const diasES = ['Domingo', 'Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado'];
+  const [y, m, d] = fecha.split('-').map(Number);
+  const dow = diasES[new Date(Date.UTC(y, m - 1, d)).getUTCDay()];
+  return turnosConfiguracion.value.filter(t => t.day_of_week === dow);
+}
+
+// Empleados asignados a un turno específico en una fecha dada
+function empleadosPorTurnoFecha(fecha: string, turno: Turno): { segId: string; empId: string; nombre: string; status: SegmentoStatus }[] {
+  const porEmpleado = new Map<string, Segmento>();
+  for (const s of segmentos.value.filter(s =>
+    s.date === fecha &&
+    s.status !== 'rechazado' &&
+    s.start === turno.start_time &&
+    s.end === turno.end_time
+  )) {
+    if (!porEmpleado.has(s.empleado_id)) porEmpleado.set(s.empleado_id, s);
+  }
+  return [...porEmpleado.entries()].map(([empId, s]) => ({
+    segId: s.id,
+    empId,
+    nombre: nombreById(empId),
+    status: s.status,
+  }));
+}
+
+function tieneTodosAprobadosPorTurnoFecha(fecha: string, turno: Turno): boolean {
+  const asigs = empleadosPorTurnoFecha(fecha, turno);
+  return asigs.length > 0 && asigs.every(a => a.status === 'aprobado');
+}
+
+function disponiblesParaTurno(fecha: string, turno: Turno): { id: string; nombre: string; iniciales: string; disponible: boolean }[] {
+  if (!fecha) return [];
+  const diasES = ['Domingo', 'Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado'];
+  const [y, m, d] = fecha.split('-').map(Number);
+  const dow = diasES[new Date(Date.UTC(y, m - 1, d)).getUTCDay()];
+  const tStart = toMin(turno.start_time);
+  const tEnd = toMin(turno.end_time);
+
+  // IDs ya asignados en este turno
+  const yaAsignados = new Set(empleadosPorTurnoFecha(fecha, turno).map(e => e.empId));
+
+  const q = busquedaCong.value.toLowerCase().trim();
+  return empleadosCache.value
+    .filter(emp => !yaAsignados.has(emp.id))
+    .filter(emp => !q || emp.nombre.toLowerCase().includes(q))
+    .map(emp => {
+      const ventanas: any[] = emp.disponibilidad?.ventanas ?? [];
+      const disponible = ventanas.some((v: any) =>
+        v.day_of_week === dow && toMin(v.start) <= tStart && toMin(v.end) >= tEnd
+      );
+      return { id: emp.id, nombre: emp.nombre, iniciales: emp.iniciales, disponible };
+    })
+    .sort((a, b) => (b.disponible ? 1 : 0) - (a.disponible ? 1 : 0));
+}
+
+function abrirSidebarCong(fecha: string) {
+  sidebarFechaCong.value = fecha;
+  busquedaCong.value = '';
+  // limpiar estado de sidebar empresa
+  sidebarSeg.value = null;
+  sidebarTurno.value = null;
+  sidebarAbierta.value = true;
+}
+
+async function quitarVoluntarioCong(segId: string) {
+  accionando.value = true;
+  try {
+    // Borrar todos los segmentos del mismo empleado en el mismo turno ese día
+    const rep = segmentos.value.find(s => s.id === segId);
+    if (!rep) return;
+    const aBorrar = segmentos.value.filter(s =>
+      s.date === rep.date &&
+      s.empleado_id === rep.empleado_id &&
+      s.start === rep.start &&
+      s.end === rep.end
+    );
+    await Promise.all(aBorrar.map(s =>
+      updateDoc(fsDoc(db, 'segmentos', s.id), { active: false, deletedAt: Timestamp.now(), updatedAt: Timestamp.now() })
+    ));
+    segmentos.value = segmentos.value.filter(s => !aBorrar.some(b => b.id === s.id));
+  } finally {
+    accionando.value = false;
+  }
+}
+
+async function agregarVoluntarioCong(empId: string, turno: Turno, fecha: string) {
+  accionando.value = true;
+  try {
+    let asignacionId = segmentos.value.find(s => s.date === fecha && s.ubicacion_id === ubicacionId.value)?.asignacion_id ?? '';
+    if (!asignacionId) {
+      const aRef = await addDoc(collection(db, 'asignaciones'), {
+        empresa_id: companyId.value,
+        ubicacion_id: ubicacionId.value,
+        date: fecha,
+        status: 'draft',
+        createdAt: Timestamp.now(),
+        updatedAt: Timestamp.now(),
+        deletedAt: null,
+      });
+      asignacionId = aRef.id;
+    }
+    const ref = await addDoc(collection(db, 'segmentos'), {
+      empresa_id: companyId.value,
+      ubicacion_id: ubicacionId.value,
+      empleado_id: empId,
+      date: fecha,
+      estacion_id: null,
+      tipo: 'estacion',
+      start: turno.start_time,
+      end: turno.end_time,
+      asignacion_id: asignacionId,
+      status: 'sugerido',
+      active: true,
+      createdAt: Timestamp.now(),
+      updatedAt: Timestamp.now(),
+      deletedAt: null,
+    });
+    // Agregar al estado local sin recargar
+    segmentos.value.push({
+      id: ref.id,
+      empresa_id: companyId.value,
+      ubicacion_id: ubicacionId.value,
+      empleado_id: empId,
+      date: fecha,
+      estacion_id: null,
+      tipo: 'estacion',
+      start: turno.start_time,
+      end: turno.end_time,
+      asignacion_id: asignacionId,
+      status: 'sugerido',
+      active: true,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+      deletedAt: null,
+    });
+  } finally {
+    accionando.value = false;
+  }
 }
 
 // ── Montaje ───────────────────────────────────────────────────────────────────
