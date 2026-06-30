@@ -965,9 +965,24 @@ export const actualizarBorrador = onCall<
             );
           });
 
-          // c. Equidad: menos minutos acumulados en la semana van primero;
+          // c. Reglas hard nunca_juntos
+          const candidatos = sinSolape.filter((eid) => {
+            const reglas = reglasMap.get(eid) ?? [];
+            for (const regla of reglas) {
+              if (!regla.is_strict || regla.type !== "nunca_juntos") continue;
+              const otro = regla.person_uno_id === eid ? regla.person_dos_id : regla.person_uno_id;
+              const otroEstado = estadosEmpleado.get(otro);
+              if (otroEstado?.segmentos.some((s) =>
+                s.tipo === "estacion" &&
+                seProlapan(s.start, s.end, turno.start_time, turno.end_time)
+              )) return false;
+            }
+            return true;
+          });
+
+          // d. Equidad: menos minutos acumulados en la semana van primero;
           //    tiebreaker: menos segmentos asignados hoy
-          sinSolape.sort((a, b) => {
+          candidatos.sort((a, b) => {
             const ma = minutosAsignadosSemana.get(a) ?? 0;
             const mb = minutosAsignadosSemana.get(b) ?? 0;
             if (ma !== mb) return ma - mb;
@@ -975,7 +990,7 @@ export const actualizarBorrador = onCall<
                    (estadosEmpleado.get(b)?.segmentos.length ?? 0);
           });
 
-          const asignados = sinSolape.slice(0, req.cantidad);
+          const asignados = candidatos.slice(0, req.cantidad);
 
           if (asignados.length < req.cantidad) {
             huecosDelDia.push({
