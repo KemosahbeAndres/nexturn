@@ -76,16 +76,23 @@ const esManager = computed(() => {
   return role === 'super_admin' || role === 'client_user';
 });
 
+const isCongregacion = computed(() => empresaStore.isCongregacion);
+
 const menuItems = computed((): MenuItem[] => {
   const items: MenuItem[] = [
-    { name: 'Dashboard',    routeName: 'sucursal-dashboard',   icon: IconDashboard },
-    { name: 'Turnos',       routeName: 'sucursal-turnos',      icon: IconTurnos },
-    { name: 'Solicitudes',  routeName: 'sucursal-solicitudes', icon: IconSolicitudes },
-    { name: 'Mi Calendario', routeName: 'sucursal-calendario', icon: IconCalendario },
+    { name: 'Dashboard',     routeName: 'sucursal-dashboard',   icon: IconDashboard },
+    { name: 'Turnos',        routeName: 'sucursal-turnos',      icon: IconTurnos },
+    { name: 'Mi Calendario', routeName: 'sucursal-calendario',  icon: IconCalendario },
   ];
+  if (!isCongregacion.value) {
+    items.splice(2, 0,
+      { name: 'Solicitudes', routeName: 'sucursal-solicitudes', icon: IconSolicitudes }
+    );
+  }
   if (esManager.value) {
-    items.splice(3, 0,
-      { name: 'Mi Equipo',  routeName: 'sucursal-mi-equipo-personal',  icon: IconMiEquipo }
+    const insertIdx = isCongregacion.value ? 2 : 3;
+    items.splice(insertIdx, 0,
+      { name: 'Mi Equipo',   routeName: 'sucursal-mi-equipo-personal', icon: IconMiEquipo }
     );
   }
   return items;

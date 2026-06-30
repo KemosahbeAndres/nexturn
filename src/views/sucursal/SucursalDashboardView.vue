@@ -120,7 +120,7 @@
             </button>
           </div>
 
-          <div class="bg-white dark:bg-gray-800 rounded-xl border border-gray-100 dark:border-gray-700 p-4 flex items-start gap-3">
+          <div v-if="!isCongregacion" class="bg-white dark:bg-gray-800 rounded-xl border border-gray-100 dark:border-gray-700 p-4 flex items-start gap-3">
             <div class="w-8 h-8 rounded-lg bg-amber-50 dark:bg-amber-900/30 flex items-center justify-center shrink-0 mt-0.5">
               <svg class="w-4 h-4 text-amber-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"/>
@@ -236,7 +236,7 @@
             <p class="text-xs font-semibold text-gray-700 dark:text-gray-300">Añadir ausencia</p>
           </router-link>
 
-          <router-link
+          <router-link v-if="!isCongregacion"
             :to="{ name: 'sucursal-solicitudes' }"
             class="group bg-white dark:bg-gray-800 rounded-xl border border-gray-100 dark:border-gray-700 p-4 flex flex-col items-center gap-2.5 hover:border-amber-200 dark:hover:border-amber-700 hover:shadow-sm transition-all text-center"
           >

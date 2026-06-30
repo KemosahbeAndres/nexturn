@@ -97,7 +97,7 @@
                 </p>
               </div>
             </div>
-            <div class="flex items-start gap-3 px-3 py-2.5 rounded-lg"
+            <div v-if="!isCongregacion" class="flex items-start gap-3 px-3 py-2.5 rounded-lg"
               :class="diagnostico.tieneEstaciones ? 'bg-emerald-50 dark:bg-emerald-900/15' : 'bg-red-50 dark:bg-red-900/15'">
               <span class="text-sm mt-0.5 shrink-0">{{ diagnostico.tieneEstaciones ? '✅' : '❌' }}</span>
               <div class="flex-1 min-w-0">
@@ -107,7 +107,7 @@
                 </p>
               </div>
             </div>
-            <div v-if="diagnostico.tieneTurnos" class="flex items-start gap-3 px-3 py-2.5 rounded-lg"
+            <div v-if="!isCongregacion && diagnostico.tieneTurnos" class="flex items-start gap-3 px-3 py-2.5 rounded-lg"
               :class="diagnostico.turnosTienenRequerimientos ? 'bg-emerald-50 dark:bg-emerald-900/15' : 'bg-red-50 dark:bg-red-900/15'">
               <span class="text-sm mt-0.5 shrink-0">{{ diagnostico.turnosTienenRequerimientos ? '✅' : '❌' }}</span>
               <div class="flex-1 min-w-0">
@@ -204,60 +204,107 @@
                 </div>
 
                 <div class="p-1.5 space-y-1">
-                  <template v-for="req in turno.requerimientos.filter(r => r.estacion_id && r.cantidad > 0)" :key="req.estacion_id">
-                    <div v-for="cupoIdx in req.cantidad" :key="`${req.estacion_id}-${cupoIdx}`">
-                      <!-- Cupo asignado -->
-                      <button v-if="segmentoParaCupo(i, turno, req.estacion_id, cupoIdx - 1)"
-                        class="w-full text-left px-2 pt-1.5 pb-1 rounded-lg text-xs border transition-all"
-                        :class="[
-                          claseSeg(segmentoParaCupo(i, turno, req.estacion_id, cupoIdx - 1)!.status),
-                          sidebarSeg?.id === segmentoParaCupo(i, turno, req.estacion_id, cupoIdx - 1)!.id
-                            ? 'ring-2 ring-violet-400 dark:ring-violet-500'
-                            : 'hover:brightness-95'
-                        ]"
-                        @click="abrirSidebar(segmentoParaCupo(i, turno, req.estacion_id, cupoIdx - 1)!, turno, req.estacion_id, fechaDia(i))">
-                        <div class="flex items-center justify-between gap-1">
-                          <span class="text-[10px] font-semibold opacity-70 truncate">{{ nombreEstacion(req.estacion_id) }}</span>
-                          <span class="text-[9px] font-bold uppercase tracking-wide shrink-0"
-                            :class="claseChipStatus(segmentoParaCupo(i, turno, req.estacion_id, cupoIdx - 1)!.status)">
-                            {{ labelStatus(segmentoParaCupo(i, turno, req.estacion_id, cupoIdx - 1)!.status) }}
-                          </span>
-                        </div>
-                        <div class="flex items-center gap-1 mt-0.5">
-                          <div class="w-4 h-4 rounded-full flex items-center justify-center text-[8px] font-bold shrink-0 bg-current/20">
-                            {{ inicialesById(segmentoParaCupo(i, turno, req.estacion_id, cupoIdx - 1)!.empleado_id) }}
+                  <!-- Congregación: reqs con estacion_id null -->
+                  <template v-if="isCongregacion">
+                    <template v-for="req in turno.requerimientos.filter(r => r.cantidad > 0)" :key="`cong-${turno.id}`">
+                      <div v-for="cupoIdx in req.cantidad" :key="`cong-${cupoIdx}`">
+                        <button v-if="segmentoParaCupo(i, turno, null, cupoIdx - 1)"
+                          class="w-full text-left px-2 pt-1.5 pb-1 rounded-lg text-xs border transition-all"
+                          :class="[
+                            claseSeg(segmentoParaCupo(i, turno, null, cupoIdx - 1)!.status),
+                            sidebarSeg?.id === segmentoParaCupo(i, turno, null, cupoIdx - 1)!.id
+                              ? 'ring-2 ring-violet-400 dark:ring-violet-500'
+                              : 'hover:brightness-95'
+                          ]"
+                          @click="abrirSidebar(segmentoParaCupo(i, turno, null, cupoIdx - 1)!, turno, null, fechaDia(i))">
+                          <div class="flex items-center justify-between gap-1">
+                            <span class="text-[9px] font-bold uppercase tracking-wide shrink-0"
+                              :class="claseChipStatus(segmentoParaCupo(i, turno, null, cupoIdx - 1)!.status)">
+                              {{ labelStatus(segmentoParaCupo(i, turno, null, cupoIdx - 1)!.status) }}
+                            </span>
                           </div>
-                          <span class="text-[10px] font-medium truncate flex-1">
-                            {{ nombreById(segmentoParaCupo(i, turno, req.estacion_id, cupoIdx - 1)!.empleado_id) }}
-                          </span>
-                          <!-- Botón aprobar inline (solo sugerido) -->
-                          <button v-if="segmentoParaCupo(i, turno, req.estacion_id, cupoIdx - 1)!.status === 'sugerido'"
-                            @click.stop="aprobar(segmentoParaCupo(i, turno, req.estacion_id, cupoIdx - 1)!.id)"
-                            :disabled="accionando"
-                            class="w-5 h-5 flex items-center justify-center rounded bg-emerald-100 dark:bg-emerald-900/30 text-emerald-600 hover:bg-emerald-200 transition-colors disabled:opacity-40 shrink-0"
-                            title="Aprobar">
-                            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="3" stroke="currentColor" class="w-2.5 h-2.5">
-                              <path stroke-linecap="round" stroke-linejoin="round" d="m4.5 12.75 6 6 9-13.5" />
-                            </svg>
-                          </button>
-                        </div>
-                      </button>
-
-                      <!-- Cupo vacío -->
-                      <button
-                        class="w-full text-left px-2 py-1.5 rounded-lg border border-dashed border-gray-300 dark:border-gray-600 bg-gray-50/50 dark:bg-gray-700/20 hover:bg-gray-100 dark:hover:bg-gray-700/40 transition-colors"
-                        v-else
-                        @click="abrirSidebarVacio(turno, req.estacion_id, fechaDia(i))">
-                        <p class="text-[10px] font-semibold text-gray-400 dark:text-gray-500 truncate">{{ nombreEstacion(req.estacion_id) }}</p>
-                        <p class="text-[10px] text-gray-300 dark:text-gray-600 italic">Sin asignar — click para asignar</p>
-                      </button>
+                          <div class="flex items-center gap-1 mt-0.5">
+                            <div class="w-4 h-4 rounded-full flex items-center justify-center text-[8px] font-bold shrink-0 bg-current/20">
+                              {{ inicialesById(segmentoParaCupo(i, turno, null, cupoIdx - 1)!.empleado_id) }}
+                            </div>
+                            <span class="text-[10px] font-medium truncate flex-1">
+                              {{ nombreById(segmentoParaCupo(i, turno, null, cupoIdx - 1)!.empleado_id) }}
+                            </span>
+                            <button v-if="segmentoParaCupo(i, turno, null, cupoIdx - 1)!.status === 'sugerido'"
+                              @click.stop="aprobar(segmentoParaCupo(i, turno, null, cupoIdx - 1)!.id)"
+                              :disabled="accionando"
+                              class="w-5 h-5 flex items-center justify-center rounded bg-emerald-100 dark:bg-emerald-900/30 text-emerald-600 hover:bg-emerald-200 transition-colors disabled:opacity-40 shrink-0"
+                              title="Aprobar">
+                              <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="3" stroke="currentColor" class="w-2.5 h-2.5">
+                                <path stroke-linecap="round" stroke-linejoin="round" d="m4.5 12.75 6 6 9-13.5" />
+                              </svg>
+                            </button>
+                          </div>
+                        </button>
+                        <button v-else
+                          class="w-full text-left px-2 py-1.5 rounded-lg border border-dashed border-gray-300 dark:border-gray-600 bg-gray-50/50 dark:bg-gray-700/20 hover:bg-gray-100 dark:hover:bg-gray-700/40 transition-colors"
+                          @click="abrirSidebarVacio(turno, null, fechaDia(i))">
+                          <p class="text-[10px] text-gray-300 dark:text-gray-600 italic">Sin asignar — click para asignar</p>
+                        </button>
+                      </div>
+                    </template>
+                    <div v-if="!turno.requerimientos.filter(r => r.cantidad > 0).length"
+                      class="px-2 py-2 rounded-lg border border-dashed border-amber-200 dark:border-amber-700/40 bg-amber-50/40 dark:bg-amber-900/10">
+                      <p class="text-[10px] text-amber-500 dark:text-amber-400 italic">Sin voluntarios requeridos</p>
                     </div>
                   </template>
 
-                  <div v-if="!turno.requerimientos.filter(r => r.estacion_id && r.cantidad > 0).length"
-                    class="px-2 py-2 rounded-lg border border-dashed border-amber-200 dark:border-amber-700/40 bg-amber-50/40 dark:bg-amber-900/10">
-                    <p class="text-[10px] text-amber-500 dark:text-amber-400 italic">Sin estaciones requeridas</p>
-                  </div>
+                  <!-- Empresa: reqs con estacion_id -->
+                  <template v-else>
+                    <template v-for="req in turno.requerimientos.filter(r => r.estacion_id && r.cantidad > 0)" :key="req.estacion_id">
+                      <div v-for="cupoIdx in req.cantidad" :key="`${req.estacion_id}-${cupoIdx}`">
+                        <button v-if="segmentoParaCupo(i, turno, req.estacion_id, cupoIdx - 1)"
+                          class="w-full text-left px-2 pt-1.5 pb-1 rounded-lg text-xs border transition-all"
+                          :class="[
+                            claseSeg(segmentoParaCupo(i, turno, req.estacion_id, cupoIdx - 1)!.status),
+                            sidebarSeg?.id === segmentoParaCupo(i, turno, req.estacion_id, cupoIdx - 1)!.id
+                              ? 'ring-2 ring-violet-400 dark:ring-violet-500'
+                              : 'hover:brightness-95'
+                          ]"
+                          @click="abrirSidebar(segmentoParaCupo(i, turno, req.estacion_id, cupoIdx - 1)!, turno, req.estacion_id, fechaDia(i))">
+                          <div class="flex items-center justify-between gap-1">
+                            <span class="text-[10px] font-semibold opacity-70 truncate">{{ nombreEstacion(req.estacion_id) }}</span>
+                            <span class="text-[9px] font-bold uppercase tracking-wide shrink-0"
+                              :class="claseChipStatus(segmentoParaCupo(i, turno, req.estacion_id, cupoIdx - 1)!.status)">
+                              {{ labelStatus(segmentoParaCupo(i, turno, req.estacion_id, cupoIdx - 1)!.status) }}
+                            </span>
+                          </div>
+                          <div class="flex items-center gap-1 mt-0.5">
+                            <div class="w-4 h-4 rounded-full flex items-center justify-center text-[8px] font-bold shrink-0 bg-current/20">
+                              {{ inicialesById(segmentoParaCupo(i, turno, req.estacion_id, cupoIdx - 1)!.empleado_id) }}
+                            </div>
+                            <span class="text-[10px] font-medium truncate flex-1">
+                              {{ nombreById(segmentoParaCupo(i, turno, req.estacion_id, cupoIdx - 1)!.empleado_id) }}
+                            </span>
+                            <button v-if="segmentoParaCupo(i, turno, req.estacion_id, cupoIdx - 1)!.status === 'sugerido'"
+                              @click.stop="aprobar(segmentoParaCupo(i, turno, req.estacion_id, cupoIdx - 1)!.id)"
+                              :disabled="accionando"
+                              class="w-5 h-5 flex items-center justify-center rounded bg-emerald-100 dark:bg-emerald-900/30 text-emerald-600 hover:bg-emerald-200 transition-colors disabled:opacity-40 shrink-0"
+                              title="Aprobar">
+                              <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="3" stroke="currentColor" class="w-2.5 h-2.5">
+                                <path stroke-linecap="round" stroke-linejoin="round" d="m4.5 12.75 6 6 9-13.5" />
+                              </svg>
+                            </button>
+                          </div>
+                        </button>
+                        <button v-else
+                          class="w-full text-left px-2 py-1.5 rounded-lg border border-dashed border-gray-300 dark:border-gray-600 bg-gray-50/50 dark:bg-gray-700/20 hover:bg-gray-100 dark:hover:bg-gray-700/40 transition-colors"
+                          @click="abrirSidebarVacio(turno, req.estacion_id, fechaDia(i))">
+                          <p class="text-[10px] font-semibold text-gray-400 dark:text-gray-500 truncate">{{ nombreEstacion(req.estacion_id) }}</p>
+                          <p class="text-[10px] text-gray-300 dark:text-gray-600 italic">Sin asignar — click para asignar</p>
+                        </button>
+                      </div>
+                    </template>
+                    <div v-if="!turno.requerimientos.filter(r => r.estacion_id && r.cantidad > 0).length"
+                      class="px-2 py-2 rounded-lg border border-dashed border-amber-200 dark:border-amber-700/40 bg-amber-50/40 dark:bg-amber-900/10">
+                      <p class="text-[10px] text-amber-500 dark:text-amber-400 italic">Sin estaciones requeridas</p>
+                    </div>
+                  </template>
                 </div>
               </div>
             </template>
@@ -419,6 +466,7 @@ import { getDocs, getDoc, doc as fsDoc, query, collection, where, updateDoc, add
 import { useSessionStore } from '../../stores/sessionStore';
 import { useSegmentoStore } from '../../stores/segmentoStore';
 import { useGrantStore } from '../../stores/grantStore';
+import { useEmpresaStore } from '../../stores/empresaStore';
 import { ubicacionConverter } from '../../models/Ubicacion';
 import { estacionConverter } from '../../models/Estacion';
 import { empleadoConverter } from '../../models/Empleado';
@@ -430,6 +478,9 @@ import type { Turno } from '../../models/Ubicacion';
 const sessionStore = useSessionStore();
 const segmentoStore = useSegmentoStore();
 const grantStore = useGrantStore();
+const empresaStore = useEmpresaStore();
+
+const isCongregacion = computed(() => empresaStore.isCongregacion);
 
 // ── Permisos ──────────────────────────────────────────────────────────────────
 
@@ -578,16 +629,14 @@ function segmentosDia(diaIdx: number): Segmento[] {
 // El algoritmo escribe N buckets de 30 min por empleado por turno; aquí
 // los colapsamos: un cupo = un empleado distinto. El representante es el
 // primer bucket de ese empleado en el turno (para tener id, status, empleado_id).
-function empleadosPorTurno(diaIdx: number, turno: Turno, estacionId: string): Segmento[] {
+function empleadosPorTurno(diaIdx: number, turno: Turno, estacionId: string | null): Segmento[] {
   const fecha = fechaDia(diaIdx);
-  // Segmentos que solapan con el turno en esa estación
   const del_turno = segmentos.value.filter(s =>
     s.date === fecha &&
     s.estacion_id === estacionId &&
     s.status !== 'rechazado' &&
     s.start < turno.end_time && s.end > turno.start_time
   );
-  // Un representante por empleado (el de menor start)
   const porEmpleado = new Map<string, Segmento>();
   for (const s of del_turno.sort((a, b) => a.start.localeCompare(b.start))) {
     if (!porEmpleado.has(s.empleado_id)) porEmpleado.set(s.empleado_id, s);
@@ -595,7 +644,7 @@ function empleadosPorTurno(diaIdx: number, turno: Turno, estacionId: string): Se
   return [...porEmpleado.values()].sort((a, b) => a.empleado_id.localeCompare(b.empleado_id));
 }
 
-function segmentoParaCupo(diaIdx: number, turno: Turno, estacionId: string, cupoOffset: number): Segmento | undefined {
+function segmentoParaCupo(diaIdx: number, turno: Turno, estacionId: string | null, cupoOffset: number): Segmento | undefined {
   return empleadosPorTurno(diaIdx, turno, estacionId)[cupoOffset];
 }
 
@@ -609,9 +658,9 @@ function tieneTodosAprobados(diaIdx: number): boolean {
 // ── Sidebar de asignación ─────────────────────────────────────────────────────
 
 const sidebarAbierta = ref(true);
-const sidebarSeg = ref<Segmento | null>(null);         // null si cupo vacío
+const sidebarSeg = ref<Segmento | null>(null);
 const sidebarTurno = ref<Turno | null>(null);
-const sidebarEstacionId = ref<string>('');
+const sidebarEstacionId = ref<string | null>(null);
 const sidebarFecha = ref<string>('');
 const busquedaEmpleado = ref('');
 
@@ -631,7 +680,7 @@ const empleadosFiltrados = computed(() => {
   return empleadosSidebar.value.filter(e => e.nombre.toLowerCase().includes(q));
 });
 
-function abrirSidebar(seg: Segmento, turno: Turno, estacionId: string, fecha: string) {
+function abrirSidebar(seg: Segmento, turno: Turno, estacionId: string | null, fecha: string) {
   sidebarSeg.value = seg;
   sidebarTurno.value = turno;
   sidebarEstacionId.value = estacionId;
@@ -641,7 +690,7 @@ function abrirSidebar(seg: Segmento, turno: Turno, estacionId: string, fecha: st
   cargarEmpleadosSidebar(turno, estacionId, fecha);
 }
 
-function abrirSidebarVacio(turno: Turno, estacionId: string, fecha: string) {
+function abrirSidebarVacio(turno: Turno, estacionId: string | null, fecha: string) {
   sidebarSeg.value = null;
   sidebarTurno.value = turno;
   sidebarEstacionId.value = estacionId;
@@ -679,43 +728,42 @@ function generarBuckets30(start: string, end: string): { start: string; end: str
   return buckets;
 }
 
-function cargarEmpleadosSidebar(turno: Turno, estacionId: string, fecha: string) {
+function cargarEmpleadosSidebar(turno: Turno, estacionId: string | null, fecha: string) {
   const diasES = ['Domingo', 'Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado'];
   const [y, mo, d] = fecha.split('-').map(Number);
   const diaSemana = diasES[new Date(Date.UTC(y, mo - 1, d)).getUTCDay()];
   const tStart = toMin(turno.start_time);
   const tEnd = toMin(turno.end_time);
 
-  // IDs de empleados ya asignados en cualquier otro turno de este día (excluir el cupo actual)
   const yaAsignadosHoy = new Set(
     segmentos.value
       .filter(s =>
         s.date === fecha &&
         s.status !== 'rechazado' &&
-        s.empleado_id !== sidebarSeg.value?.empleado_id  // el actual puede reasignarse a sí mismo
+        s.empleado_id !== sidebarSeg.value?.empleado_id
       )
       .map(s => s.empleado_id)
   );
 
-  // Empleados con contrato en esta sucursal (ya en caché)
-  // Primero los que tienen la estación requerida y disponibilidad, luego el resto
   const lista: EmpleadoSidebar[] = empleadosCache.value
-    .filter(emp => !yaAsignadosHoy.has(emp.id))  // excluir ya ocupados en el día
+    .filter(emp => !yaAsignadosHoy.has(emp.id))
     .map(emp => {
-      const tieneEstacion = emp.estacion_ids.includes(estacionId);
       const ventanas: any[] = emp.disponibilidad?.ventanas ?? [];
-      const disponible = ventanas.some((v: any) =>
+      const tieneDisponibilidad = ventanas.some((v: any) =>
         v.day_of_week === diaSemana &&
         toMin(v.start) <= tStart && toMin(v.end) >= tEnd
       );
+      // En congregación solo importa la disponibilidad; en empresa también la estación
+      const disponible = estacionId
+        ? emp.estacion_ids.includes(estacionId) && tieneDisponibilidad
+        : tieneDisponibilidad;
       const estacionesNombre = emp.estacion_ids
         .map(id => nombreEstacion(id))
         .filter(Boolean)
         .join(', ');
-      return { id: emp.id, nombre: emp.nombre, iniciales: emp.iniciales, estacionesNombre, disponible: tieneEstacion && disponible };
+      return { id: emp.id, nombre: emp.nombre, iniciales: emp.iniciales, estacionesNombre, disponible };
     });
 
-  // Ordenar: asignado primero, luego disponibles con estación, luego el resto
   lista.sort((a, b) => {
     const aEsAsignado = a.id === sidebarSeg.value?.empleado_id ? -1 : 0;
     const bEsAsignado = b.id === sidebarSeg.value?.empleado_id ? -1 : 0;
@@ -727,7 +775,7 @@ function cargarEmpleadosSidebar(turno: Turno, estacionId: string, fecha: string)
 }
 
 // Devuelve todos los buckets de un empleado en un turno+estación+fecha
-function bucketsDeTurno(empleadoId: string, turno: Turno, estacionId: string, fecha: string): Segmento[] {
+function bucketsDeTurno(empleadoId: string, turno: Turno, estacionId: string | null, fecha: string): Segmento[] {
   return segmentos.value.filter(s =>
     s.date === fecha &&
     s.empleado_id === empleadoId &&
@@ -921,26 +969,26 @@ interface Diagnostico {
 
 const diagnostico = ref<Diagnostico | null>(null);
 const cargandoDiagnostico = ref(false);
-const panelAbierto = ref(true);
+const panelAbierto = ref(false);
 const errorBorrador = ref('');
 
-const diagnosticoListo = computed(() =>
-  !!diagnostico.value &&
-  diagnostico.value.tieneTurnos &&
-  diagnostico.value.tieneEstaciones &&
-  diagnostico.value.turnosTienenRequerimientos &&
-  diagnostico.value.tieneEmpleadosConContrato &&
-  diagnostico.value.detalleEmpleados.every(e => e.listo)
-);
+const diagnosticoListo = computed(() => {
+  if (!diagnostico.value) return false;
+  const d = diagnostico.value;
+  if (!d.tieneTurnos || !d.tieneEmpleadosConContrato) return false;
+  if (!isCongregacion.value && (!d.tieneEstaciones || !d.turnosTienenRequerimientos)) return false;
+  return d.detalleEmpleados.every(e => e.listo);
+});
 
 const problemasTotal = computed(() => {
   if (!diagnostico.value) return 0;
+  const d = diagnostico.value;
   let n = 0;
-  if (!diagnostico.value.tieneTurnos) n++;
-  if (!diagnostico.value.tieneEstaciones) n++;
-  if (!diagnostico.value.turnosTienenRequerimientos) n++;
-  if (!diagnostico.value.tieneEmpleadosConContrato) n++;
-  n += diagnostico.value.detalleEmpleados.filter(e => !e.listo).length;
+  if (!d.tieneTurnos) n++;
+  if (!isCongregacion.value && !d.tieneEstaciones) n++;
+  if (!isCongregacion.value && !d.turnosTienenRequerimientos) n++;
+  if (!d.tieneEmpleadosConContrato) n++;
+  n += d.detalleEmpleados.filter(e => !e.listo).length;
   return n;
 });
 

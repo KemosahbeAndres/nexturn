@@ -252,17 +252,27 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted } from 'vue';
+import { ref, computed, onMounted, watchEffect } from 'vue';
+import { useRouter } from 'vue-router';
 import { useSessionStore } from '../../stores/sessionStore';
 import { useGrantStore } from '../../stores/grantStore';
 import { useSolicitudStore } from '../../stores/solicitudStore';
 import { useEmpleadoStore } from '../../stores/empleadoStore';
+import { useEmpresaStore } from '../../stores/empresaStore';
 import type { Solicitud, SolicitudEstado, SolicitudReemplazo } from '../../models/Solicitud';
 
+const router = useRouter();
 const sessionStore = useSessionStore();
 const grantStore = useGrantStore();
 const solicitudStore = useSolicitudStore();
 const empleadoStore = useEmpleadoStore();
+const empresaStore = useEmpresaStore();
+
+watchEffect(() => {
+  if (empresaStore.isCongregacion) {
+    router.replace({ name: 'sucursal-dashboard' });
+  }
+});
 
 const ubicacionId = computed(() => sessionStore.activeUbicacionId ?? '');
 const companyId = computed(() => sessionStore.activeCompanyId ?? '');
