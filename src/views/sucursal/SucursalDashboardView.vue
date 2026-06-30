@@ -225,7 +225,7 @@
           </router-link>
 
           <router-link
-            :to="{ name: 'sucursal-mi-equipo-excepciones' }"
+            :to="{ name: 'sucursal-mi-equipo-personal' }"
             class="group bg-white dark:bg-gray-800 rounded-xl border border-gray-100 dark:border-gray-700 p-4 flex flex-col items-center gap-2.5 hover:border-orange-200 dark:hover:border-orange-700 hover:shadow-sm transition-all text-center"
           >
             <div class="w-10 h-10 rounded-xl bg-orange-50 dark:bg-orange-900/30 flex items-center justify-center group-hover:bg-orange-100 dark:group-hover:bg-orange-900/50 transition-colors">

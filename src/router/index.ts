@@ -110,9 +110,9 @@ const router = createRouter({
             { path: '', redirect: 'personal' },
             { path: 'personal', name: 'sucursal-mi-equipo-personal', meta: { title: 'Mi Equipo', subtitle: 'Directorio de personal de la sucursal', requiresActiveSubscription: true }, component: () => import('../views/sucursal/PersonalView.vue') },
             { path: 'estaciones', name: 'sucursal-mi-equipo-estaciones', meta: { title: 'Estaciones', subtitle: 'Puestos operativos del equipo', requiresActiveSubscription: true }, component: () => import('../views/sucursal/ajustes/AjustesEstacionesView.vue') },
-            { path: 'disponibilidad', name: 'sucursal-mi-equipo-disponibilidad', meta: { title: 'Disponibilidad', subtitle: 'Reglas base de disponibilidad' }, component: () => import('../views/sucursal/ajustes/AjustesDisponibilidadView.vue') },
-            { path: 'excepciones', name: 'sucursal-mi-equipo-excepciones', meta: { title: 'Excepciones', subtitle: 'Ausencias y días fuera de rutina' }, component: () => import('../views/sucursal/ajustes/AjustesExcepcionesView.vue') },
             { path: 'reglas', name: 'sucursal-mi-equipo-reglas', meta: { title: 'Reglas', subtitle: 'Preferencias de asignación conjunta' }, component: () => import('../views/sucursal/ajustes/AjustesReglasView.vue') },
+            { path: 'disponibilidad', redirect: { name: 'sucursal-mi-equipo-personal' } },
+            { path: 'excepciones', redirect: { name: 'sucursal-mi-equipo-personal' } },
           ]
         }
       ]

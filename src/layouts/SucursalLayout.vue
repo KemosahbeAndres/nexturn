@@ -64,8 +64,6 @@ interface MenuItem { name: string; routeName: string; icon: any }
 const MI_EQUIPO_ROUTES = [
   'sucursal-mi-equipo-personal',
   'sucursal-mi-equipo-estaciones',
-  'sucursal-mi-equipo-disponibilidad',
-  'sucursal-mi-equipo-excepciones',
   'sucursal-mi-equipo-reglas',
 ];
 

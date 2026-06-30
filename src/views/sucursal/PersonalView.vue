@@ -197,8 +197,8 @@
         <!-- Sección: Contrato / Ubicaciones -->
         <section class="bg-white dark:bg-gray-800 rounded-xl border border-gray-100 dark:border-gray-700 overflow-hidden">
           <div class="px-4 py-3 border-b border-gray-100 dark:border-gray-700">
-            <p class="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">Contratos y ubicaciones</p>
-            <p class="text-[10px] text-gray-400 dark:text-gray-500 mt-0.5">Asigna a qué sucursal pertenece, su cargo y límite horario.</p>
+            <p class="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">{{ isCongregacion ? 'Ubicación' : 'Contratos y ubicaciones' }}</p>
+            <p v-if="!isCongregacion" class="text-[10px] text-gray-400 dark:text-gray-500 mt-0.5">Asigna a qué sucursal pertenece, su cargo y límite horario.</p>
           </div>
 
           <!-- Contratos existentes -->
@@ -209,21 +209,26 @@
                   <p class="text-sm font-medium text-gray-900 dark:text-white truncate">
                     {{ nombreUbicacion(contrato.ubicacion_id) }}
                   </p>
-                  <p class="text-xs text-gray-400 dark:text-gray-500 mt-0.5">
+                  <!-- En empresa: mostrar cargo, fechas y límite horario -->
+                  <p v-if="!isCongregacion" class="text-xs text-gray-400 dark:text-gray-500 mt-0.5">
                     Cargo: <span class="text-gray-600 dark:text-gray-300">{{ nombreCargo(contrato.cargo_id) || '—' }}</span>
                     · Desde: <span class="text-gray-600 dark:text-gray-300">{{ formatFecha(contrato.fecha_inicio) }}</span>
                     <template v-if="contrato.fecha_fin"> · Hasta: <span class="text-amber-600 dark:text-amber-400">{{ formatFecha(contrato.fecha_fin) }}</span></template>
                     <template v-if="contrato.limite_horas"> · Límite: <span class="text-gray-600 dark:text-gray-300">{{ contrato.limite_horas }}h/sem</span></template>
                   </p>
                 </div>
-                <button type="button" @click="toggleEditarContrato(contrato.id)"
+                <button v-if="!isCongregacion" type="button" @click="toggleEditarContrato(contrato.id)"
                   class="text-xs text-gray-400 hover:text-blue-600 dark:hover:text-blue-400 shrink-0 transition-colors">
                   {{ editandoContratoId === contrato.id ? 'Cerrar' : 'Editar' }}
                 </button>
+                <button v-else type="button" @click="eliminarContrato(contrato.id)" :disabled="guardandoContrato"
+                  class="text-xs text-red-400 hover:text-red-600 dark:hover:text-red-300 shrink-0 transition-colors disabled:opacity-50">
+                  Quitar
+                </button>
               </div>
 
-              <!-- Mini formulario edición contrato -->
-              <div v-if="editandoContratoId === contrato.id" class="mt-3 grid grid-cols-2 gap-2">
+              <!-- Mini formulario edición contrato (solo empresa) -->
+              <div v-if="!isCongregacion && editandoContratoId === contrato.id" class="mt-3 grid grid-cols-2 gap-2">
                 <div>
                   <label class="block text-[10px] font-medium text-gray-500 dark:text-gray-400 mb-1">Cargo</label>
                   <select v-model="formContrato.cargo_id"
@@ -262,17 +267,17 @@
 
           <!-- Sin contratos -->
           <div v-else class="px-4 py-5 text-center">
-            <p class="text-xs text-gray-400 dark:text-gray-500">Sin contratos vigentes en esta sucursal.</p>
+            <p class="text-xs text-gray-400 dark:text-gray-500">{{ isCongregacion ? 'Sin ubicación asignada.' : 'Sin contratos vigentes en esta sucursal.' }}</p>
           </div>
 
-          <!-- Añadir contrato -->
+          <!-- Añadir contrato / ubicación -->
           <div class="px-4 py-3 border-t border-gray-100 dark:border-gray-700">
             <button v-if="!agregandoContrato" type="button" @click="abrirAgregarContrato"
               class="text-xs text-blue-600 dark:text-blue-400 hover:underline">
-              + Añadir a otra ubicación
+              {{ isCongregacion ? '+ Añadir a otra ubicación' : '+ Añadir a otra ubicación' }}
             </button>
             <div v-else class="space-y-2">
-              <div class="grid grid-cols-2 gap-2">
+              <div :class="isCongregacion ? '' : 'grid grid-cols-2 gap-2'">
                 <div>
                   <label class="block text-[10px] font-medium text-gray-500 dark:text-gray-400 mb-1">Ubicación <span class="text-red-500">*</span></label>
                   <select v-model="nuevoContrato.ubicacion_id"
@@ -281,24 +286,27 @@
                     <option v-for="ub in ubicacionesActivas" :key="ub.id" :value="ub.id">{{ ub.name }}</option>
                   </select>
                 </div>
-                <div>
-                  <label class="block text-[10px] font-medium text-gray-500 dark:text-gray-400 mb-1">Cargo</label>
-                  <select v-model="nuevoContrato.cargo_id"
-                    class="w-full px-2 py-1.5 text-xs rounded-lg border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-1 focus:ring-blue-500">
-                    <option value="">Sin cargo</option>
-                    <option v-for="c in cargosEmpresa" :key="c.id" :value="c.id">{{ c.nombre }}</option>
-                  </select>
-                </div>
-                <div>
-                  <label class="block text-[10px] font-medium text-gray-500 dark:text-gray-400 mb-1">Límite horas/sem</label>
-                  <input v-model.number="nuevoContrato.limite_horas" type="number" min="0" max="168" placeholder="0 = sin límite"
-                    class="w-full px-2 py-1.5 text-xs rounded-lg border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-1 focus:ring-blue-500" />
-                </div>
-                <div>
-                  <label class="block text-[10px] font-medium text-gray-500 dark:text-gray-400 mb-1">Fecha fin contrato</label>
-                  <input v-model="nuevoContrato.fecha_fin" type="date"
-                    class="w-full px-2 py-1.5 text-xs rounded-lg border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-1 focus:ring-blue-500" />
-                </div>
+                <!-- Campos extra solo en empresa -->
+                <template v-if="!isCongregacion">
+                  <div>
+                    <label class="block text-[10px] font-medium text-gray-500 dark:text-gray-400 mb-1">Cargo</label>
+                    <select v-model="nuevoContrato.cargo_id"
+                      class="w-full px-2 py-1.5 text-xs rounded-lg border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-1 focus:ring-blue-500">
+                      <option value="">Sin cargo</option>
+                      <option v-for="c in cargosEmpresa" :key="c.id" :value="c.id">{{ c.nombre }}</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label class="block text-[10px] font-medium text-gray-500 dark:text-gray-400 mb-1">Límite horas/sem</label>
+                    <input v-model.number="nuevoContrato.limite_horas" type="number" min="0" max="168" placeholder="0 = sin límite"
+                      class="w-full px-2 py-1.5 text-xs rounded-lg border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-1 focus:ring-blue-500" />
+                  </div>
+                  <div>
+                    <label class="block text-[10px] font-medium text-gray-500 dark:text-gray-400 mb-1">Fecha fin contrato</label>
+                    <input v-model="nuevoContrato.fecha_fin" type="date"
+                      class="w-full px-2 py-1.5 text-xs rounded-lg border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-1 focus:ring-blue-500" />
+                  </div>
+                </template>
               </div>
               <p v-if="errorContrato" class="text-xs text-red-500">{{ errorContrato }}</p>
               <div class="flex gap-2 justify-end">
@@ -317,69 +325,196 @@
 
         <!-- Sección: Disponibilidad -->
         <section class="bg-white dark:bg-gray-800 rounded-xl border border-gray-100 dark:border-gray-700 overflow-hidden">
-          <div class="flex items-center justify-between px-4 py-3 border-b border-gray-100 dark:border-gray-700">
-            <div>
-              <p class="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">Disponibilidad semanal</p>
-              <p class="text-[10px] text-gray-400 dark:text-gray-500 mt-0.5">Franjas horarias base en que puede trabajar. El algoritmo usa esto como oferta.</p>
-            </div>
-            <div class="flex items-center gap-2">
-              <button v-if="!editandoDisponibilidad" type="button" @click="abrirEditorDisponibilidad"
-                class="text-xs text-blue-600 dark:text-blue-400 hover:underline">
-                {{ empleadoSeleccionado?.disponibilidad ? 'Editar' : 'Configurar' }}
-              </button>
-              <template v-else>
-                <button type="button" @click="cancelarDisponibilidad"
-                  class="text-xs text-gray-500 hover:text-gray-700 dark:hover:text-gray-300">Cancelar</button>
-                <button type="button" @click="guardarDisponibilidad" :disabled="guardandoDisponibilidad"
-                  class="text-xs text-blue-600 dark:text-blue-400 font-semibold hover:underline disabled:opacity-50">
-                  {{ guardandoDisponibilidad ? 'Guardando…' : 'Guardar' }}
-                </button>
-              </template>
-            </div>
+          <div class="px-4 py-3 border-b border-gray-100 dark:border-gray-700">
+            <p class="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">Disponibilidad semanal</p>
+            <p class="text-[10px] text-gray-400 dark:text-gray-500 mt-0.5">Días y franjas en que puede trabajar. El algoritmo usa esto como oferta.</p>
           </div>
 
-          <!-- Vista de solo lectura -->
-          <div v-if="!editandoDisponibilidad" class="p-4">
-            <div v-if="empleadoSeleccionado?.disponibilidad?.ventanas?.length" class="space-y-2">
-              <div v-for="dia in DIAS_SEMANA" :key="dia">
-                <div v-if="ventanasPorDia(empleadoSeleccionado.disponibilidad.ventanas, dia).length" class="flex items-start gap-2">
-                  <span class="shrink-0 text-[10px] font-semibold text-gray-500 dark:text-gray-400 uppercase w-10 pt-0.5">{{ dia.slice(0, 3) }}</span>
-                  <div class="flex flex-wrap gap-1">
-                    <span v-for="(v, i) in ventanasPorDia(empleadoSeleccionado.disponibilidad.ventanas, dia)" :key="i"
-                      class="px-2 py-0.5 text-xs rounded-full bg-blue-50 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 border border-blue-100 dark:border-blue-800">
-                      {{ v.start }} – {{ v.end }}
-                    </span>
+          <div class="p-4 space-y-4">
+            <!-- Selector de días (toggle) -->
+            <div>
+              <p class="text-[10px] font-medium text-gray-400 dark:text-gray-500 uppercase mb-2">Días disponibles</p>
+              <div class="flex flex-wrap gap-1.5">
+                <button
+                  v-for="dia in DIAS_SEMANA" :key="dia"
+                  type="button"
+                  @click="dispToggleDia(dia)"
+                  class="px-2.5 py-1 text-xs font-medium rounded-lg border transition-colors"
+                  :class="dispDiaTieneVentanas(dia)
+                    ? 'bg-blue-600 border-blue-600 text-white'
+                    : 'bg-white dark:bg-gray-700 border-gray-200 dark:border-gray-600 text-gray-500 dark:text-gray-400 hover:border-blue-400'"
+                >
+                  {{ dia.slice(0, 3) }}
+                </button>
+              </div>
+            </div>
+
+            <!-- Franjas por día activo -->
+            <div v-if="dispFormVentanas.some(v => true)" class="space-y-2">
+              <div
+                v-for="dia in DIAS_SEMANA.filter(dispDiaTieneVentanas)"
+                :key="dia"
+                class="p-3 rounded-lg bg-gray-50 dark:bg-gray-700/40 border border-gray-100 dark:border-gray-700"
+              >
+                <div class="flex items-center justify-between mb-2">
+                  <span class="text-xs font-semibold text-gray-700 dark:text-gray-300">{{ dia }}</span>
+                  <button type="button" @click="dispAgregarVentana(dia)"
+                    class="text-[11px] font-medium text-blue-600 dark:text-blue-400 hover:underline">+ Franja</button>
+                </div>
+                <div class="space-y-1.5">
+                  <div v-for="v in dispVentanasDeDia(dia)" :key="v.day_of_week + v.start + v.end" class="flex items-center gap-2">
+                    <input v-model="v.start" type="time"
+                      class="w-24 px-2 py-1.5 text-xs rounded-lg border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-1 focus:ring-blue-500 tabular-nums" />
+                    <span class="text-xs text-gray-400">–</span>
+                    <input v-model="v.end" type="time"
+                      class="w-24 px-2 py-1.5 text-xs rounded-lg border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-1 focus:ring-blue-500 tabular-nums" />
+                    <button type="button" @click="dispQuitarVentana(v)"
+                      class="w-6 h-6 flex items-center justify-center rounded text-gray-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors">
+                      <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" class="w-3.5 h-3.5">
+                        <path stroke-linecap="round" stroke-linejoin="round" d="M6 18 18 6M6 6l12 12" />
+                      </svg>
+                    </button>
                   </div>
                 </div>
               </div>
             </div>
-            <p v-else class="text-xs text-gray-400 dark:text-gray-500 italic">Sin disponibilidad configurada. El algoritmo no podrá asignar turnos a este empleado.</p>
+            <p v-if="!dispFormVentanas.length" class="text-xs text-gray-400 dark:text-gray-500 italic">Sin días seleccionados. Toca un día para activarlo.</p>
+
+            <!-- Frecuencias -->
+            <div class="grid grid-cols-2 gap-4">
+              <div>
+                <p class="text-[10px] font-medium text-gray-400 dark:text-gray-500 uppercase mb-2">Semanas al mes (0 = todas)</p>
+                <div class="flex gap-1.5 flex-wrap">
+                  <button v-for="n in [0,1,2,3,4]" :key="n" type="button" @click="dispForm.monthly_frequency = n"
+                    class="w-8 h-8 text-xs font-semibold rounded-lg border transition-colors"
+                    :class="dispForm.monthly_frequency === n
+                      ? 'bg-blue-600 border-blue-600 text-white'
+                      : 'bg-white dark:bg-gray-700 border-gray-200 dark:border-gray-600 text-gray-500 dark:text-gray-400 hover:border-blue-400'">
+                    {{ n === 0 ? '∞' : n }}
+                  </button>
+                </div>
+              </div>
+              <div>
+                <p class="text-[10px] font-medium text-gray-400 dark:text-gray-500 uppercase mb-2">Días por semana</p>
+                <div class="flex gap-1.5 flex-wrap">
+                  <button v-for="n in [1,2,3,4,5,6,7]" :key="n" type="button" @click="dispForm.weekly_frequency = n"
+                    class="w-8 h-8 text-xs font-semibold rounded-lg border transition-colors"
+                    :class="dispForm.weekly_frequency === n
+                      ? 'bg-blue-600 border-blue-600 text-white'
+                      : 'bg-white dark:bg-gray-700 border-gray-200 dark:border-gray-600 text-gray-500 dark:text-gray-400 hover:border-blue-400'">
+                    {{ n }}
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            <p v-if="dispErrorMsg" class="text-xs text-red-500 dark:text-red-400">{{ dispErrorMsg }}</p>
+            <p v-if="dispSuccessMsg" class="text-xs text-emerald-600 dark:text-emerald-400 font-medium">{{ dispSuccessMsg }}</p>
+
+            <div class="flex items-center gap-2">
+              <button v-if="empleadoSeleccionado?.disponibilidad" type="button" @click="dispLimpiar"
+                class="px-3 py-1.5 text-xs text-red-600 dark:text-red-400 border border-red-200 dark:border-red-800/40 rounded-lg hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors">
+                Limpiar
+              </button>
+              <div class="flex-1" />
+              <button type="button" @click="dispResetForm" :disabled="!dispIsDirty"
+                class="px-3 py-1.5 text-xs text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition-colors disabled:opacity-40">
+                Deshacer
+              </button>
+              <button type="button" @click="dispGuardar" :disabled="!dispIsDirty || dispSaving"
+                class="px-4 py-1.5 text-xs bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white font-medium rounded-lg transition-colors">
+                {{ dispSaving ? 'Guardando…' : 'Guardar' }}
+              </button>
+            </div>
+          </div>
+        </section>
+
+        <!-- Sección: Excepciones -->
+        <section class="bg-white dark:bg-gray-800 rounded-xl border border-gray-100 dark:border-gray-700 overflow-hidden">
+          <div class="flex items-center justify-between px-4 py-3 border-b border-gray-100 dark:border-gray-700">
+            <div>
+              <p class="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">Excepciones</p>
+              <p class="text-[10px] text-gray-400 dark:text-gray-500 mt-0.5">Ausencias puntuales. Restan disponibilidad ese día.</p>
+            </div>
+            <button v-if="canManage" type="button" @click="excOpenAdd = !excOpenAdd"
+              class="px-2.5 py-1 text-xs bg-amber-500 hover:bg-amber-600 text-white font-medium rounded-lg transition-colors">
+              + Agregar
+            </button>
           </div>
 
-          <!-- Editor de ventanas -->
-          <div v-else class="p-4 space-y-4">
-            <p v-if="errorDisponibilidad" class="text-xs text-red-500 dark:text-red-400">{{ errorDisponibilidad }}</p>
-            <div v-for="dia in DIAS_SEMANA" :key="dia" class="space-y-1.5">
-              <div class="flex items-center justify-between">
-                <span class="text-xs font-semibold text-gray-600 dark:text-gray-300">{{ dia }}</span>
-                <button type="button" @click="agregarVentana(dia)"
-                  class="text-[10px] text-blue-600 dark:text-blue-400 hover:underline">+ Franja</button>
+          <div class="p-4 space-y-3">
+            <!-- Formulario agregar -->
+            <div v-if="excOpenAdd" class="p-3 rounded-xl bg-amber-50 dark:bg-amber-900/10 border border-amber-200 dark:border-amber-800/40 space-y-3">
+              <p class="text-[10px] font-semibold uppercase tracking-widest text-amber-600 dark:text-amber-400">Nueva excepción</p>
+              <div class="grid grid-cols-2 gap-2">
+                <div class="col-span-2">
+                  <label class="block text-[10px] font-medium text-gray-500 dark:text-gray-400 mb-1">Fecha</label>
+                  <input v-model="excAddForm.date" type="date"
+                    class="w-full px-2.5 py-1.5 text-xs bg-white dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded-lg focus:outline-none focus:ring-1 focus:ring-amber-500 dark:text-white" />
+                </div>
+                <div>
+                  <label class="block text-[10px] font-medium text-gray-500 dark:text-gray-400 mb-1">Hora inicio</label>
+                  <input v-model="excAddForm.time_start" type="time"
+                    class="w-full px-2.5 py-1.5 text-xs bg-white dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded-lg focus:outline-none focus:ring-1 focus:ring-amber-500 dark:text-white tabular-nums" />
+                </div>
+                <div>
+                  <label class="block text-[10px] font-medium text-gray-500 dark:text-gray-400 mb-1">Hora fin</label>
+                  <input v-model="excAddForm.time_end" type="time"
+                    class="w-full px-2.5 py-1.5 text-xs bg-white dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded-lg focus:outline-none focus:ring-1 focus:ring-amber-500 dark:text-white tabular-nums" />
+                </div>
+                <div class="col-span-2">
+                  <label class="block text-[10px] font-medium text-gray-500 dark:text-gray-400 mb-1">Tipo</label>
+                  <select v-model="excAddForm.type"
+                    class="w-full px-2.5 py-1.5 text-xs bg-white dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded-lg focus:outline-none focus:ring-1 focus:ring-amber-500 dark:text-white">
+                    <option value="feriado_legal">Feriado legal</option>
+                    <option value="dia_administrativo">Día administrativo</option>
+                    <option value="emergencia">Emergencia</option>
+                    <option value="otro">Otro</option>
+                  </select>
+                </div>
+                <div class="col-span-2">
+                  <label class="block text-[10px] font-medium text-gray-500 dark:text-gray-400 mb-1">Motivo</label>
+                  <input v-model="excAddForm.reason" type="text" placeholder="Describe el motivo…"
+                    class="w-full px-2.5 py-1.5 text-xs bg-white dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded-lg focus:outline-none focus:ring-1 focus:ring-amber-500 dark:text-white" />
+                </div>
               </div>
-              <div v-for="(v, i) in formVentanas.filter(w => w.day_of_week === dia)" :key="i" class="flex items-center gap-2">
-                <input v-model="v.start" type="time"
-                  class="w-24 px-2 py-1 text-xs rounded-lg border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-1 focus:ring-blue-500" />
-                <span class="text-xs text-gray-400">–</span>
-                <input v-model="v.end" type="time"
-                  class="w-24 px-2 py-1 text-xs rounded-lg border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-1 focus:ring-blue-500" />
-                <button type="button" @click="quitarVentana(dia, i)"
-                  class="text-gray-400 hover:text-red-500 dark:hover:text-red-400 transition-colors">
-                  <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-3.5 h-3.5">
-                    <path stroke-linecap="round" stroke-linejoin="round" d="M6 18 18 6M6 6l12 12" />
+              <p v-if="excAddError" class="text-xs text-red-500 dark:text-red-400">{{ excAddError }}</p>
+              <div class="flex gap-2">
+                <button type="button" @click="excOpenAdd = false"
+                  class="flex-1 px-3 py-1.5 text-xs text-gray-600 dark:text-gray-300 border border-gray-200 dark:border-gray-600 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors">
+                  Cancelar
+                </button>
+                <button type="button" @click="excSubmitAdd" :disabled="excAdding"
+                  class="flex-1 px-3 py-1.5 text-xs text-white font-medium rounded-lg bg-amber-500 hover:bg-amber-600 transition-colors disabled:opacity-40">
+                  {{ excAdding ? 'Guardando…' : 'Guardar' }}
+                </button>
+              </div>
+            </div>
+
+            <!-- Lista de excepciones -->
+            <div v-if="!excepcionesActivas.length && !excOpenAdd" class="text-xs text-gray-400 dark:text-gray-500 italic py-1">
+              Sin excepciones registradas.
+            </div>
+            <div
+              v-for="exc in excepcionesActivas" :key="exc.id"
+              class="p-3 rounded-xl bg-gray-50 dark:bg-gray-700/50 border border-gray-100 dark:border-gray-700 space-y-1"
+            >
+              <div class="flex items-center justify-between gap-2">
+                <div class="flex items-center gap-2 flex-wrap">
+                  <span class="text-xs font-semibold text-gray-700 dark:text-gray-200">{{ excFormatDate(exc.date) }}</span>
+                  <span class="text-[10px] px-1.5 py-0.5 rounded font-medium" :class="excTipoClass(exc.type)">
+                    {{ excTipoLabel(exc.type) }}
+                  </span>
+                </div>
+                <button v-if="canManage" type="button" @click="excEliminar(exc.id)"
+                  class="text-gray-400 hover:text-red-500 dark:hover:text-red-400 transition-colors shrink-0">
+                  <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-4 h-4">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="m14.74 9-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 0 1-2.244 2.077H8.084a2.25 2.25 0 0 1-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 0 0-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 0 1 3.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 0 0-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 0 0-7.5 0" />
                   </svg>
                 </button>
               </div>
-              <p v-if="!formVentanas.filter(w => w.day_of_week === dia).length"
-                class="text-[10px] text-gray-400 dark:text-gray-500 italic pl-0.5">Sin franjas para este día</p>
+              <p class="text-xs text-gray-500 dark:text-gray-400">{{ exc.time_start }} – {{ exc.time_end }}</p>
+              <p v-if="exc.reason" class="text-xs text-gray-600 dark:text-gray-300">{{ exc.reason }}</p>
             </div>
           </div>
         </section>
@@ -702,8 +837,10 @@ import { useEstacionStore } from '../../stores/estacionStore';
 import { useGrantStore } from '../../stores/grantStore';
 import { useSegmentoStore } from '../../stores/segmentoStore';
 import { useDisponibilidadStore } from '../../stores/disponibilidadStore';
+import { useExcepcionStore } from '../../stores/excepcionStore';
 import { useRut } from '../../composables/useRut';
-import type { VentanaDisponibilidad } from '../../models/Empleado';
+import { Contrato } from '../../models/Contrato';
+import type { ExcepcionType } from '../../models/Excepcion';
 import { db, firebaseApp } from '../../firebase';
 import { contactoConverter, Contacto } from '../../models/Contacto';
 import { Usuario, usuarioConverter } from '../../models/Usuario';
@@ -736,6 +873,7 @@ const estacionStore = useEstacionStore();
 const grantStore = useGrantStore();
 const segmentoStore = useSegmentoStore();
 const disponibilidadStore = useDisponibilidadStore();
+const excepcionStore = useExcepcionStore();
 
 const activeCompanyId = computed(() => {
   if (sessionStore.userRole !== 'super_admin') return sessionStore.activeCompanyId;
@@ -856,12 +994,13 @@ function seleccionar(emp: Empleado) {
   editandoContacto.value = false;
   editandoContratoId.value = null;
   agregandoContrato.value = false;
-  editandoDisponibilidad.value = false;
-  errorDisponibilidad.value = '';
+  excOpenAdd.value = false;
   formContacto.first_name = emp.contacto?.first_name ?? '';
   formContacto.last_name  = emp.contacto?.last_name  ?? '';
   formContacto.email      = emp.contacto?.email      ?? '';
   formContacto.phone      = emp.contacto?.phone      ?? '';
+  dispLoadForm(emp);
+  excepcionStore.listarExcepciones(emp.id);
 }
 
 // Mantener datos del empleado seleccionado sincronizados si cambia en Firestore
@@ -876,6 +1015,8 @@ watch(() => empleadoStore.empleados, (lista) => {
       formContacto.email      = actualizado.contacto?.email      ?? '';
       formContacto.phone      = actualizado.contacto?.phone      ?? '';
     }
+    // Resync disponibilidad si no hay cambios pendientes
+    if (!dispIsDirty.value) dispLoadForm(actualizado);
   }
 }, { deep: true });
 
@@ -950,80 +1091,184 @@ async function guardarEstaciones() {
 
 const DIAS_SEMANA = ['Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado', 'Domingo'];
 
-const editandoDisponibilidad = ref(false);
-const guardandoDisponibilidad = ref(false);
-const errorDisponibilidad = ref('');
-const formVentanas = ref<VentanaDisponibilidad[]>([]);
+type DispVentana = { day_of_week: string; start: string; end: string };
+type DispFormState = { ventanas: DispVentana[]; monthly_frequency: number; weekly_frequency: number };
 
-function ventanasPorDia(ventanas: VentanaDisponibilidad[], dia: string): VentanaDisponibilidad[] {
-  return ventanas.filter(v => v.day_of_week === dia);
+const dispFormVentanas = ref<DispVentana[]>([]);
+const dispForm = reactive<{ monthly_frequency: number; weekly_frequency: number }>({ monthly_frequency: 0, weekly_frequency: 1 });
+const dispSnapshot = ref<DispFormState>({ ventanas: [], monthly_frequency: 0, weekly_frequency: 1 });
+const dispSaving = ref(false);
+const dispErrorMsg = ref('');
+const dispSuccessMsg = ref('');
+
+const dispIsDirty = computed(() =>
+  JSON.stringify({ ventanas: dispFormVentanas.value, ...dispForm }) !==
+  JSON.stringify(dispSnapshot.value)
+);
+
+function dispLoadForm(emp: typeof empleadoSeleccionado.value) {
+  const d = emp?.disponibilidad;
+  dispFormVentanas.value = d ? (d.ventanas ?? []).map(v => ({ ...v })) : [];
+  dispForm.monthly_frequency = d?.monthly_frequency ?? 0;
+  dispForm.weekly_frequency = d?.weekly_frequency ?? 1;
+  dispSnapshot.value = { ventanas: dispFormVentanas.value.map(v => ({ ...v })), monthly_frequency: dispForm.monthly_frequency, weekly_frequency: dispForm.weekly_frequency };
+  dispErrorMsg.value = '';
+  dispSuccessMsg.value = '';
 }
 
-function abrirEditorDisponibilidad() {
-  const ventanas = empleadoSeleccionado.value?.disponibilidad?.ventanas ?? [];
-  formVentanas.value = ventanas.map(v => ({ ...v }));
-  errorDisponibilidad.value = '';
-  editandoDisponibilidad.value = true;
+function dispResetForm() {
+  dispFormVentanas.value = dispSnapshot.value.ventanas.map(v => ({ ...v }));
+  dispForm.monthly_frequency = dispSnapshot.value.monthly_frequency;
+  dispForm.weekly_frequency = dispSnapshot.value.weekly_frequency;
 }
 
-function cancelarDisponibilidad() {
-  editandoDisponibilidad.value = false;
-  errorDisponibilidad.value = '';
+function dispDiaTieneVentanas(dia: string): boolean {
+  return dispFormVentanas.value.some(v => v.day_of_week === dia);
 }
 
-function agregarVentana(dia: string) {
-  formVentanas.value.push({ day_of_week: dia, start: '09:00', end: '17:00' });
+function dispVentanasDeDia(dia: string): DispVentana[] {
+  return dispFormVentanas.value.filter(v => v.day_of_week === dia);
 }
 
-function quitarVentana(dia: string, idx: number) {
-  const ventanasDia = formVentanas.value.filter(v => v.day_of_week === dia);
-  const ventana = ventanasDia[idx];
-  const globalIdx = formVentanas.value.indexOf(ventana);
-  if (globalIdx !== -1) formVentanas.value.splice(globalIdx, 1);
+function dispToggleDia(dia: string) {
+  if (dispDiaTieneVentanas(dia)) {
+    dispFormVentanas.value = dispFormVentanas.value.filter(v => v.day_of_week !== dia);
+  } else {
+    dispFormVentanas.value.push({ day_of_week: dia, start: '09:00', end: '18:00' });
+  }
 }
 
-function validarVentanas(): string | null {
+function dispAgregarVentana(dia: string) {
+  dispFormVentanas.value.push({ day_of_week: dia, start: '09:00', end: '18:00' });
+}
+
+function dispQuitarVentana(ventana: DispVentana) {
+  const idx = dispFormVentanas.value.indexOf(ventana);
+  if (idx >= 0) dispFormVentanas.value.splice(idx, 1);
+}
+
+function dispValidar(): string | null {
+  for (const v of dispFormVentanas.value) {
+    if (!v.start || !v.end) return 'Completa las horas de inicio y fin.';
+    if (v.start >= v.end) return `${v.day_of_week}: inicio debe ser menor que fin.`;
+  }
   for (const dia of DIAS_SEMANA) {
-    const vs = formVentanas.value.filter(v => v.day_of_week === dia);
-    for (const v of vs) {
-      if (v.start >= v.end) return `${dia}: la hora de inicio debe ser anterior a la hora de fin.`;
-    }
-    const sorted = [...vs].sort((a, b) => a.start.localeCompare(b.start));
-    for (let i = 0; i < sorted.length - 1; i++) {
-      if (sorted[i].end > sorted[i + 1].start) return `${dia}: hay franjas que se solapan.`;
+    const del = dispFormVentanas.value.filter(v => v.day_of_week === dia).slice().sort((a, b) => a.start.localeCompare(b.start));
+    for (let i = 1; i < del.length; i++) {
+      if (del[i].start < del[i - 1].end) return `${dia}: hay franjas que se solapan.`;
     }
   }
   return null;
 }
 
-async function guardarDisponibilidad() {
-  if (!empleadoSeleccionado.value) return;
-  const error = validarVentanas();
-  if (error) { errorDisponibilidad.value = error; return; }
-  guardandoDisponibilidad.value = true;
-  errorDisponibilidad.value = '';
+async function dispGuardar() {
+  if (!empleadoSeleccionado.value || !dispIsDirty.value) return;
+  const err = dispValidar();
+  if (err) { dispErrorMsg.value = err; return; }
+  dispSaving.value = true;
+  dispErrorMsg.value = '';
   try {
-    const empId = empleadoSeleccionado.value.id;
-    const ventanas = [...formVentanas.value];
+    const payload = {
+      ventanas: dispFormVentanas.value.map(v => ({ ...v })),
+      monthly_frequency: dispForm.monthly_frequency,
+      weekly_frequency: dispForm.weekly_frequency,
+      special_rule: empleadoSeleccionado.value.disponibilidad?.special_rule ?? '',
+    };
     if (empleadoSeleccionado.value.disponibilidad) {
-      await disponibilidadStore.updateDisponibilidad(empId, { ventanas });
+      await disponibilidadStore.updateDisponibilidad(empleadoSeleccionado.value.id, payload);
     } else {
-      await disponibilidadStore.setDisponibilidad(empId, {
-        ventanas,
-        monthly_frequency: 0,
-        weekly_frequency: 0,
-        special_rule: '',
-      });
+      await disponibilidadStore.setDisponibilidad(empleadoSeleccionado.value.id, payload);
     }
-    editandoDisponibilidad.value = false;
+    dispSnapshot.value = { ventanas: dispFormVentanas.value.map(v => ({ ...v })), monthly_frequency: dispForm.monthly_frequency, weekly_frequency: dispForm.weekly_frequency };
+    dispSuccessMsg.value = 'Disponibilidad guardada.';
+    setTimeout(() => { dispSuccessMsg.value = ''; }, 3000);
     const compId = sessionStore.activeCompanyId;
     const ubicId = sessionStore.activeUbicacionId;
     if (compId && ubicId) segmentoStore.regenerarBorradorMes(compId, ubicId);
   } catch (e: any) {
-    errorDisponibilidad.value = e.message ?? 'Error al guardar.';
+    dispErrorMsg.value = e.message ?? 'Error al guardar.';
   } finally {
-    guardandoDisponibilidad.value = false;
+    dispSaving.value = false;
   }
+}
+
+async function dispLimpiar() {
+  if (!empleadoSeleccionado.value) return;
+  if (!confirm(`¿Limpiar la disponibilidad de ${empleadoSeleccionado.value.displayName}?`)) return;
+  try {
+    await disponibilidadStore.clearDisponibilidad(empleadoSeleccionado.value.id);
+    dispFormVentanas.value = [];
+    dispForm.monthly_frequency = 0;
+    dispForm.weekly_frequency = 1;
+    dispSnapshot.value = { ventanas: [], monthly_frequency: 0, weekly_frequency: 1 };
+  } catch (e: any) {
+    dispErrorMsg.value = e.message ?? 'Error al limpiar.';
+  }
+}
+
+// ── Excepciones ────────────────────────────────────────────────────────────────
+
+const excOpenAdd = ref(false);
+const excAddError = ref('');
+const excAdding = ref(false);
+const excAddForm = ref<{ date: string; time_start: string; time_end: string; reason: string; type: ExcepcionType }>({
+  date: '', time_start: '08:00', time_end: '17:00', reason: '', type: 'otro',
+});
+
+const excepcionesActivas = computed(() => excepcionStore.excepcionesActivas);
+
+async function excSubmitAdd() {
+  if (!empleadoSeleccionado.value) return;
+  if (!excAddForm.value.date) { excAddError.value = 'La fecha es obligatoria.'; return; }
+  excAdding.value = true;
+  excAddError.value = '';
+  try {
+    await excepcionStore.createExcepcion({
+      employee_id: empleadoSeleccionado.value.id,
+      date: excAddForm.value.date,
+      time_start: excAddForm.value.time_start,
+      time_end: excAddForm.value.time_end,
+      reason: excAddForm.value.reason.trim(),
+      type: excAddForm.value.type,
+    });
+    excOpenAdd.value = false;
+    excAddForm.value = { date: '', time_start: '08:00', time_end: '17:00', reason: '', type: 'otro' };
+    const compId = sessionStore.activeCompanyId;
+    const ubicId = sessionStore.activeUbicacionId;
+    if (compId && ubicId) segmentoStore.regenerarBorradorMes(compId, ubicId);
+  } catch (e: any) {
+    excAddError.value = e.message ?? 'Error al guardar.';
+  } finally {
+    excAdding.value = false;
+  }
+}
+
+async function excEliminar(id: string) {
+  if (!confirm('¿Eliminar esta excepción?')) return;
+  await excepcionStore.softDeleteExcepcion(id);
+  const compId = sessionStore.activeCompanyId;
+  const ubicId = sessionStore.activeUbicacionId;
+  if (compId && ubicId) segmentoStore.regenerarBorradorMes(compId, ubicId);
+}
+
+function excFormatDate(iso: string): string {
+  if (!iso) return '';
+  const [y, m, d] = iso.split('-');
+  return `${d}/${m}/${y}`;
+}
+
+const excTipoLabels: Record<string, string> = {
+  feriado_legal: 'Feriado legal', dia_administrativo: 'Día admin.', emergencia: 'Emergencia', otro: 'Otro',
+};
+function excTipoLabel(type: string): string { return excTipoLabels[type] || type; }
+function excTipoClass(type: string): string {
+  const map: Record<string, string> = {
+    feriado_legal: 'bg-blue-100 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400',
+    dia_administrativo: 'bg-violet-100 dark:bg-violet-900/30 text-violet-600 dark:text-violet-400',
+    emergencia: 'bg-red-100 dark:bg-red-900/30 text-red-600 dark:text-red-400',
+    otro: 'bg-gray-100 dark:bg-gray-700 text-gray-500 dark:text-gray-400',
+  };
+  return map[type] ?? map.otro;
 }
 
 // ── Contratos ──────────────────────────────────────────────────────────────────
@@ -1154,8 +1399,20 @@ function seleccionarParaAgregar(emp: Empleado) {
   empleadoParaAgregar.value = emp;
 }
 
-function confirmarAgregarEmpleado() {
+async function confirmarAgregarEmpleado() {
   if (!empleadoParaAgregar.value) return;
+  // En congregación: crear contrato automáticamente en la ubicación activa
+  if (isCongregacion.value && sessionStore.activeUbicacionId) {
+    await empleadoStore.addContrato(empleadoParaAgregar.value.id, {
+      empleado_id:  empleadoParaAgregar.value.id,
+      ubicacion_id: sessionStore.activeUbicacionId,
+      cargo_id:     '',
+      active:       true,
+      limite_horas: 0,
+      fecha_inicio: new Date(),
+      fecha_fin:    null,
+    });
+  }
   cerrarModalAgregar();
   seleccionar(empleadoParaAgregar.value);
 }
@@ -1233,14 +1490,21 @@ async function guardarNuevoEmpleado() {
       ));
       contactId = newRef.id;
     }
+    // En congregación: crear contrato en la ubicación activa directamente al crear el empleado
+    const ubicacionId = sessionStore.activeUbicacionId;
+    const contratosIniciales: Contrato[] = (isCongregacion.value && ubicacionId)
+      ? [new Contrato(crypto.randomUUID(), 'pending', ubicacionId, '', true, 0, new Date(), null)]
+      : [];
+
     await empleadoStore.createEmpleado({
       company_id:   activeCompanyId.value,
       contact_id:   contactId,
       active:       true,
       estacion_ids: [],
-      contratos:    [],
+      contratos:    contratosIniciales,
       disponibilidad: null,
     });
+
     cerrarModalAgregar();
   } catch (e: any) {
     errorNuevo.value = e.message || (isCongregacion.value ? 'Error al crear el voluntario.' : 'Error al crear el empleado.');
