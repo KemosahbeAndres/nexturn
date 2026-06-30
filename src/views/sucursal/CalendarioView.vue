@@ -522,139 +522,6 @@ import { functions, db } from '../../firebase';
 import type { Segmento, SegmentoStatus } from '../../models/Segmento';
 import type { Turno } from '../../models/Ubicacion';
 
-// ── Mes (congregación) ────────────────────────────────────────────────────────
-
-const mesBase = ref<{ year: number; month: number }>(() => {
-  const hoyD = new Date();
-  return { year: hoyD.getFullYear(), month: hoyD.getMonth() };
-});
-
-function primerDiaMes(year: number, month: number): string {
-  return new Date(year, month, 1).toISOString().slice(0, 10);
-}
-
-function ultimoDiaMes(year: number, month: number): string {
-  return new Date(year, month + 1, 0).toISOString().slice(0, 10);
-}
-
-const mesInicio = computed(() => primerDiaMes(mesBase.value.year, mesBase.value.month));
-const mesFin = computed(() => ultimoDiaMes(mesBase.value.year, mesBase.value.month));
-
-const diasDelMes = computed<{ date: string; esHoy: boolean; esMes: boolean }[]>(() => {
-  const { year, month } = mesBase.value;
-  const primer = new Date(year, month, 1);
-  // día de semana del primero (lunes=0)
-  const offsetLunes = (primer.getDay() + 6) % 7;
-  const cells: { date: string; esHoy: boolean; esMes: boolean }[] = [];
-  const hoyStr = new Date().toISOString().slice(0, 10);
-  // días del mes anterior para completar la primera fila
-  for (let i = offsetLunes - 1; i >= 0; i--) {
-    const d = new Date(year, month, -i);
-    const str = d.toISOString().slice(0, 10);
-    cells.push({ date: str, esHoy: str === hoyStr, esMes: false });
-  }
-  // días del mes
-  const diasTotal = new Date(year, month + 1, 0).getDate();
-  for (let d = 1; d <= diasTotal; d++) {
-    const str = new Date(year, month, d).toISOString().slice(0, 10);
-    cells.push({ date: str, esHoy: str === hoyStr, esMes: true });
-  }
-  // rellenar hasta completar grilla de 6 semanas (42 celdas)
-  let d = 1;
-  while (cells.length < 42) {
-    const str = new Date(year, month + 1, d++).toISOString().slice(0, 10);
-    cells.push({ date: str, esHoy: str === hoyStr, esMes: false });
-  }
-  return cells;
-});
-
-const nombresMeses = ['Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'];
-
-const labelMes = computed(() =>
-  `${nombresMeses[mesBase.value.month]} ${mesBase.value.year}`
-);
-
-async function irMes(dir: number) {
-  let { year, month } = mesBase.value;
-  month += dir;
-  if (month > 11) { month = 0; year++; }
-  if (month < 0) { month = 11; year--; }
-  mesBase.value = { year, month };
-  cerrarSidebar();
-  await cargarMes();
-}
-
-async function irMesHoy() {
-  const hoyD = new Date();
-  mesBase.value = { year: hoyD.getFullYear(), month: hoyD.getMonth() };
-  cerrarSidebar();
-  await cargarMes();
-}
-
-async function cargarMes() {
-  if (!companyId.value || !ubicacionId.value) return;
-  cargando.value = true;
-  errorBorrador.value = '';
-  try {
-    if (canManage.value) {
-      await calcularDiagnostico();
-      segmentos.value = await segmentoStore.cargarSegmentosManager(
-        ubicacionId.value, mesInicio.value, mesFin.value
-      );
-    } else if (miEmpleadoId.value) {
-      segmentos.value = await segmentoStore.cargarSegmentosEmpleado(
-        miEmpleadoId.value, mesInicio.value, mesFin.value
-      );
-    }
-  } finally {
-    cargando.value = false;
-  }
-}
-
-async function regenerarBorradorMes() {
-  if (!canManage.value || !companyId.value || !ubicacionId.value) return;
-  if (!diagnostico.value?.tieneTurnos || !diagnostico.value?.tieneEmpleadosConContrato) return;
-  errorBorrador.value = '';
-  generandoBorrador.value = true;
-  try {
-    await actualizarBorradorFn({
-      empresa_id: companyId.value,
-      ubicacion_id: ubicacionId.value,
-      week_start: mesInicio.value,
-      dias: new Date(mesBase.value.year, mesBase.value.month + 1, 0).getDate(),
-    });
-    segmentos.value = await segmentoStore.cargarSegmentosManager(
-      ubicacionId.value, mesInicio.value, mesFin.value
-    );
-  } catch (err: any) {
-    errorBorrador.value = err?.message ?? String(err);
-  } finally {
-    generandoBorrador.value = false;
-  }
-}
-
-function segmentosFecha(date: string): Segmento[] {
-  return segmentos.value
-    .filter(s => s.date === date)
-    .sort((a, b) => a.start.localeCompare(b.start));
-}
-
-function empleadosPorFecha(date: string): { nombre: string; horario: string; status: SegmentoStatus; id: string }[] {
-  const fecha = segmentos.value.filter(s =>
-    s.date === date && s.status !== 'rechazado'
-  );
-  const porEmpleado = new Map<string, Segmento>();
-  for (const s of fecha.sort((a, b) => a.start.localeCompare(b.start))) {
-    if (!porEmpleado.has(s.empleado_id)) porEmpleado.set(s.empleado_id, s);
-  }
-  return [...porEmpleado.entries()].map(([empId, s]) => ({
-    id: s.id,
-    nombre: nombreById(empId),
-    horario: `${s.start}–${s.end}`,
-    status: s.status,
-  }));
-}
-
 const sessionStore = useSessionStore();
 const segmentoStore = useSegmentoStore();
 const grantStore = useGrantStore();
@@ -1440,6 +1307,128 @@ async function publicarDia(diaIdx: number) {
       .filter(s => s.date === fecha && s.status === 'aprobado')
       .forEach(s => { s.status = 'publicado'; });
   } finally { accionando.value = false; }
+}
+
+// ── Mes (congregación) ────────────────────────────────────────────────────────
+
+const mesBase = ref<{ year: number; month: number }>({ year: new Date().getFullYear(), month: new Date().getMonth() });
+
+function primerDiaMes(year: number, month: number): string {
+  return new Date(year, month, 1).toISOString().slice(0, 10);
+}
+
+function ultimoDiaMes(year: number, month: number): string {
+  return new Date(year, month + 1, 0).toISOString().slice(0, 10);
+}
+
+const mesInicio = computed(() => primerDiaMes(mesBase.value.year, mesBase.value.month));
+const mesFin = computed(() => ultimoDiaMes(mesBase.value.year, mesBase.value.month));
+
+const diasDelMes = computed<{ date: string; esHoy: boolean; esMes: boolean }[]>(() => {
+  const { year, month } = mesBase.value;
+  const primer = new Date(year, month, 1);
+  const offsetLunes = (primer.getDay() + 6) % 7;
+  const cells: { date: string; esHoy: boolean; esMes: boolean }[] = [];
+  const hoyStr = new Date().toISOString().slice(0, 10);
+  for (let i = offsetLunes - 1; i >= 0; i--) {
+    const str = new Date(year, month, -i).toISOString().slice(0, 10);
+    cells.push({ date: str, esHoy: str === hoyStr, esMes: false });
+  }
+  const diasTotal = new Date(year, month + 1, 0).getDate();
+  for (let d = 1; d <= diasTotal; d++) {
+    const str = new Date(year, month, d).toISOString().slice(0, 10);
+    cells.push({ date: str, esHoy: str === hoyStr, esMes: true });
+  }
+  let d = 1;
+  while (cells.length < 42) {
+    const str = new Date(year, month + 1, d++).toISOString().slice(0, 10);
+    cells.push({ date: str, esHoy: str === hoyStr, esMes: false });
+  }
+  return cells;
+});
+
+const nombresMeses = ['Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'];
+
+const labelMes = computed(() =>
+  `${nombresMeses[mesBase.value.month]} ${mesBase.value.year}`
+);
+
+async function irMes(dir: number) {
+  let { year, month } = mesBase.value;
+  month += dir;
+  if (month > 11) { month = 0; year++; }
+  if (month < 0) { month = 11; year--; }
+  mesBase.value = { year, month };
+  cerrarSidebar();
+  await cargarMes();
+}
+
+async function irMesHoy() {
+  const hoyD = new Date();
+  mesBase.value = { year: hoyD.getFullYear(), month: hoyD.getMonth() };
+  cerrarSidebar();
+  await cargarMes();
+}
+
+async function cargarMes() {
+  if (!companyId.value || !ubicacionId.value) return;
+  cargando.value = true;
+  errorBorrador.value = '';
+  try {
+    if (canManage.value) {
+      await calcularDiagnostico();
+      segmentos.value = await segmentoStore.cargarSegmentosManager(
+        ubicacionId.value, mesInicio.value, mesFin.value
+      );
+    } else if (miEmpleadoId.value) {
+      segmentos.value = await segmentoStore.cargarSegmentosEmpleado(
+        miEmpleadoId.value, mesInicio.value, mesFin.value
+      );
+    }
+  } finally {
+    cargando.value = false;
+  }
+}
+
+async function regenerarBorradorMes() {
+  if (!canManage.value || !companyId.value || !ubicacionId.value) return;
+  if (!diagnostico.value?.tieneTurnos || !diagnostico.value?.tieneEmpleadosConContrato) return;
+  errorBorrador.value = '';
+  generandoBorrador.value = true;
+  try {
+    await actualizarBorradorFn({
+      empresa_id: companyId.value,
+      ubicacion_id: ubicacionId.value,
+      week_start: mesInicio.value,
+      dias: new Date(mesBase.value.year, mesBase.value.month + 1, 0).getDate(),
+    });
+    segmentos.value = await segmentoStore.cargarSegmentosManager(
+      ubicacionId.value, mesInicio.value, mesFin.value
+    );
+  } catch (err: any) {
+    errorBorrador.value = err?.message ?? String(err);
+  } finally {
+    generandoBorrador.value = false;
+  }
+}
+
+function segmentosFecha(date: string): Segmento[] {
+  return segmentos.value
+    .filter(s => s.date === date)
+    .sort((a, b) => a.start.localeCompare(b.start));
+}
+
+function empleadosPorFecha(date: string): { nombre: string; horario: string; status: SegmentoStatus; id: string }[] {
+  const porEmpleado = new Map<string, Segmento>();
+  for (const s of segmentos.value.filter(s => s.date === date && s.status !== 'rechazado').sort((a, b) => a.start.localeCompare(b.start))) {
+    if (!porEmpleado.has(s.empleado_id)) porEmpleado.set(s.empleado_id, s);
+  }
+  return [...porEmpleado.entries()].map(([empId, s]) => ({
+    id: s.id,
+    nombre: nombreById(empId),
+    horario: `${s.start}–${s.end}`,
+    status: s.status,
+  }));
 }
 
 // ── Helpers vista mensual (congregación) ──────────────────────────────────────
