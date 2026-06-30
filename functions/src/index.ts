@@ -935,115 +935,54 @@ export const actualizarBorrador = onCall<
 
     const segmentosDelDia: SegmentoToWrite[] = [];
     const huecosDelDia: HuecoReporte[] = [];
+    const turnoAsignadoHoy = new Set<string>(); // empleados ya asignados a un turno hoy (empresa)
 
-    // Para empresa: 1 turno por día por persona (restricción laboral).
-    // Para congregación: un voluntario puede ir a varios turnos del día siempre
-    // que no se solapen — el check de solape por bucket ya lo garantiza.
-    const turnoAsignadoHoy = new Set<string>(); // solo usado en empresa
+    if (esCongregacion) {
+      // ── Greedy congregación: un segmento por voluntario por turno ────────────
+      // Un voluntario cubre el turno completo si su disponibilidad lo contiene.
+      // No se sub-divide en buckets de 30 min: un solo segmento start→end del turno.
+      // Restricción dura: no se asigna a dos turnos solapados el mismo día.
 
-    for (const turno of turnosDelDia) {
-      const duracionTurnoMin = toMinutes(turno.end_time) - toMinutes(turno.start_time);
+      for (const turno of turnosDelDia) {
+        const tStart = toMinutes(turno.start_time);
+        const tEnd   = toMinutes(turno.end_time);
+        const durMin = tEnd - tStart;
 
-      for (const req of turno.requerimientos) {
-        const estacion = req.estacion_id ? estacionesMap.get(req.estacion_id) : null;
-        if (req.estacion_id && !estacion) continue;
+        for (const req of turno.requerimientos) {
+          if ((req.cantidad ?? 0) <= 0) continue;
 
-        const buckets = generarBuckets(turno.start_time, turno.end_time);
-
-        for (const bucket of buckets) {
-          // a. Empleados cuya ventana de disponibilidad cubre el bucket
+          // a. Voluntarios cuya disponibilidad cubre el turno completo
           const disponibles = presencias
-            .filter(
-              (p) =>
-                toMinutes(p.start) <= toMinutes(bucket.start) &&
-                toMinutes(p.end) >= toMinutes(bucket.end)
-            )
+            .filter((p) => toMinutes(p.start) <= tStart && toMinutes(p.end) >= tEnd)
             .map((p) => p.empleado_id);
 
-          // b. Excluir empleados con segmento solapado en este bucket
+          // b. Excluir los que ya tienen un segmento solapado con este turno
           const sinSolape = disponibles.filter((eid) => {
             const estado = estadosEmpleado.get(eid)!;
             return !estado.segmentos.some((s) =>
-              seProlapan(s.start, s.end, bucket.start, bucket.end)
+              s.tipo === "estacion" &&
+              seProlapan(s.start, s.end, turno.start_time, turno.end_time)
             );
           });
 
-          // b2. En empresa: 1 turno por día (congregación omite este filtro)
-          const sinTurnoRepetido = esCongregacion
-            ? sinSolape
-            : sinSolape.filter((eid) => !turnoAsignadoHoy.has(eid));
-
-          // b3. Excluir empleados que superarían su límite de horas semanal
-          const sinExcederLimite = sinTurnoRepetido.filter((eid) => {
-            const limMin = limiteMinutosPorEmpleado.get(eid) ?? 0;
-            if (limMin === 0) return true;
-            const yaMinutos = minutosAsignadosSemana.get(eid) ?? 0;
-            return yaMinutos + duracionTurnoMin <= limMin;
-          });
-
-          // c. Anti-saturación (solo empresa)
-          const sinSaturation = sinExcederLimite.filter((eid) => {
-            if (!estacion) return true;
-            const estado = estadosEmpleado.get(eid)!;
-            if (
-              estacion.max_continuo_min !== null &&
-              estado.minConsecutivosEnAlta >= estacion.max_continuo_min
-            ) {
-              const yaDescansa = estado.segmentos.some(
-                (s) =>
-                  s.tipo === "descanso" &&
-                  seProlapan(s.start, s.end, bucket.start, bucket.end)
-              );
-              if (!yaDescansa) {
-                const descanso: SegmentoToWrite = {
-                  empresa_id, ubicacion_id, empleado_id: eid, date: fecha,
-                  estacion_id: null, tipo: "descanso",
-                  start: bucket.start, end: bucket.end,
-                  asignacion_id: asignacionId, status: "sugerido",
-                };
-                estado.segmentos.push(descanso);
-                segmentosDelDia.push(descanso);
-                estado.minConsecutivosEnAlta = 0;
-              }
-              return false;
-            }
-            return true;
-          });
-
-          // d. Reglas hard de convivencia (aplica a ambos tipos de tenant)
-          const candidatos = sinSaturation.filter((eid) => {
-            const reglas = reglasMap.get(eid) ?? [];
-            for (const regla of reglas) {
-              if (!regla.is_strict || regla.type !== "nunca_juntos") continue;
-              const otro = regla.person_uno_id === eid ? regla.person_dos_id : regla.person_uno_id;
-              const otroEstado = estadosEmpleado.get(otro);
-              if (otroEstado?.segmentos.some((s) => s.tipo === "estacion" && seProlapan(s.start, s.end, bucket.start, bucket.end))) {
-                return false;
-              }
-            }
-            return true;
-          });
-
-          // e. Ordenar por equidad (menos minutos acumulados en la semana primero)
-          candidatos.sort((a, b) => {
+          // c. Equidad: menos minutos acumulados en la semana van primero;
+          //    tiebreaker: menos segmentos asignados hoy
+          sinSolape.sort((a, b) => {
             const ma = minutosAsignadosSemana.get(a) ?? 0;
             const mb = minutosAsignadosSemana.get(b) ?? 0;
             if (ma !== mb) return ma - mb;
-            const fa = estadosEmpleado.get(a)?.minConsecutivosEnAlta ?? 0;
-            const fb = estadosEmpleado.get(b)?.minConsecutivosEnAlta ?? 0;
-            if (fa !== fb) return fa - fb;
             return (estadosEmpleado.get(a)?.segmentos.length ?? 0) -
                    (estadosEmpleado.get(b)?.segmentos.length ?? 0);
           });
 
-          const asignados = candidatos.slice(0, req.cantidad);
+          const asignados = sinSolape.slice(0, req.cantidad);
 
           if (asignados.length < req.cantidad) {
             huecosDelDia.push({
               date: fecha,
-              bucket_start: bucket.start,
-              bucket_end: bucket.end,
-              estacion_id: req.estacion_id,
+              bucket_start: turno.start_time,
+              bucket_end: turno.end_time,
+              estacion_id: null,
               requerido: req.cantidad,
               asignado: asignados.length,
             });
@@ -1052,32 +991,157 @@ export const actualizarBorrador = onCall<
           for (const eid of asignados) {
             const seg: SegmentoToWrite = {
               empresa_id, ubicacion_id, empleado_id: eid, date: fecha,
-              estacion_id: req.estacion_id, tipo: "estacion",
-              start: bucket.start, end: bucket.end,
+              estacion_id: null, tipo: "estacion",
+              start: turno.start_time, end: turno.end_time,
               asignacion_id: asignacionId, status: "sugerido",
             };
-            const estado = estadosEmpleado.get(eid)!;
-            estado.segmentos.push(seg);
+            estadosEmpleado.get(eid)!.segmentos.push(seg);
             segmentosDelDia.push(seg);
-            if (!esCongregacion) turnoAsignadoHoy.add(eid);
-            if (estacion?.intensidad === "alta") {
-              estado.minConsecutivosEnAlta += 30;
-            } else {
-              estado.minConsecutivosEnAlta = 0;
+            minutosAsignadosSemana.set(eid, (minutosAsignadosSemana.get(eid) ?? 0) + durMin);
+          }
+        }
+      }
+    } else {
+      // ── Greedy empresa: sub-buckets de 30 min con estaciones ─────────────────
+
+      for (const turno of turnosDelDia) {
+        const duracionTurnoMin = toMinutes(turno.end_time) - toMinutes(turno.start_time);
+
+        for (const req of turno.requerimientos) {
+          const estacion = req.estacion_id ? estacionesMap.get(req.estacion_id) : null;
+          if (req.estacion_id && !estacion) continue;
+
+          const buckets = generarBuckets(turno.start_time, turno.end_time);
+
+          for (const bucket of buckets) {
+            // a. Empleados cuya ventana cubre el bucket
+            const disponibles = presencias
+              .filter(
+                (p) =>
+                  toMinutes(p.start) <= toMinutes(bucket.start) &&
+                  toMinutes(p.end) >= toMinutes(bucket.end)
+              )
+              .map((p) => p.empleado_id);
+
+            // b. Sin solape
+            const sinSolape = disponibles.filter((eid) => {
+              const estado = estadosEmpleado.get(eid)!;
+              return !estado.segmentos.some((s) =>
+                seProlapan(s.start, s.end, bucket.start, bucket.end)
+              );
+            });
+
+            // b2. 1 turno por día en empresa
+            const sinTurnoRepetido = sinSolape.filter((eid) => !turnoAsignadoHoy.has(eid));
+
+            // b3. Sin exceder límite de horas
+            const sinExcederLimite = sinTurnoRepetido.filter((eid) => {
+              const limMin = limiteMinutosPorEmpleado.get(eid) ?? 0;
+              if (limMin === 0) return true;
+              const yaMinutos = minutosAsignadosSemana.get(eid) ?? 0;
+              return yaMinutos + duracionTurnoMin <= limMin;
+            });
+
+            // c. Anti-saturación
+            const sinSaturation = sinExcederLimite.filter((eid) => {
+              if (!estacion) return true;
+              const estado = estadosEmpleado.get(eid)!;
+              if (
+                estacion.max_continuo_min !== null &&
+                estado.minConsecutivosEnAlta >= estacion.max_continuo_min
+              ) {
+                const yaDescansa = estado.segmentos.some(
+                  (s) =>
+                    s.tipo === "descanso" &&
+                    seProlapan(s.start, s.end, bucket.start, bucket.end)
+                );
+                if (!yaDescansa) {
+                  const descanso: SegmentoToWrite = {
+                    empresa_id, ubicacion_id, empleado_id: eid, date: fecha,
+                    estacion_id: null, tipo: "descanso",
+                    start: bucket.start, end: bucket.end,
+                    asignacion_id: asignacionId, status: "sugerido",
+                  };
+                  estado.segmentos.push(descanso);
+                  segmentosDelDia.push(descanso);
+                  estado.minConsecutivosEnAlta = 0;
+                }
+                return false;
+              }
+              return true;
+            });
+
+            // d. Reglas hard de convivencia
+            const candidatos = sinSaturation.filter((eid) => {
+              const reglas = reglasMap.get(eid) ?? [];
+              for (const regla of reglas) {
+                if (!regla.is_strict || regla.type !== "nunca_juntos") continue;
+                const otro = regla.person_uno_id === eid ? regla.person_dos_id : regla.person_uno_id;
+                const otroEstado = estadosEmpleado.get(otro);
+                if (otroEstado?.segmentos.some((s) => s.tipo === "estacion" && seProlapan(s.start, s.end, bucket.start, bucket.end))) {
+                  return false;
+                }
+              }
+              return true;
+            });
+
+            // e. Equidad
+            candidatos.sort((a, b) => {
+              const ma = minutosAsignadosSemana.get(a) ?? 0;
+              const mb = minutosAsignadosSemana.get(b) ?? 0;
+              if (ma !== mb) return ma - mb;
+              const fa = estadosEmpleado.get(a)?.minConsecutivosEnAlta ?? 0;
+              const fb = estadosEmpleado.get(b)?.minConsecutivosEnAlta ?? 0;
+              if (fa !== fb) return fa - fb;
+              return (estadosEmpleado.get(a)?.segmentos.length ?? 0) -
+                     (estadosEmpleado.get(b)?.segmentos.length ?? 0);
+            });
+
+            const asignados = candidatos.slice(0, req.cantidad);
+
+            if (asignados.length < req.cantidad) {
+              huecosDelDia.push({
+                date: fecha,
+                bucket_start: bucket.start,
+                bucket_end: bucket.end,
+                estacion_id: req.estacion_id,
+                requerido: req.cantidad,
+                asignado: asignados.length,
+              });
+            }
+
+            for (const eid of asignados) {
+              const seg: SegmentoToWrite = {
+                empresa_id, ubicacion_id, empleado_id: eid, date: fecha,
+                estacion_id: req.estacion_id, tipo: "estacion",
+                start: bucket.start, end: bucket.end,
+                asignacion_id: asignacionId, status: "sugerido",
+              };
+              const estado = estadosEmpleado.get(eid)!;
+              estado.segmentos.push(seg);
+              segmentosDelDia.push(seg);
+              turnoAsignadoHoy.add(eid);
+              if (estacion?.intensidad === "alta") {
+                estado.minConsecutivosEnAlta += 30;
+              } else {
+                estado.minConsecutivosEnAlta = 0;
+              }
             }
           }
         }
       }
     }
 
-    // Acumular minutos de este día al contador semanal
-    const empleadosAsignadosHoy = new Set(segmentosDelDia.map((s) => s.empleado_id));
-    empleadosAsignadosHoy.forEach((eid) => {
-      const minHoy = segmentosDelDia
-        .filter((s) => s.empleado_id === eid && s.tipo === "estacion")
-        .reduce((acc, s) => acc + (toMinutes(s.end) - toMinutes(s.start)), 0);
-      minutosAsignadosSemana.set(eid, (minutosAsignadosSemana.get(eid) ?? 0) + minHoy);
-    });
+    // Acumular minutos de este día al contador semanal (solo empresa; congregación lo hace inline)
+    if (!esCongregacion) {
+      const empleadosAsignadosHoy = new Set(segmentosDelDia.map((s) => s.empleado_id));
+      empleadosAsignadosHoy.forEach((eid) => {
+        const minHoy = segmentosDelDia
+          .filter((s) => s.empleado_id === eid && s.tipo === "estacion")
+          .reduce((acc, s) => acc + (toMinutes(s.end) - toMinutes(s.start)), 0);
+        minutosAsignadosSemana.set(eid, (minutosAsignadosSemana.get(eid) ?? 0) + minHoy);
+      });
+    }
 
     // Escribir segmentos del día en lotes
     const BATCH_SIZE = 499;
