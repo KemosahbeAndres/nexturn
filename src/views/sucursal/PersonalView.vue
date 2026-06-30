@@ -436,9 +436,14 @@
               <p class="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">Excepciones</p>
               <p class="text-[10px] text-gray-400 dark:text-gray-500 mt-0.5">Ausencias puntuales. Restan disponibilidad ese día.</p>
             </div>
-            <button v-if="canManage" type="button" @click="excOpenAdd = !excOpenAdd"
-              class="px-2.5 py-1 text-xs bg-amber-500 hover:bg-amber-600 text-white font-medium rounded-lg transition-colors">
-              + Agregar
+            <button type="button" @click="excOpenAdd = !excOpenAdd"
+              class="w-7 h-7 flex items-center justify-center rounded-lg text-white font-bold transition-colors"
+              :class="excOpenAdd ? 'bg-amber-600 hover:bg-amber-700' : 'bg-amber-500 hover:bg-amber-600'"
+              title="Agregar excepción">
+              <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2.5" stroke="currentColor" class="w-4 h-4"
+                :class="excOpenAdd ? 'rotate-45' : ''" style="transition: transform 0.15s">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
+              </svg>
             </button>
           </div>
 
@@ -515,6 +520,122 @@
               </div>
               <p class="text-xs text-gray-500 dark:text-gray-400">{{ exc.time_start }} – {{ exc.time_end }}</p>
               <p v-if="exc.reason" class="text-xs text-gray-600 dark:text-gray-300">{{ exc.reason }}</p>
+            </div>
+          </div>
+        </section>
+
+        <!-- Sección: Reglas de convivencia -->
+        <section class="bg-white dark:bg-gray-800 rounded-xl border border-gray-100 dark:border-gray-700 overflow-hidden">
+          <div class="flex items-center justify-between px-4 py-3 border-b border-gray-100 dark:border-gray-700">
+            <div>
+              <p class="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">Reglas de convivencia</p>
+              <p class="text-[10px] text-gray-400 dark:text-gray-500 mt-0.5">Juntos / Nunca juntos en el mismo turno.</p>
+            </div>
+            <button type="button" @click="reglaOpenAdd = !reglaOpenAdd"
+              class="w-7 h-7 flex items-center justify-center rounded-lg text-white font-bold transition-colors"
+              :class="reglaOpenAdd ? 'bg-violet-700 hover:bg-violet-800' : 'bg-violet-600 hover:bg-violet-700'"
+              title="Agregar regla">
+              <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2.5" stroke="currentColor" class="w-4 h-4"
+                :class="reglaOpenAdd ? 'rotate-45' : ''" style="transition: transform 0.15s">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
+              </svg>
+            </button>
+          </div>
+
+          <div class="p-4 space-y-3">
+            <!-- Formulario nueva regla -->
+            <div v-if="reglaOpenAdd" class="p-3 rounded-xl bg-violet-50 dark:bg-violet-900/10 border border-violet-200 dark:border-violet-800/40 space-y-3">
+              <p class="text-[10px] font-semibold uppercase tracking-widest text-violet-600 dark:text-violet-400">Nueva regla</p>
+
+              <div>
+                <label class="block text-[10px] font-medium text-gray-500 dark:text-gray-400 mb-1">Persona</label>
+                <select v-model="reglaFormPareja"
+                  class="w-full px-2.5 py-1.5 text-xs rounded-lg border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-1 focus:ring-violet-500">
+                  <option value="">Seleccionar…</option>
+                  <option v-for="emp in empleadosParaRegla" :key="emp.id" :value="emp.id">{{ emp.displayName }}</option>
+                </select>
+              </div>
+
+              <div>
+                <label class="block text-[10px] font-medium text-gray-500 dark:text-gray-400 mb-1">Tipo</label>
+                <div class="flex gap-2">
+                  <button type="button" @click="reglaFormTipo = 'juntos'"
+                    class="flex-1 px-3 py-1.5 text-xs font-medium rounded-lg border transition-colors"
+                    :class="reglaFormTipo === 'juntos'
+                      ? 'bg-emerald-600 border-emerald-600 text-white'
+                      : 'bg-white dark:bg-gray-700 border-gray-200 dark:border-gray-600 text-gray-600 dark:text-gray-300 hover:border-emerald-400'">
+                    Siempre juntos
+                  </button>
+                  <button type="button" @click="reglaFormTipo = 'nunca_juntos'"
+                    class="flex-1 px-3 py-1.5 text-xs font-medium rounded-lg border transition-colors"
+                    :class="reglaFormTipo === 'nunca_juntos'
+                      ? 'bg-red-600 border-red-600 text-white'
+                      : 'bg-white dark:bg-gray-700 border-gray-200 dark:border-gray-600 text-gray-600 dark:text-gray-300 hover:border-red-400'">
+                    Nunca juntos
+                  </button>
+                </div>
+              </div>
+
+              <label class="flex items-center gap-2 cursor-pointer select-none">
+                <input type="checkbox" v-model="reglaFormStrict"
+                  class="w-3.5 h-3.5 rounded border-gray-300 text-violet-600 focus:ring-violet-500" />
+                <span class="text-xs text-gray-600 dark:text-gray-300">Regla estricta (el algoritmo la respeta en todos los turnos)</span>
+              </label>
+
+              <p v-if="reglaError" class="text-xs text-red-500">{{ reglaError }}</p>
+              <div class="flex gap-2">
+                <button type="button" @click="reglaOpenAdd = false"
+                  class="flex-1 px-3 py-1.5 text-xs text-gray-600 dark:text-gray-300 border border-gray-200 dark:border-gray-600 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors">
+                  Cancelar
+                </button>
+                <button type="button" @click="reglaSubmitAdd" :disabled="!reglaFormPareja || reglaAdding"
+                  class="flex-1 px-3 py-1.5 text-xs text-white font-medium rounded-lg bg-violet-600 hover:bg-violet-700 transition-colors disabled:opacity-40">
+                  {{ reglaAdding ? 'Guardando…' : 'Guardar' }}
+                </button>
+              </div>
+            </div>
+
+            <!-- Lista de reglas -->
+            <div v-if="!reglas.length && !reglaOpenAdd" class="text-xs text-gray-400 dark:text-gray-500 italic py-1">
+              Sin reglas definidas.
+            </div>
+            <div
+              v-for="regla in reglas" :key="regla.id"
+              class="p-3 rounded-xl border border-gray-100 dark:border-gray-700 bg-gray-50 dark:bg-gray-700/40 space-y-2"
+            >
+              <div class="flex items-center justify-between gap-2">
+                <div class="min-w-0">
+                  <p class="text-xs font-semibold text-gray-800 dark:text-gray-200 truncate">{{ nombreReglaPareja(regla) }}</p>
+                  <div class="flex items-center gap-2 mt-1 flex-wrap">
+                    <span class="text-[10px] px-1.5 py-0.5 rounded font-medium"
+                      :class="regla.type === 'juntos'
+                        ? 'bg-emerald-100 dark:bg-emerald-900/40 text-emerald-700 dark:text-emerald-300'
+                        : 'bg-red-100 dark:bg-red-900/40 text-red-600 dark:text-red-300'">
+                      {{ regla.type === 'juntos' ? 'Siempre juntos' : 'Nunca juntos' }}
+                    </span>
+                    <span v-if="regla.is_strict" class="text-[10px] px-1.5 py-0.5 rounded font-medium bg-violet-100 dark:bg-violet-900/40 text-violet-700 dark:text-violet-300">
+                      Estricta
+                    </span>
+                  </div>
+                </div>
+                <button v-if="canManage" type="button" @click="reglaEliminar(regla.id)"
+                  class="text-gray-400 hover:text-red-500 dark:hover:text-red-400 transition-colors shrink-0">
+                  <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-4 h-4">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="m14.74 9-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 0 1-2.244 2.077H8.084a2.25 2.25 0 0 1-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 0 0-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 0 1 3.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 0 0-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 0 0-7.5 0" />
+                  </svg>
+                </button>
+              </div>
+              <!-- Edición inline (tipo + strict) -->
+              <div v-if="canManage" class="flex items-center gap-3 pt-1">
+                <button type="button" @click="reglaCambiarTipo(regla.id, regla.type === 'juntos' ? 'nunca_juntos' : 'juntos')"
+                  class="text-[10px] text-blue-600 dark:text-blue-400 hover:underline">
+                  Cambiar a {{ regla.type === 'juntos' ? 'Nunca juntos' : 'Siempre juntos' }}
+                </button>
+                <button type="button" @click="reglaCambiarStrict(regla.id, !regla.is_strict)"
+                  class="text-[10px] text-gray-400 dark:text-gray-500 hover:underline">
+                  {{ regla.is_strict ? 'Hacer flexible' : 'Hacer estricta' }}
+                </button>
+              </div>
             </div>
           </div>
         </section>
@@ -838,6 +959,7 @@ import { useGrantStore } from '../../stores/grantStore';
 import { useSegmentoStore } from '../../stores/segmentoStore';
 import { useDisponibilidadStore } from '../../stores/disponibilidadStore';
 import { useExcepcionStore } from '../../stores/excepcionStore';
+import { useReglaAsignacionStore } from '../../stores/reglaAsignacionStore';
 import { useRut } from '../../composables/useRut';
 import { Contrato } from '../../models/Contrato';
 import type { ExcepcionType } from '../../models/Excepcion';
@@ -874,6 +996,7 @@ const grantStore = useGrantStore();
 const segmentoStore = useSegmentoStore();
 const disponibilidadStore = useDisponibilidadStore();
 const excepcionStore = useExcepcionStore();
+const reglaStore = useReglaAsignacionStore();
 
 const activeCompanyId = computed(() => {
   if (sessionStore.userRole !== 'super_admin') return sessionStore.activeCompanyId;
@@ -882,6 +1005,10 @@ const activeCompanyId = computed(() => {
 });
 
 const isCongregacion = computed(() => empresaStore.isCongregacion);
+const canManage = computed(() => {
+  const role = sessionStore.currentUser?.system_role;
+  return role === 'super_admin' || role === 'client_user';
+});
 
 onMounted(() => {
   if (activeCompanyId.value) {
@@ -1001,6 +1128,11 @@ function seleccionar(emp: Empleado) {
   formContacto.phone      = emp.contacto?.phone      ?? '';
   dispLoadForm(emp);
   excepcionStore.listarExcepciones(emp.id);
+  reglaStore.listarReglas(emp.id);
+  reglaOpenAdd.value = false;
+  reglaFormPareja.value = '';
+  reglaFormTipo.value = 'juntos';
+  reglaFormStrict.value = false;
 }
 
 // Mantener datos del empleado seleccionado sincronizados si cambia en Firestore
@@ -1670,6 +1802,71 @@ async function crearAccesoEmpleado() {
   } finally {
     guardandoAcceso.value = false;
   }
+}
+
+// ── Reglas de convivencia ──────────────────────────────────────────────────────
+
+const reglaOpenAdd = ref(false);
+const reglaFormPareja = ref('');
+const reglaFormTipo = ref<'juntos' | 'nunca_juntos'>('juntos');
+const reglaFormStrict = ref(false);
+const reglaAdding = ref(false);
+const reglaError = ref('');
+
+const reglas = computed(() => reglaStore.reglas);
+
+// Empleados de la misma sucursal, excluyendo al seleccionado
+const empleadosParaRegla = computed(() => {
+  const ubicId = sessionStore.activeUbicacionId;
+  const selId = empleadoSeleccionado.value?.id;
+  return (empleadoStore.empleados ?? []).filter(e =>
+    e.active && !e.deletedAt &&
+    e.id !== selId &&
+    (e.contratos ?? []).some(c => c.active && !c.deletedAt && c.ubicacion_id === ubicId)
+  );
+});
+
+function nombreReglaPareja(regla: typeof reglas.value[0]): string {
+  const selId = empleadoSeleccionado.value?.id;
+  const parejId = regla.person_uno_id === selId ? regla.person_dos_id : regla.person_uno_id;
+  return (empleadoStore.empleados ?? []).find(e => e.id === parejId)?.displayName ?? parejId;
+}
+
+async function reglaSubmitAdd() {
+  if (!empleadoSeleccionado.value || !reglaFormPareja.value) {
+    reglaError.value = 'Selecciona una persona para la regla.';
+    return;
+  }
+  reglaAdding.value = true;
+  reglaError.value = '';
+  try {
+    await reglaStore.createRegla({
+      person_uno_id: empleadoSeleccionado.value.id,
+      person_dos_id: reglaFormPareja.value,
+      type: reglaFormTipo.value,
+      is_strict: reglaFormStrict.value,
+    });
+    reglaOpenAdd.value = false;
+    reglaFormPareja.value = '';
+    reglaFormTipo.value = 'juntos';
+    reglaFormStrict.value = false;
+  } catch (e: any) {
+    reglaError.value = e.message || 'Error al crear la regla.';
+  } finally {
+    reglaAdding.value = false;
+  }
+}
+
+async function reglaEliminar(id: string) {
+  await reglaStore.softDeleteRegla(id);
+}
+
+async function reglaCambiarTipo(id: string, tipo: 'juntos' | 'nunca_juntos') {
+  await reglaStore.updateRegla(id, { type: tipo });
+}
+
+async function reglaCambiarStrict(id: string, strict: boolean) {
+  await reglaStore.updateRegla(id, { is_strict: strict });
 }
 
 async function revocarAcceso() {

@@ -662,14 +662,18 @@ export const actualizarBorrador = onCall<
   // Construir el rango de días a procesar
   const fechas = Array.from({ length: dias }, (_, i) => addDays(week_start, i));
 
-  // Cargar ubicación una vez
-  const ubicacionSnap = await db.collection("ubicaciones").doc(ubicacion_id).get();
+  // Cargar ubicación y empresa una vez
+  const [ubicacionSnap, empresaSnap] = await Promise.all([
+    db.collection("ubicaciones").doc(ubicacion_id).get(),
+    db.collection("empresas").doc(empresa_id).get(),
+  ]);
   if (!ubicacionSnap.exists) {
     throw new HttpsError("not-found", "Ubicación no encontrada.");
   }
   const ubicacionDataSemanal = ubicacionSnap.data()!;
   const configuraciones: ConfiguracionTurnos[] = ubicacionDataSemanal.configuraciones ?? [];
   const managerIdSemanal: string | null = ubicacionDataSemanal.manager_id ?? null;
+  const esCongregacion = (empresaSnap.data()?.type ?? "empresa") === "congregacion";
 
   // Cargar estaciones de la empresa
   const estacionesSnap = await db
@@ -929,14 +933,15 @@ export const actualizarBorrador = onCall<
       estadosEmpleado.set(eid, { minConsecutivosEnAlta: 0, segmentos: [] });
     });
 
-    // Rastrear qué empleados ya fueron asignados a algún turno hoy (1 turno por día)
-    const turnoAsignadoHoy = new Set<string>();
-
     const segmentosDelDia: SegmentoToWrite[] = [];
     const huecosDelDia: HuecoReporte[] = [];
 
+    // Para empresa: 1 turno por día por persona (restricción laboral).
+    // Para congregación: un voluntario puede ir a varios turnos del día siempre
+    // que no se solapen — el check de solape por bucket ya lo garantiza.
+    const turnoAsignadoHoy = new Set<string>(); // solo usado en empresa
+
     for (const turno of turnosDelDia) {
-      // Duración del turno en minutos (para acumular en el límite semanal)
       const duracionTurnoMin = toMinutes(turno.end_time) - toMinutes(turno.start_time);
 
       for (const req of turno.requerimientos) {
@@ -946,6 +951,7 @@ export const actualizarBorrador = onCall<
         const buckets = generarBuckets(turno.start_time, turno.end_time);
 
         for (const bucket of buckets) {
+          // a. Empleados cuya ventana de disponibilidad cubre el bucket
           const disponibles = presencias
             .filter(
               (p) =>
@@ -962,17 +968,20 @@ export const actualizarBorrador = onCall<
             );
           });
 
-          // b2. Excluir empleados ya asignados a otro turno hoy (1 turno por día)
-          const sinTurnoRepetido = sinSolape.filter((eid) => !turnoAsignadoHoy.has(eid));
+          // b2. En empresa: 1 turno por día (congregación omite este filtro)
+          const sinTurnoRepetido = esCongregacion
+            ? sinSolape
+            : sinSolape.filter((eid) => !turnoAsignadoHoy.has(eid));
 
           // b3. Excluir empleados que superarían su límite de horas semanal
           const sinExcederLimite = sinTurnoRepetido.filter((eid) => {
             const limMin = limiteMinutosPorEmpleado.get(eid) ?? 0;
-            if (limMin === 0) return true; // 0 = sin límite
+            if (limMin === 0) return true;
             const yaMinutos = minutosAsignadosSemana.get(eid) ?? 0;
             return yaMinutos + duracionTurnoMin <= limMin;
           });
 
+          // c. Anti-saturación (solo empresa)
           const sinSaturation = sinExcederLimite.filter((eid) => {
             if (!estacion) return true;
             const estado = estadosEmpleado.get(eid)!;
@@ -1001,21 +1010,19 @@ export const actualizarBorrador = onCall<
             return true;
           });
 
-          // d. Aplicar reglas hard (solo empresa)
-          const candidatos = estacion
-            ? sinSaturation.filter((eid) => {
-                const reglas = reglasMap.get(eid) ?? [];
-                for (const regla of reglas) {
-                  if (!regla.is_strict || regla.type !== "nunca_juntos") continue;
-                  const otro = regla.person_uno_id === eid ? regla.person_dos_id : regla.person_uno_id;
-                  const otroEstado = estadosEmpleado.get(otro);
-                  if (otroEstado?.segmentos.some((s) => s.tipo === "estacion" && seProlapan(s.start, s.end, bucket.start, bucket.end))) {
-                    return false;
-                  }
-                }
-                return true;
-              })
-            : sinSaturation;
+          // d. Reglas hard de convivencia (aplica a ambos tipos de tenant)
+          const candidatos = sinSaturation.filter((eid) => {
+            const reglas = reglasMap.get(eid) ?? [];
+            for (const regla of reglas) {
+              if (!regla.is_strict || regla.type !== "nunca_juntos") continue;
+              const otro = regla.person_uno_id === eid ? regla.person_dos_id : regla.person_uno_id;
+              const otroEstado = estadosEmpleado.get(otro);
+              if (otroEstado?.segmentos.some((s) => s.tipo === "estacion" && seProlapan(s.start, s.end, bucket.start, bucket.end))) {
+                return false;
+              }
+            }
+            return true;
+          });
 
           // e. Ordenar por equidad (menos minutos acumulados en la semana primero)
           candidatos.sort((a, b) => {
@@ -1052,7 +1059,7 @@ export const actualizarBorrador = onCall<
             const estado = estadosEmpleado.get(eid)!;
             estado.segmentos.push(seg);
             segmentosDelDia.push(seg);
-            turnoAsignadoHoy.add(eid); // marcar como ocupado hoy
+            if (!esCongregacion) turnoAsignadoHoy.add(eid);
             if (estacion?.intensidad === "alta") {
               estado.minConsecutivosEnAlta += 30;
             } else {
@@ -1064,8 +1071,8 @@ export const actualizarBorrador = onCall<
     }
 
     // Acumular minutos de este día al contador semanal
-    turnoAsignadoHoy.forEach((eid) => {
-      // Sumar la duración total de los segmentos de estación asignados hoy
+    const empleadosAsignadosHoy = new Set(segmentosDelDia.map((s) => s.empleado_id));
+    empleadosAsignadosHoy.forEach((eid) => {
       const minHoy = segmentosDelDia
         .filter((s) => s.empleado_id === eid && s.tipo === "estacion")
         .reduce((acc, s) => acc + (toMinutes(s.end) - toMinutes(s.start)), 0);
