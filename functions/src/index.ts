@@ -788,9 +788,9 @@ export const actualizarBorrador = onCall<
     const turnosDelDia = config.turnos.filter((t) => t.day_of_week === diaEsp);
     if (turnosDelDia.length === 0) continue;
 
-    // Borrar solo los segmentos `sugerido` de este día (los aprobado/publicado intocables)
+    // Borrar los segmentos `sugerido` y `draft` de este día (los aprobado/publicado intocables)
     const sugeridosDelDia = segmentosExistentesSnap.docs.filter(
-      (d) => d.data().date === fecha && d.data().status === "sugerido"
+      (d) => d.data().date === fecha && (d.data().status === "sugerido" || d.data().status === "draft")
     );
     if (sugeridosDelDia.length > 0) {
       const delBatch = db.batch();
