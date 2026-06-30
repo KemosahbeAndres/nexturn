@@ -1,6 +1,6 @@
 import { defineStore } from 'pinia';
 import { useCollection } from 'vuefire';
-import { collection, doc, setDoc, updateDoc, getDoc, query, where, Timestamp } from 'firebase/firestore';
+import { collection, doc, setDoc, updateDoc, getDocs, getDoc, query, where, Timestamp } from 'firebase/firestore';
 import { ref, computed, watch } from 'vue';
 import { db } from '../firebase';
 import { Empleado, empleadoConverter } from '../models/Empleado';
@@ -26,20 +26,30 @@ export const useEmpleadoStore = defineStore('empleado', () => {
 
   const empleados = useCollection(empleadosQuery);
 
+  // Caché de contactos ya resueltos para no volver a pedirlos en cada disparo del watcher
+  const contactosCargados = new Set<string>();
+
   watch(empleados, async (lista) => {
     if (!lista) return;
-    for (const emp of lista) {
-      if (!emp.contacto && emp.contact_id) {
-        try {
-          const ref = doc(db, 'contactos', emp.contact_id).withConverter(contactoConverter);
-          const snap = await getDoc(ref);
-          if (snap.exists()) emp.contacto = snap.data();
-        } catch (e) {
-          console.error('Error hidratando contacto de empleado:', emp.id, e);
-        }
-      }
-    }
-  }, { deep: true });
+    // Recoger solo los contact_id que aún no se han resuelto
+    const pendientes = lista.filter(emp => !emp.contacto && emp.contact_id && !contactosCargados.has(emp.contact_id));
+    if (pendientes.length === 0) return;
+
+    // Marcar como en-vuelo antes de las peticiones para que disparos rápidos no los dupliquen
+    pendientes.forEach(emp => contactosCargados.add(emp.contact_id));
+
+    // Resolver todos en paralelo (una petición por contacto simultáneas)
+    const snaps = await Promise.all(
+      pendientes.map(emp =>
+        getDoc(doc(db, 'contactos', emp.contact_id).withConverter(contactoConverter))
+          .catch(e => { console.error('Error hidratando contacto:', emp.id, e); return null; })
+      )
+    );
+
+    snaps.forEach((snap, i) => {
+      if (snap?.exists()) pendientes[i].contacto = snap.data();
+    });
+  }, { deep: false });
 
   const empleadosActivos = computed(() => empleados.value?.filter(e => e.active && !e.deletedAt) ?? []);
 
