@@ -12,7 +12,7 @@
             {{ canManage ? 'Borrador de turnos' : 'Mi Calendario' }}
           </p>
           <p class="text-sm font-semibold text-gray-800 dark:text-gray-100 mt-0.5">
-            {{ formatRango(fechaInicio, fechaFin) }}
+            {{ isCongregacion ? labelMes : formatRango(fechaInicio, fechaFin) }}
           </p>
         </div>
         <div class="flex items-center gap-2 flex-wrap">
@@ -23,35 +23,68 @@
             </svg>
             Aprobar todo
           </button>
-          <button @click="irSemana(-1)"
-            class="w-8 h-8 flex items-center justify-center rounded-lg border border-gray-200 dark:border-gray-600 text-gray-500 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors">
-            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2.5" stroke="currentColor" class="w-3.5 h-3.5">
-              <path stroke-linecap="round" stroke-linejoin="round" d="M15.75 19.5 8.25 12l7.5-7.5" />
-            </svg>
-          </button>
-          <button @click="irSemana(0)"
-            class="px-3 py-1.5 text-xs font-medium rounded-lg border border-gray-200 dark:border-gray-600 text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors">
-            Esta semana
-          </button>
-          <button @click="irSemana(1)"
-            class="w-8 h-8 flex items-center justify-center rounded-lg border border-gray-200 dark:border-gray-600 text-gray-500 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors">
-            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2.5" stroke="currentColor" class="w-3.5 h-3.5">
-              <path stroke-linecap="round" stroke-linejoin="round" d="m8.25 4.5 7.5 7.5-7.5 7.5" />
-            </svg>
-          </button>
-          <button @click="cargar" :disabled="cargando || generandoBorrador"
+          <!-- Navegación congregación: por mes -->
+          <template v-if="isCongregacion">
+            <button @click="irMes(-1)"
+              class="w-8 h-8 flex items-center justify-center rounded-lg border border-gray-200 dark:border-gray-600 text-gray-500 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors">
+              <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2.5" stroke="currentColor" class="w-3.5 h-3.5">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M15.75 19.5 8.25 12l7.5-7.5" />
+              </svg>
+            </button>
+            <button @click="irMesHoy"
+              class="px-3 py-1.5 text-xs font-medium rounded-lg border border-gray-200 dark:border-gray-600 text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors">
+              Este mes
+            </button>
+            <button @click="irMes(1)"
+              class="w-8 h-8 flex items-center justify-center rounded-lg border border-gray-200 dark:border-gray-600 text-gray-500 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors">
+              <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2.5" stroke="currentColor" class="w-3.5 h-3.5">
+                <path stroke-linecap="round" stroke-linejoin="round" d="m8.25 4.5 7.5 7.5-7.5 7.5" />
+              </svg>
+            </button>
+          </template>
+          <!-- Navegación empresa: por semana -->
+          <template v-else>
+            <button @click="irSemana(-1)"
+              class="w-8 h-8 flex items-center justify-center rounded-lg border border-gray-200 dark:border-gray-600 text-gray-500 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors">
+              <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2.5" stroke="currentColor" class="w-3.5 h-3.5">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M15.75 19.5 8.25 12l7.5-7.5" />
+              </svg>
+            </button>
+            <button @click="irSemana(0)"
+              class="px-3 py-1.5 text-xs font-medium rounded-lg border border-gray-200 dark:border-gray-600 text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors">
+              Esta semana
+            </button>
+            <button @click="irSemana(1)"
+              class="w-8 h-8 flex items-center justify-center rounded-lg border border-gray-200 dark:border-gray-600 text-gray-500 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors">
+              <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2.5" stroke="currentColor" class="w-3.5 h-3.5">
+                <path stroke-linecap="round" stroke-linejoin="round" d="m8.25 4.5 7.5 7.5-7.5 7.5" />
+              </svg>
+            </button>
+          </template>
+          <!-- Botón recarga rápida (solo segmentos, sin algoritmo) -->
+          <button @click="isCongregacion ? cargarMes() : cargar()" :disabled="cargando || generandoBorrador"
             class="w-8 h-8 flex items-center justify-center rounded-lg border border-gray-200 dark:border-gray-600 text-gray-500 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors disabled:opacity-40"
-            title="Actualizar">
-            <svg class="w-3.5 h-3.5" :class="(cargando || generandoBorrador) ? 'animate-spin' : ''"
+            title="Recargar">
+            <svg class="w-3.5 h-3.5" :class="cargando ? 'animate-spin' : ''"
               xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor">
               <path stroke-linecap="round" stroke-linejoin="round" d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0 3.181 3.183a8.25 8.25 0 0 0 13.803-3.7M4.031 9.865a8.25 8.25 0 0 1 13.803-3.7l3.181 3.182m0-4.991v4.99" />
             </svg>
           </button>
+          <!-- Botón generar borrador (llama al algoritmo) — solo managers -->
+          <button v-if="canManage" @click="isCongregacion ? regenerarBorradorMes() : regenerarBorradorSemana()" :disabled="cargando || generandoBorrador"
+            class="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg border border-blue-200 dark:border-blue-700 text-blue-600 dark:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-900/20 transition-colors disabled:opacity-40"
+            title="Regenerar sugerencias del algoritmo">
+            <svg class="w-3.5 h-3.5" :class="generandoBorrador ? 'animate-spin' : ''"
+              xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M9.813 15.904 9 18.75l-.813-2.846a4.5 4.5 0 0 0-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 0 0 3.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 0 0 3.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 0 0-3.09 3.09Z" />
+            </svg>
+            {{ generandoBorrador ? 'Generando…' : 'Generar sugerencias' }}
+          </button>
         </div>
       </div>
 
-      <!-- Panel diagnóstico -->
-      <div v-if="canManage"
+      <!-- Panel diagnóstico (solo empresa) -->
+      <div v-if="canManage && !isCongregacion"
         class="rounded-xl border bg-white dark:bg-gray-800/60 overflow-hidden"
         :class="diagnosticoListo ? 'border-gray-200 dark:border-gray-700' : 'border-amber-200 dark:border-amber-700/40'">
 
@@ -171,7 +204,74 @@
         <p class="text-sm text-gray-400 animate-pulse">Cargando…</p>
       </div>
 
-      <!-- ── Grilla semanal ──────────────────────────────────────────────── -->
+      <!-- ── Grilla mensual (congregación) ──────────────────────────────────── -->
+      <div v-else-if="isCongregacion" class="flex-1 overflow-auto">
+        <!-- Cabeceras de días -->
+        <div class="grid grid-cols-7 gap-px mb-1">
+          <div v-for="d in ['Lun','Mar','Mié','Jue','Vie','Sáb','Dom']" :key="d"
+            class="text-center text-[10px] font-bold uppercase tracking-widest text-gray-400 dark:text-gray-500 py-1">
+            {{ d }}
+          </div>
+        </div>
+        <!-- Celdas del mes -->
+        <div class="grid grid-cols-7 gap-px bg-gray-100 dark:bg-gray-700/50 rounded-xl overflow-hidden border border-gray-100 dark:border-gray-700">
+          <div v-for="celda in diasDelMes" :key="celda.date"
+            class="min-h-[80px] p-1.5 flex flex-col gap-1"
+            :class="celda.esMes
+              ? 'bg-white dark:bg-gray-800/80'
+              : 'bg-gray-50/60 dark:bg-gray-800/30'">
+
+            <!-- Número del día -->
+            <div class="flex items-center justify-between">
+              <span class="text-xs font-semibold tabular-nums w-6 h-6 flex items-center justify-center rounded-full"
+                :class="celda.esHoy
+                  ? 'bg-violet-600 text-white'
+                  : celda.esMes
+                    ? 'text-gray-700 dark:text-gray-200'
+                    : 'text-gray-300 dark:text-gray-600'">
+                {{ celda.date.slice(8) }}
+              </span>
+              <!-- Botón publicar si todos aprobados (manager) -->
+              <button v-if="canManage && celda.esMes && tieneTodosAprobadosPorFecha(celda.date)"
+                @click="publicarFecha(celda.date)" :disabled="accionando"
+                class="text-[9px] font-semibold text-emerald-700 dark:text-emerald-400 hover:underline disabled:opacity-40">
+                Publicar
+              </button>
+            </div>
+
+            <!-- Vista manager: nombre + check de aprobación -->
+            <template v-if="canManage && celda.esMes">
+              <div v-for="emp in empleadosPorFecha(celda.date)" :key="emp.id"
+                class="flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium border"
+                :class="claseSeg(emp.status)">
+                <span class="flex-1 truncate leading-tight">{{ emp.nombre }}</span>
+                <button v-if="emp.status === 'sugerido'"
+                  @click="aprobarPorSegId(emp.id)"
+                  :disabled="accionando"
+                  class="w-4 h-4 flex items-center justify-center rounded bg-emerald-100 dark:bg-emerald-900/30 text-emerald-600 hover:bg-emerald-200 transition-colors disabled:opacity-40 shrink-0"
+                  title="Aprobar">
+                  <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="3" stroke="currentColor" class="w-2 h-2">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="m4.5 12.75 6 6 9-13.5" />
+                  </svg>
+                </button>
+              </div>
+              <p v-if="!empleadosPorFecha(celda.date).length && turnosEnFecha(celda.date)"
+                class="text-[9px] text-amber-400 italic leading-tight">Sin asignar</p>
+            </template>
+
+            <!-- Vista empleado: sus turnos publicados -->
+            <template v-else-if="!canManage && celda.esMes">
+              <div v-for="seg in segmentosFecha(celda.date).filter(s => s.status === 'publicado')" :key="seg.id"
+                class="px-1.5 py-0.5 rounded text-[10px] font-medium bg-violet-50 dark:bg-violet-900/20 border border-violet-200 dark:border-violet-800 text-violet-700 dark:text-violet-300 leading-tight truncate">
+                {{ seg.start }}–{{ seg.end }}
+              </div>
+            </template>
+
+          </div>
+        </div>
+      </div>
+
+      <!-- ── Grilla semanal (empresa) ──────────────────────────────────────── -->
       <div v-else class="flex-1 overflow-auto">
         <div class="grid grid-cols-7 gap-2 min-w-[720px]">
           <div v-for="(dia, i) in diasSemana" :key="dia" class="flex flex-col gap-1.5">
@@ -204,107 +304,54 @@
                 </div>
 
                 <div class="p-1.5 space-y-1">
-                  <!-- Congregación: reqs con estacion_id null -->
-                  <template v-if="isCongregacion">
-                    <template v-for="req in turno.requerimientos.filter(r => r.cantidad > 0)" :key="`cong-${turno.id}`">
-                      <div v-for="cupoIdx in req.cantidad" :key="`cong-${cupoIdx}`">
-                        <button v-if="segmentoParaCupo(i, turno, null, cupoIdx - 1)"
-                          class="w-full text-left px-2 pt-1.5 pb-1 rounded-lg text-xs border transition-all"
-                          :class="[
-                            claseSeg(segmentoParaCupo(i, turno, null, cupoIdx - 1)!.status),
-                            sidebarSeg?.id === segmentoParaCupo(i, turno, null, cupoIdx - 1)!.id
-                              ? 'ring-2 ring-violet-400 dark:ring-violet-500'
-                              : 'hover:brightness-95'
-                          ]"
-                          @click="abrirSidebar(segmentoParaCupo(i, turno, null, cupoIdx - 1)!, turno, null, fechaDia(i))">
-                          <div class="flex items-center justify-between gap-1">
-                            <span class="text-[9px] font-bold uppercase tracking-wide shrink-0"
-                              :class="claseChipStatus(segmentoParaCupo(i, turno, null, cupoIdx - 1)!.status)">
-                              {{ labelStatus(segmentoParaCupo(i, turno, null, cupoIdx - 1)!.status) }}
-                            </span>
+                  <template v-for="req in turno.requerimientos.filter(r => r.estacion_id && r.cantidad > 0)" :key="req.estacion_id">
+                    <div v-for="cupoIdx in req.cantidad" :key="`${req.estacion_id}-${cupoIdx}`">
+                      <button v-if="segmentoParaCupo(i, turno, req.estacion_id, cupoIdx - 1)"
+                        class="w-full text-left px-2 pt-1.5 pb-1 rounded-lg text-xs border transition-all"
+                        :class="[
+                          claseSeg(segmentoParaCupo(i, turno, req.estacion_id, cupoIdx - 1)!.status),
+                          sidebarSeg?.id === segmentoParaCupo(i, turno, req.estacion_id, cupoIdx - 1)!.id
+                            ? 'ring-2 ring-violet-400 dark:ring-violet-500'
+                            : 'hover:brightness-95'
+                        ]"
+                        @click="abrirSidebar(segmentoParaCupo(i, turno, req.estacion_id, cupoIdx - 1)!, turno, req.estacion_id, fechaDia(i))">
+                        <div class="flex items-center justify-between gap-1">
+                          <span class="text-[10px] font-semibold opacity-70 truncate">{{ nombreEstacion(req.estacion_id) }}</span>
+                          <span class="text-[9px] font-bold uppercase tracking-wide shrink-0"
+                            :class="claseChipStatus(segmentoParaCupo(i, turno, req.estacion_id, cupoIdx - 1)!.status)">
+                            {{ labelStatus(segmentoParaCupo(i, turno, req.estacion_id, cupoIdx - 1)!.status) }}
+                          </span>
+                        </div>
+                        <div class="flex items-center gap-1 mt-0.5">
+                          <div class="w-4 h-4 rounded-full flex items-center justify-center text-[8px] font-bold shrink-0 bg-current/20">
+                            {{ inicialesById(segmentoParaCupo(i, turno, req.estacion_id, cupoIdx - 1)!.empleado_id) }}
                           </div>
-                          <div class="flex items-center gap-1 mt-0.5">
-                            <div class="w-4 h-4 rounded-full flex items-center justify-center text-[8px] font-bold shrink-0 bg-current/20">
-                              {{ inicialesById(segmentoParaCupo(i, turno, null, cupoIdx - 1)!.empleado_id) }}
-                            </div>
-                            <span class="text-[10px] font-medium truncate flex-1">
-                              {{ nombreById(segmentoParaCupo(i, turno, null, cupoIdx - 1)!.empleado_id) }}
-                            </span>
-                            <button v-if="segmentoParaCupo(i, turno, null, cupoIdx - 1)!.status === 'sugerido'"
-                              @click.stop="aprobar(segmentoParaCupo(i, turno, null, cupoIdx - 1)!.id)"
-                              :disabled="accionando"
-                              class="w-5 h-5 flex items-center justify-center rounded bg-emerald-100 dark:bg-emerald-900/30 text-emerald-600 hover:bg-emerald-200 transition-colors disabled:opacity-40 shrink-0"
-                              title="Aprobar">
-                              <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="3" stroke="currentColor" class="w-2.5 h-2.5">
-                                <path stroke-linecap="round" stroke-linejoin="round" d="m4.5 12.75 6 6 9-13.5" />
-                              </svg>
-                            </button>
-                          </div>
-                        </button>
-                        <button v-else
-                          class="w-full text-left px-2 py-1.5 rounded-lg border border-dashed border-gray-300 dark:border-gray-600 bg-gray-50/50 dark:bg-gray-700/20 hover:bg-gray-100 dark:hover:bg-gray-700/40 transition-colors"
-                          @click="abrirSidebarVacio(turno, null, fechaDia(i))">
-                          <p class="text-[10px] text-gray-300 dark:text-gray-600 italic">Sin asignar — click para asignar</p>
-                        </button>
-                      </div>
-                    </template>
-                    <div v-if="!turno.requerimientos.filter(r => r.cantidad > 0).length"
-                      class="px-2 py-2 rounded-lg border border-dashed border-amber-200 dark:border-amber-700/40 bg-amber-50/40 dark:bg-amber-900/10">
-                      <p class="text-[10px] text-amber-500 dark:text-amber-400 italic">Sin voluntarios requeridos</p>
+                          <span class="text-[10px] font-medium truncate flex-1">
+                            {{ nombreById(segmentoParaCupo(i, turno, req.estacion_id, cupoIdx - 1)!.empleado_id) }}
+                          </span>
+                          <button v-if="segmentoParaCupo(i, turno, req.estacion_id, cupoIdx - 1)!.status === 'sugerido'"
+                            @click.stop="aprobar(segmentoParaCupo(i, turno, req.estacion_id, cupoIdx - 1)!.id)"
+                            :disabled="accionando"
+                            class="w-5 h-5 flex items-center justify-center rounded bg-emerald-100 dark:bg-emerald-900/30 text-emerald-600 hover:bg-emerald-200 transition-colors disabled:opacity-40 shrink-0"
+                            title="Aprobar">
+                            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="3" stroke="currentColor" class="w-2.5 h-2.5">
+                              <path stroke-linecap="round" stroke-linejoin="round" d="m4.5 12.75 6 6 9-13.5" />
+                            </svg>
+                          </button>
+                        </div>
+                      </button>
+                      <button v-else
+                        class="w-full text-left px-2 py-1.5 rounded-lg border border-dashed border-gray-300 dark:border-gray-600 bg-gray-50/50 dark:bg-gray-700/20 hover:bg-gray-100 dark:hover:bg-gray-700/40 transition-colors"
+                        @click="abrirSidebarVacio(turno, req.estacion_id, fechaDia(i))">
+                        <p class="text-[10px] font-semibold text-gray-400 dark:text-gray-500 truncate">{{ nombreEstacion(req.estacion_id) }}</p>
+                        <p class="text-[10px] text-gray-300 dark:text-gray-600 italic">Sin asignar — click para asignar</p>
+                      </button>
                     </div>
                   </template>
-
-                  <!-- Empresa: reqs con estacion_id -->
-                  <template v-else>
-                    <template v-for="req in turno.requerimientos.filter(r => r.estacion_id && r.cantidad > 0)" :key="req.estacion_id">
-                      <div v-for="cupoIdx in req.cantidad" :key="`${req.estacion_id}-${cupoIdx}`">
-                        <button v-if="segmentoParaCupo(i, turno, req.estacion_id, cupoIdx - 1)"
-                          class="w-full text-left px-2 pt-1.5 pb-1 rounded-lg text-xs border transition-all"
-                          :class="[
-                            claseSeg(segmentoParaCupo(i, turno, req.estacion_id, cupoIdx - 1)!.status),
-                            sidebarSeg?.id === segmentoParaCupo(i, turno, req.estacion_id, cupoIdx - 1)!.id
-                              ? 'ring-2 ring-violet-400 dark:ring-violet-500'
-                              : 'hover:brightness-95'
-                          ]"
-                          @click="abrirSidebar(segmentoParaCupo(i, turno, req.estacion_id, cupoIdx - 1)!, turno, req.estacion_id, fechaDia(i))">
-                          <div class="flex items-center justify-between gap-1">
-                            <span class="text-[10px] font-semibold opacity-70 truncate">{{ nombreEstacion(req.estacion_id) }}</span>
-                            <span class="text-[9px] font-bold uppercase tracking-wide shrink-0"
-                              :class="claseChipStatus(segmentoParaCupo(i, turno, req.estacion_id, cupoIdx - 1)!.status)">
-                              {{ labelStatus(segmentoParaCupo(i, turno, req.estacion_id, cupoIdx - 1)!.status) }}
-                            </span>
-                          </div>
-                          <div class="flex items-center gap-1 mt-0.5">
-                            <div class="w-4 h-4 rounded-full flex items-center justify-center text-[8px] font-bold shrink-0 bg-current/20">
-                              {{ inicialesById(segmentoParaCupo(i, turno, req.estacion_id, cupoIdx - 1)!.empleado_id) }}
-                            </div>
-                            <span class="text-[10px] font-medium truncate flex-1">
-                              {{ nombreById(segmentoParaCupo(i, turno, req.estacion_id, cupoIdx - 1)!.empleado_id) }}
-                            </span>
-                            <button v-if="segmentoParaCupo(i, turno, req.estacion_id, cupoIdx - 1)!.status === 'sugerido'"
-                              @click.stop="aprobar(segmentoParaCupo(i, turno, req.estacion_id, cupoIdx - 1)!.id)"
-                              :disabled="accionando"
-                              class="w-5 h-5 flex items-center justify-center rounded bg-emerald-100 dark:bg-emerald-900/30 text-emerald-600 hover:bg-emerald-200 transition-colors disabled:opacity-40 shrink-0"
-                              title="Aprobar">
-                              <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="3" stroke="currentColor" class="w-2.5 h-2.5">
-                                <path stroke-linecap="round" stroke-linejoin="round" d="m4.5 12.75 6 6 9-13.5" />
-                              </svg>
-                            </button>
-                          </div>
-                        </button>
-                        <button v-else
-                          class="w-full text-left px-2 py-1.5 rounded-lg border border-dashed border-gray-300 dark:border-gray-600 bg-gray-50/50 dark:bg-gray-700/20 hover:bg-gray-100 dark:hover:bg-gray-700/40 transition-colors"
-                          @click="abrirSidebarVacio(turno, req.estacion_id, fechaDia(i))">
-                          <p class="text-[10px] font-semibold text-gray-400 dark:text-gray-500 truncate">{{ nombreEstacion(req.estacion_id) }}</p>
-                          <p class="text-[10px] text-gray-300 dark:text-gray-600 italic">Sin asignar — click para asignar</p>
-                        </button>
-                      </div>
-                    </template>
-                    <div v-if="!turno.requerimientos.filter(r => r.estacion_id && r.cantidad > 0).length"
-                      class="px-2 py-2 rounded-lg border border-dashed border-amber-200 dark:border-amber-700/40 bg-amber-50/40 dark:bg-amber-900/10">
-                      <p class="text-[10px] text-amber-500 dark:text-amber-400 italic">Sin estaciones requeridas</p>
-                    </div>
-                  </template>
+                  <div v-if="!turno.requerimientos.filter(r => r.estacion_id && r.cantidad > 0).length"
+                    class="px-2 py-2 rounded-lg border border-dashed border-amber-200 dark:border-amber-700/40 bg-amber-50/40 dark:bg-amber-900/10">
+                    <p class="text-[10px] text-amber-500 dark:text-amber-400 italic">Sin estaciones requeridas</p>
+                  </div>
                 </div>
               </div>
             </template>
@@ -331,13 +378,13 @@
 
       <!-- Leyenda -->
       <div class="flex items-center gap-3 pt-1 border-t border-gray-100 dark:border-gray-700 flex-wrap">
-        <template v-if="canManage">
+        <template v-if="canManage && !isCongregacion">
           <div class="flex items-center gap-1.5"><span class="w-3 h-3 rounded border-2 border-dashed border-gray-300 dark:border-gray-600"></span><span class="text-xs text-gray-500 dark:text-gray-400">Sin asignar</span></div>
+        </template>
+        <template v-if="canManage">
           <div class="flex items-center gap-1.5"><span class="w-3 h-3 rounded bg-amber-200 dark:bg-amber-800"></span><span class="text-xs text-gray-500 dark:text-gray-400">Sugerido</span></div>
           <div class="flex items-center gap-1.5"><span class="w-3 h-3 rounded bg-emerald-200 dark:bg-emerald-800"></span><span class="text-xs text-gray-500 dark:text-gray-400">Aprobado</span></div>
-          <div class="flex items-center gap-1.5"><span class="w-3 h-3 rounded bg-red-200 dark:bg-red-800"></span><span class="text-xs text-gray-500 dark:text-gray-400">Rechazado</span></div>
           <div class="flex items-center gap-1.5"><span class="w-3 h-3 rounded bg-violet-200 dark:bg-violet-800"></span><span class="text-xs text-gray-500 dark:text-gray-400">Publicado</span></div>
-          <span class="text-[10px] text-gray-300 dark:text-gray-600 ml-auto">Click en un cupo para asignar/cambiar empleado</span>
         </template>
         <template v-else>
           <div class="flex items-center gap-1.5"><span class="w-3 h-3 rounded bg-violet-200 dark:bg-violet-800"></span><span class="text-xs text-gray-500 dark:text-gray-400">Turno asignado</span></div>
@@ -474,6 +521,139 @@ import { contactoConverter } from '../../models/Contacto';
 import { functions, db } from '../../firebase';
 import type { Segmento, SegmentoStatus } from '../../models/Segmento';
 import type { Turno } from '../../models/Ubicacion';
+
+// ── Mes (congregación) ────────────────────────────────────────────────────────
+
+const mesBase = ref<{ year: number; month: number }>(() => {
+  const hoyD = new Date();
+  return { year: hoyD.getFullYear(), month: hoyD.getMonth() };
+});
+
+function primerDiaMes(year: number, month: number): string {
+  return new Date(year, month, 1).toISOString().slice(0, 10);
+}
+
+function ultimoDiaMes(year: number, month: number): string {
+  return new Date(year, month + 1, 0).toISOString().slice(0, 10);
+}
+
+const mesInicio = computed(() => primerDiaMes(mesBase.value.year, mesBase.value.month));
+const mesFin = computed(() => ultimoDiaMes(mesBase.value.year, mesBase.value.month));
+
+const diasDelMes = computed<{ date: string; esHoy: boolean; esMes: boolean }[]>(() => {
+  const { year, month } = mesBase.value;
+  const primer = new Date(year, month, 1);
+  // día de semana del primero (lunes=0)
+  const offsetLunes = (primer.getDay() + 6) % 7;
+  const cells: { date: string; esHoy: boolean; esMes: boolean }[] = [];
+  const hoyStr = new Date().toISOString().slice(0, 10);
+  // días del mes anterior para completar la primera fila
+  for (let i = offsetLunes - 1; i >= 0; i--) {
+    const d = new Date(year, month, -i);
+    const str = d.toISOString().slice(0, 10);
+    cells.push({ date: str, esHoy: str === hoyStr, esMes: false });
+  }
+  // días del mes
+  const diasTotal = new Date(year, month + 1, 0).getDate();
+  for (let d = 1; d <= diasTotal; d++) {
+    const str = new Date(year, month, d).toISOString().slice(0, 10);
+    cells.push({ date: str, esHoy: str === hoyStr, esMes: true });
+  }
+  // rellenar hasta completar grilla de 6 semanas (42 celdas)
+  let d = 1;
+  while (cells.length < 42) {
+    const str = new Date(year, month + 1, d++).toISOString().slice(0, 10);
+    cells.push({ date: str, esHoy: str === hoyStr, esMes: false });
+  }
+  return cells;
+});
+
+const nombresMeses = ['Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'];
+
+const labelMes = computed(() =>
+  `${nombresMeses[mesBase.value.month]} ${mesBase.value.year}`
+);
+
+async function irMes(dir: number) {
+  let { year, month } = mesBase.value;
+  month += dir;
+  if (month > 11) { month = 0; year++; }
+  if (month < 0) { month = 11; year--; }
+  mesBase.value = { year, month };
+  cerrarSidebar();
+  await cargarMes();
+}
+
+async function irMesHoy() {
+  const hoyD = new Date();
+  mesBase.value = { year: hoyD.getFullYear(), month: hoyD.getMonth() };
+  cerrarSidebar();
+  await cargarMes();
+}
+
+async function cargarMes() {
+  if (!companyId.value || !ubicacionId.value) return;
+  cargando.value = true;
+  errorBorrador.value = '';
+  try {
+    if (canManage.value) {
+      await calcularDiagnostico();
+      segmentos.value = await segmentoStore.cargarSegmentosManager(
+        ubicacionId.value, mesInicio.value, mesFin.value
+      );
+    } else if (miEmpleadoId.value) {
+      segmentos.value = await segmentoStore.cargarSegmentosEmpleado(
+        miEmpleadoId.value, mesInicio.value, mesFin.value
+      );
+    }
+  } finally {
+    cargando.value = false;
+  }
+}
+
+async function regenerarBorradorMes() {
+  if (!canManage.value || !companyId.value || !ubicacionId.value) return;
+  if (!diagnostico.value?.tieneTurnos || !diagnostico.value?.tieneEmpleadosConContrato) return;
+  errorBorrador.value = '';
+  generandoBorrador.value = true;
+  try {
+    await actualizarBorradorFn({
+      empresa_id: companyId.value,
+      ubicacion_id: ubicacionId.value,
+      week_start: mesInicio.value,
+      dias: new Date(mesBase.value.year, mesBase.value.month + 1, 0).getDate(),
+    });
+    segmentos.value = await segmentoStore.cargarSegmentosManager(
+      ubicacionId.value, mesInicio.value, mesFin.value
+    );
+  } catch (err: any) {
+    errorBorrador.value = err?.message ?? String(err);
+  } finally {
+    generandoBorrador.value = false;
+  }
+}
+
+function segmentosFecha(date: string): Segmento[] {
+  return segmentos.value
+    .filter(s => s.date === date)
+    .sort((a, b) => a.start.localeCompare(b.start));
+}
+
+function empleadosPorFecha(date: string): { nombre: string; horario: string; status: SegmentoStatus; id: string }[] {
+  const fecha = segmentos.value.filter(s =>
+    s.date === date && s.status !== 'rechazado'
+  );
+  const porEmpleado = new Map<string, Segmento>();
+  for (const s of fecha.sort((a, b) => a.start.localeCompare(b.start))) {
+    if (!porEmpleado.has(s.empleado_id)) porEmpleado.set(s.empleado_id, s);
+  }
+  return [...porEmpleado.entries()].map(([empId, s]) => ({
+    id: s.id,
+    nombre: nombreById(empId),
+    horario: `${s.start}–${s.end}`,
+    status: s.status,
+  }));
+}
 
 const sessionStore = useSessionStore();
 const segmentoStore = useSegmentoStore();
@@ -1128,24 +1308,6 @@ async function cargar() {
       segmentos.value = await segmentoStore.cargarSegmentosManager(
         ubicacionId.value, fechaInicio.value, fechaFin.value
       );
-      if (diagnostico.value?.tieneTurnos && diagnostico.value?.tieneEmpleadosConContrato) {
-        generandoBorrador.value = true;
-        try {
-          await actualizarBorradorFn({
-            empresa_id: companyId.value,
-            ubicacion_id: ubicacionId.value,
-            week_start: hoy(),
-            dias: 28,
-          });
-          segmentos.value = await segmentoStore.cargarSegmentosManager(
-            ubicacionId.value, fechaInicio.value, fechaFin.value
-          );
-        } catch (err: any) {
-          errorBorrador.value = err?.message ?? String(err);
-        } finally {
-          generandoBorrador.value = false;
-        }
-      }
     } else {
       if (!miEmpleadoId.value) return;
       segmentos.value = await segmentoStore.cargarSegmentosEmpleado(
@@ -1154,6 +1316,28 @@ async function cargar() {
     }
   } finally {
     cargando.value = false;
+  }
+}
+
+async function regenerarBorradorSemana() {
+  if (!canManage.value || !companyId.value || !ubicacionId.value) return;
+  if (!diagnostico.value?.tieneTurnos || !diagnostico.value?.tieneEmpleadosConContrato) return;
+  errorBorrador.value = '';
+  generandoBorrador.value = true;
+  try {
+    await actualizarBorradorFn({
+      empresa_id: companyId.value,
+      ubicacion_id: ubicacionId.value,
+      week_start: hoy(),
+      dias: 28,
+    });
+    segmentos.value = await segmentoStore.cargarSegmentosManager(
+      ubicacionId.value, fechaInicio.value, fechaFin.value
+    );
+  } catch (err: any) {
+    errorBorrador.value = err?.message ?? String(err);
+  } finally {
+    generandoBorrador.value = false;
   }
 }
 
@@ -1258,18 +1442,59 @@ async function publicarDia(diaIdx: number) {
   } finally { accionando.value = false; }
 }
 
+// ── Helpers vista mensual (congregación) ──────────────────────────────────────
+
+function tieneTodosAprobadosPorFecha(date: string): boolean {
+  const del_dia = segmentos.value.filter(s => s.date === date && s.status !== 'rechazado');
+  return del_dia.length > 0 && del_dia.every(s => s.status === 'aprobado');
+}
+
+async function publicarFecha(date: string) {
+  if (!ubicacionId.value) return;
+  accionando.value = true;
+  try {
+    await segmentoStore.publicarDia(ubicacionId.value, date);
+    segmentos.value
+      .filter(s => s.date === date && s.status === 'aprobado')
+      .forEach(s => { s.status = 'publicado'; });
+  } finally { accionando.value = false; }
+}
+
+async function aprobarPorSegId(segId: string) {
+  accionando.value = true;
+  try {
+    const rep = segmentos.value.find(s => s.id === segId);
+    if (!rep) return;
+    await limpiarDuplicadosSugeridos(new Set([rep.date]));
+    const todos = segmentos.value.filter(s =>
+      s.date === rep.date &&
+      s.empleado_id === rep.empleado_id &&
+      s.estacion_id === rep.estacion_id &&
+      s.status === 'sugerido'
+    );
+    await Promise.all(todos.map(s => segmentoStore.aprobarSegmento(s.id)));
+    todos.forEach(s => { s.status = 'aprobado'; });
+  } finally { accionando.value = false; }
+}
+
+function turnosEnFecha(date: string): boolean {
+  const [y, mo, d] = date.split('-').map(Number);
+  const diasES = ['Domingo', 'Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado'];
+  const diaSemana = diasES[new Date(Date.UTC(y, mo - 1, d)).getUTCDay()];
+  return turnosConfiguracion.value.some(t => t.day_of_week === diaSemana);
+}
+
 // ── Montaje ───────────────────────────────────────────────────────────────────
 
 onMounted(async () => {
   miEmpleadoId.value = await resolverMiEmpleadoId();
-  // Esperar a que SucursalLayout resuelva activeUbicacionId antes de cargar.
-  // Si ya está disponible, cargar de inmediato; si no, observar hasta que llegue.
+  const cargarSegunTipo = () => isCongregacion.value ? cargarMes() : cargar();
   if (sessionStore.activeUbicacionId) {
-    await cargar();
+    await cargarSegunTipo();
   } else {
     const stop = watch(
       () => sessionStore.activeUbicacionId,
-      async (val) => { if (val) { stop(); await cargar(); } }
+      async (val) => { if (val) { stop(); await cargarSegunTipo(); } }
     );
   }
 });
