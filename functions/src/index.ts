@@ -716,7 +716,9 @@ export const actualizarBorrador = onCall<
     limiteMinutosPorEmpleado.set(d.id, limiteHoras > 0 ? limiteHoras * 60 : 0);
   });
 
-  // Acumulador de minutos asignados en la semana por empleado (para respetar límite_horas)
+  // Acumulador de minutos asignados en el rango por empleado.
+  // Se inicializa con los minutos de segmentos aprobados/publicados ya existentes,
+  // para que la equidad entre fechas sea real y no siempre elija el mismo subconjunto.
   const minutosAsignadosSemana = new Map<string, number>();
   empleadosDocs.forEach((d) => minutosAsignadosSemana.set(d.id, 0));
 
@@ -725,19 +727,21 @@ export const actualizarBorrador = onCall<
   const week_end = addDays(week_start, dias - 1);
   const ausenciasPorEmpleadoFecha = new Map<string, Intervalo[]>(); // key: `${emp}_${date}`
 
+  // Query de excepciones: solo por employee_id (un campo), todo lo demás en memoria.
+  // Firestore requeriría índices compuestos si combinamos `in` con otros filtros.
   if (empleadoIds.length > 0) {
     for (let i = 0; i < empleadoIds.length; i += 30) {
       const lote = empleadoIds.slice(i, i + 30);
       const excSnap = await db
         .collection("excepciones")
-        .where("date", ">=", week_start)
-        .where("date", "<=", week_end)
-        .where("active", "==", true)
-        .where("deletedAt", "==", null)
         .where("employee_id", "in", lote)
         .get();
       excSnap.docs.forEach((d) => {
         const x = d.data();
+        // Filtrar en memoria: activa, no borrada, dentro del rango y con horas válidas
+        if (x.active === false) return;
+        if (x.deletedAt != null) return;
+        if (!x.date || x.date < week_start || x.date > week_end) return;
         if (!x.time_start || !x.time_end) return;
         const iv = { start: toMinutes(x.time_start), end: toMinutes(x.time_end) };
         if (iv.end <= iv.start) return;
@@ -749,31 +753,41 @@ export const actualizarBorrador = onCall<
     }
   }
 
-  // Cargar reglas de asignación
+  // Cargar reglas de asignación.
+  // Usamos solo `where("person_uno_id", "in", chunk)` y `where("person_dos_id", "in", chunk)`
+  // sin filtro extra de deletedAt para evitar requerir índices compuestos.
+  // El filtro de deletedAt se aplica en memoria.
   const reglasMap = new Map<string, Regla[]>();
   if (empleadoIds.length > 0) {
     const allReglas: Regla[] = [];
+    const vistos = new Set<string>();
     for (let i = 0; i < empleadoIds.length; i += 30) {
       const chunk = empleadoIds.slice(i, i + 30);
       const [r1, r2] = await Promise.all([
-        db.collection("reglas_asignacion").where("person_uno_id", "in", chunk).where("deletedAt", "==", null).get(),
-        db.collection("reglas_asignacion").where("person_dos_id", "in", chunk).where("deletedAt", "==", null).get(),
+        db.collection("reglas_asignacion").where("person_uno_id", "in", chunk).get(),
+        db.collection("reglas_asignacion").where("person_dos_id", "in", chunk).get(),
       ]);
-      r1.docs.forEach((d) => allReglas.push(d.data() as Regla));
-      r2.docs.forEach((d) => allReglas.push(d.data() as Regla));
+      for (const d of [...r1.docs, ...r2.docs]) {
+        if (vistos.has(d.id)) continue;
+        vistos.add(d.id);
+        const data = d.data();
+        // Filtrar en memoria: solo reglas no borradas
+        if (data.deletedAt != null) continue;
+        allReglas.push(data as Regla);
+      }
     }
     empleadoIds.forEach((eid) => {
       reglasMap.set(eid, allReglas.filter((r) => r.person_uno_id === eid || r.person_dos_id === eid));
     });
   }
 
-  // Cargar segmentos existentes de la semana para respetar aprobado/publicado
+  // Cargar segmentos existentes del rango para respetar aprobado/publicado.
+  // Filtramos por ubicacion_id + rango de fecha; deletedAt se filtra en memoria.
   const segmentosExistentesSnap = await db
     .collection("segmentos")
     .where("ubicacion_id", "==", ubicacion_id)
     .where("date", ">=", week_start)
     .where("date", "<=", week_end)
-    .where("deletedAt", "==", null)
     .get();
 
   // Agrupar segmentos existentes por fecha
@@ -786,6 +800,7 @@ export const actualizarBorrador = onCall<
     const porDiaEmpleado = new Map<string, { id: string; start: string; end: string }[]>();
     segmentosExistentesSnap.docs.forEach((d) => {
       const s = d.data();
+      if (s.deletedAt != null) return; // filtrar borrados en memoria
       if (s.tipo !== "estacion") return;
       // Incluir aprobado, publicado Y sugerido/draft
       const statusValido = ["aprobado", "publicado", "sugerido", "draft"].includes(s.status);
@@ -831,12 +846,18 @@ export const actualizarBorrador = onCall<
   segmentosExistentesSnap.docs.forEach((d) => {
     if (duplicadosABorrar.has(d.id)) return; // ya borrado
     const s = d.data();
+    if (s.deletedAt != null) return; // filtrar borrados en memoria
     if (!segmentosPorFecha.has(s.date)) {
       segmentosPorFecha.set(s.date, { aprobados: new Set(), asignacionId: s.asignacion_id ?? null });
     }
     const entry = segmentosPorFecha.get(s.date)!;
     if (s.status === "aprobado" || s.status === "publicado") {
       entry.aprobados.add(d.id);
+      // Acumular minutos de segmentos aprobados/publicados en el contador de equidad
+      if (s.tipo === "estacion" && s.empleado_id && s.start && s.end) {
+        const min = toMinutes(s.end) - toMinutes(s.start);
+        minutosAsignadosSemana.set(s.empleado_id, (minutosAsignadosSemana.get(s.empleado_id) ?? 0) + min);
+      }
     }
     if (s.asignacion_id && !entry.asignacionId) {
       entry.asignacionId = s.asignacion_id;
@@ -856,10 +877,16 @@ export const actualizarBorrador = onCall<
     const turnosDelDia = config.turnos.filter((t) => t.day_of_week === diaEsp);
     if (turnosDelDia.length === 0) continue;
 
-    // Borrar los segmentos `sugerido` y `draft` de este día (los aprobado/publicado intocables)
-    const sugeridosDelDia = segmentosExistentesSnap.docs.filter(
-      (d) => d.data().date === fecha && (d.data().status === "sugerido" || d.data().status === "draft")
-    );
+    // Borrar los segmentos `sugerido` y `draft` de este día.
+    // Query simple por dos campos iguales; status y deletedAt se filtran en memoria.
+    const delSnap = await db.collection("segmentos")
+      .where("ubicacion_id", "==", ubicacion_id)
+      .where("date", "==", fecha)
+      .get();
+    const sugeridosDelDia = delSnap.docs.filter((d) => {
+      const s = d.data();
+      return s.deletedAt == null && (s.status === "sugerido" || s.status === "draft");
+    });
     if (sugeridosDelDia.length > 0) {
       const delBatch = db.batch();
       sugeridosDelDia.forEach((d) => {
