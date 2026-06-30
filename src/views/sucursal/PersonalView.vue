@@ -7,7 +7,7 @@
       <!-- Cabecera -->
       <div class="flex items-center justify-between px-4 pt-5 pb-3 shrink-0">
         <div>
-          <p class="text-xs font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-widest">Personal</p>
+          <p class="text-xs font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-widest">{{ isCongregacion ? 'Voluntarios' : 'Personal' }}</p>
           <p class="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
             {{ empleadosActivos.length }} activo{{ empleadosActivos.length !== 1 ? 's' : '' }}
           </p>
@@ -53,7 +53,7 @@
         <!-- Vacío -->
         <div v-if="empleadosFiltrados.length === 0" class="px-4 py-10 text-center">
           <p class="text-xs text-gray-400 dark:text-gray-500">
-            {{ busqueda || filtroEstacion ? 'Sin resultados.' : 'No hay personal aún.' }}
+            {{ busqueda || filtroEstacion ? 'Sin resultados.' : (isCongregacion ? 'No hay voluntarios aún.' : 'No hay personal aún.') }}
           </p>
           <button v-if="!busqueda && !filtroEstacion" @click="abrirModalAgregar"
             class="mt-3 text-xs text-blue-600 dark:text-blue-400 hover:underline">
@@ -464,7 +464,7 @@
                   <select v-model="formAcceso.role"
                     class="w-full px-2.5 py-1.5 text-xs rounded-lg border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-1 focus:ring-blue-500">
                     <option value="zone_manager">Gestor de zona</option>
-                    <option value="branch_manager">Gestor de sucursal</option>
+                    <option value="branch_manager">{{ isCongregacion ? 'Gestor de ubicación' : 'Gestor de sucursal' }}</option>
                     <option value="member">Miembro</option>
                     <option value="viewer">Solo lectura</option>
                   </select>
@@ -496,8 +496,8 @@
           <!-- Header -->
           <div class="flex items-center justify-between px-5 py-4 border-b border-gray-100 dark:border-gray-700 shrink-0">
             <div>
-              <h3 class="text-base font-semibold text-gray-900 dark:text-white">Agregar personal</h3>
-              <p class="text-xs text-gray-400 dark:text-gray-500 mt-0.5">Empleados disponibles para asignar</p>
+              <h3 class="text-base font-semibold text-gray-900 dark:text-white">{{ isCongregacion ? 'Agregar voluntario' : 'Agregar personal' }}</h3>
+              <p class="text-xs text-gray-400 dark:text-gray-500 mt-0.5">{{ isCongregacion ? 'Voluntarios disponibles para asignar' : 'Empleados disponibles para asignar' }}</p>
             </div>
             <button @click="cerrarModalAgregar" class="w-8 h-8 flex items-center justify-center rounded-lg text-gray-400 hover:text-gray-600 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors">
               <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" class="w-5 h-5">
@@ -531,7 +531,7 @@
                 <input
                   v-model="busquedaModal"
                   type="search"
-                  placeholder="Buscar por nombre o RUT..."
+                  :placeholder="isCongregacion ? 'Buscar por nombre…' : 'Buscar por nombre o RUT…'"
                   class="w-full pl-9 pr-4 py-2 text-sm rounded-lg border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500"
                 />
               </div>
@@ -541,7 +541,7 @@
             <div class="flex-1 overflow-y-auto min-h-0 px-5 pb-5">
               <div v-if="empleadosDisponibles.length === 0" class="py-10 text-center">
                 <p class="text-sm text-gray-400 dark:text-gray-500">
-                  {{ busquedaModal ? 'Sin resultados.' : 'Todos los empleados ya tienen contrato vigente.' }}
+                  {{ busquedaModal ? 'Sin resultados.' : (isCongregacion ? 'Todos los voluntarios ya tienen contrato vigente.' : 'Todos los empleados ya tienen contrato vigente.') }}
                 </p>
               </div>
               <ul v-else class="space-y-1 mt-1">
@@ -590,10 +590,11 @@
           <template v-else>
             <form @submit.prevent="guardarNuevoEmpleado" class="flex-1 overflow-y-auto p-5 space-y-4">
 
-              <!-- RUT con validación -->
+              <!-- RUT (obligatorio en empresa, opcional en congregación) -->
               <div>
                 <label class="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">
-                  RUT <span class="text-red-500">*</span>
+                  RUT <span v-if="!isCongregacion" class="text-red-500">*</span>
+                  <span v-else class="text-gray-400 font-normal">(opcional)</span>
                 </label>
                 <div class="relative">
                   <input
@@ -604,7 +605,7 @@
                     placeholder="12345678-9"
                     maxlength="10"
                     autocomplete="off"
-                    required
+                    :required="!isCongregacion"
                     :class="[
                       'w-full px-3 py-2 text-sm rounded-lg border bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500 pr-10',
                       rutShowError ? 'border-red-400 dark:border-red-500'
@@ -636,8 +637,8 @@
                 <p class="text-xs text-blue-600 dark:text-blue-300">Contacto existente: <strong>{{ contactoEncontrado?.first_name }} {{ contactoEncontrado?.last_name }}</strong>. Se vinculará a esta empresa.</p>
               </div>
 
-              <!-- Campos (solo si RUT válido) -->
-              <template v-if="rutIsValid && !alertaPersonalDuplicado">
+              <!-- Campos nombre/apellido: siempre visibles en congregación, o cuando RUT es válido en empresa -->
+              <template v-if="isCongregacion ? !alertaPersonalDuplicado : (rutIsValid && !alertaPersonalDuplicado)">
                 <div class="grid grid-cols-2 gap-3">
                   <div>
                     <label class="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">Nombre <span class="text-red-500">*</span></label>
@@ -669,7 +670,10 @@
                   class="flex-1 px-4 py-2 text-sm font-medium text-gray-700 dark:text-gray-300 border border-gray-200 dark:border-gray-600 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors">
                   Cancelar
                 </button>
-                <button v-if="rutIsValid && !alertaPersonalDuplicado" type="submit" :disabled="guardandoNuevo"
+                <!-- En congregación: siempre mostrar Crear (RUT opcional); en empresa: solo si RUT válido -->
+                <button
+                  v-if="isCongregacion ? !alertaPersonalDuplicado : (rutIsValid && !alertaPersonalDuplicado)"
+                  type="submit" :disabled="guardandoNuevo || !formNuevo.first_name.trim() || !formNuevo.last_name.trim()"
                   class="flex-1 px-4 py-2 text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 disabled:opacity-60 rounded-lg transition-colors">
                   {{ guardandoNuevo ? 'Guardando…' : 'Crear y agregar' }}
                 </button>
@@ -720,7 +724,7 @@ const SCOPE_TYPE_LABELS: Record<ScopeType, string> = {
   client: 'cliente',
   company: 'empresa',
   zone: 'zona',
-  branch: 'sucursal',
+  branch: 'ubicación',
 };
 
 const route = useRoute();
@@ -1112,7 +1116,10 @@ async function crearContrato() {
 
 const modalAgregarOpen  = ref(false);
 const modalTab          = ref<'buscar' | 'nuevo'>('buscar');
-const modalTabs         = [{ id: 'buscar', label: 'Buscar empleado' }, { id: 'nuevo', label: 'Crear nuevo' }];
+const modalTabs         = computed(() => [
+  { id: 'buscar', label: isCongregacion.value ? 'Buscar voluntario' : 'Buscar empleado' },
+  { id: 'nuevo',  label: 'Crear nuevo' },
+]);
 const busquedaModal     = ref('');
 const empleadoParaAgregar = ref<Empleado | null>(null);
 
@@ -1205,6 +1212,9 @@ watch(rutIsValid, async (valido) => {
 
 async function guardarNuevoEmpleado() {
   if (!activeCompanyId.value || alertaPersonalDuplicado.value) return;
+  if (!formNuevo.first_name.trim() || !formNuevo.last_name.trim()) return;
+  // En empresa, el RUT debe ser válido antes de guardar
+  if (!isCongregacion.value && !rutIsValid.value) return;
   errorNuevo.value = '';
   guardandoNuevo.value = true;
   try {
@@ -1214,9 +1224,12 @@ async function guardarNuevoEmpleado() {
     } else {
       const contactosRef = collection(db, 'contactos').withConverter(contactoConverter);
       const newRef = doc(contactosRef);
+      const rutNormalizado = isCongregacion.value
+        ? (rut.value ? rut.value.toUpperCase() : '')
+        : rut.value.toUpperCase();
       await setDoc(newRef, new Contacto(
         newRef.id, formNuevo.first_name, formNuevo.last_name,
-        rut.value.toUpperCase(), formNuevo.email, formNuevo.phone, '', false, true
+        rutNormalizado, formNuevo.email, formNuevo.phone, '', false, true
       ));
       contactId = newRef.id;
     }
@@ -1230,7 +1243,7 @@ async function guardarNuevoEmpleado() {
     });
     cerrarModalAgregar();
   } catch (e: any) {
-    errorNuevo.value = e.message || 'Error al crear el empleado.';
+    errorNuevo.value = e.message || (isCongregacion.value ? 'Error al crear el voluntario.' : 'Error al crear el empleado.');
   } finally {
     guardandoNuevo.value = false;
   }
