@@ -858,16 +858,16 @@ async function reasignar(nuevoEmpleadoId: string) {
   accionando.value = true;
   try {
     if (sidebarAsig.value) {
-      // Actualizar empleado de la asignación existente
+      // Actualizar empleado de la asignación existente → queda publicado
       await asignacionStore.actualizarEmpleadoAsignacion(sidebarAsig.value.id, nuevoEmpleadoId);
       const asig = asignaciones.value.find(a => a.id === sidebarAsig.value!.id);
       if (asig) {
         asig.empleado_id = nuevoEmpleadoId;
-        asig.status = 'sugerido';
+        asig.status = 'publicado';
       }
-      sidebarAsig.value = { ...sidebarAsig.value, empleado_id: nuevoEmpleadoId, status: 'sugerido' };
+      sidebarAsig.value = { ...sidebarAsig.value, empleado_id: nuevoEmpleadoId, status: 'publicado' };
     } else {
-      // Crear nueva asignación
+      // Crear nueva asignación directamente publicada
       const id = await asignacionStore.crearAsignacion({
         empresa_id: companyId.value,
         ubicacion_id: ubicacionId.value,
@@ -876,6 +876,7 @@ async function reasignar(nuevoEmpleadoId: string) {
         estacion_id: sidebarEstacionId.value,
         start: sidebarTurno.value.start_time,
         end: sidebarTurno.value.end_time,
+        status: 'publicado',
       });
       asignaciones.value.push({
         id,
@@ -886,7 +887,7 @@ async function reasignar(nuevoEmpleadoId: string) {
         estacion_id: sidebarEstacionId.value,
         start: sidebarTurno.value.start_time,
         end: sidebarTurno.value.end_time,
-        status: 'sugerido',
+        status: 'publicado',
         active: true,
         createdAt: new Date(),
         updatedAt: new Date(),
@@ -1406,6 +1407,7 @@ async function agregarVoluntarioCong(empId: string, turno: Turno, fecha: string)
       estacion_id: null,
       start: turno.start_time,
       end: turno.end_time,
+      status: 'publicado',
     });
     asignaciones.value.push({
       id,
@@ -1416,7 +1418,7 @@ async function agregarVoluntarioCong(empId: string, turno: Turno, fecha: string)
       estacion_id: null,
       start: turno.start_time,
       end: turno.end_time,
-      status: 'sugerido',
+      status: 'publicado',
       active: true,
       createdAt: new Date(),
       updatedAt: new Date(),

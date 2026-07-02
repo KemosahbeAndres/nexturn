@@ -1158,6 +1158,9 @@ watch(() => empleadoStore.empleados, (lista) => {
 async function guardarCampoActivo() {
   if (!empleadoSeleccionado.value) return;
   await empleadoStore.updateEmpleado(empleadoSeleccionado.value.id, { active: form.active });
+  const compId = sessionStore.activeCompanyId;
+  const ubicId = sessionStore.activeUbicacionId;
+  if (compId && ubicId) asignacionStore.regenerarSugerenciasSilencioso(compId, ubicId, (logs) => logStore.pushServerLogs(logs, 'generarAsignaciones'), (msg) => logStore.error(`Regeneración fallida: ${msg}`, { scope: 'personal' }));
 }
 
 // ── Datos de contacto ──────────────────────────────────────────────────────────

@@ -81,10 +81,12 @@ export const useAsignacionStore = defineStore('asignacion', () => {
     estacion_id: string | null;
     start: string;
     end: string;
+    status?: 'sugerido' | 'publicado';
   }): Promise<string> {
+    const { status = 'sugerido', ...rest } = data;
     const ref = await addDoc(collection(db, 'asignaciones'), {
-      ...data,
-      status: 'sugerido',
+      ...rest,
+      status,
       active: true,
       createdAt: Timestamp.now(),
       updatedAt: Timestamp.now(),
@@ -96,7 +98,7 @@ export const useAsignacionStore = defineStore('asignacion', () => {
   async function actualizarEmpleadoAsignacion(id: string, empleadoId: string): Promise<void> {
     await updateDoc(doc(db, 'asignaciones', id), {
       empleado_id: empleadoId,
-      status: 'sugerido',
+      status: 'publicado',
       updatedAt: Timestamp.now(),
     });
   }
