@@ -36,15 +36,25 @@
         </div>
       </div>
 
-      <!-- Filtro estaciones (solo empresa) -->
-      <div v-if="!isCongregacion" class="px-3 pb-3 shrink-0">
-        <select
-          v-model="filtroEstacion"
-          class="w-full px-2.5 py-1.5 text-xs rounded-lg border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
-        >
-          <option value="">Todas las estaciones</option>
-          <option v-for="e in estacionesActivas" :key="e.id" :value="e.id">{{ e.nombre }}</option>
-        </select>
+      <!-- Filtro activos/inactivos -->
+      <div class="px-3 pb-3 shrink-0">
+        <div class="flex rounded-lg border border-gray-200 dark:border-gray-600 overflow-hidden text-xs font-medium">
+          <button @click="filtroEstado = 'activos'"
+            class="flex-1 py-1.5 transition-colors"
+            :class="filtroEstado === 'activos' ? 'bg-blue-600 text-white' : 'bg-white dark:bg-gray-800 text-gray-500 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-700'">
+            Activos
+          </button>
+          <button @click="filtroEstado = 'inactivos'"
+            class="flex-1 py-1.5 transition-colors border-l border-gray-200 dark:border-gray-600"
+            :class="filtroEstado === 'inactivos' ? 'bg-blue-600 text-white' : 'bg-white dark:bg-gray-800 text-gray-500 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-700'">
+            Inactivos
+          </button>
+          <button @click="filtroEstado = 'todos'"
+            class="flex-1 py-1.5 transition-colors border-l border-gray-200 dark:border-gray-600"
+            :class="filtroEstado === 'todos' ? 'bg-blue-600 text-white' : 'bg-white dark:bg-gray-800 text-gray-500 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-700'">
+            Todos
+          </button>
+        </div>
       </div>
 
       <!-- Lista scrolleable -->
@@ -53,9 +63,9 @@
         <!-- Vacío -->
         <div v-if="empleadosFiltrados.length === 0" class="px-4 py-10 text-center">
           <p class="text-xs text-gray-400 dark:text-gray-500">
-            {{ busqueda || filtroEstacion ? 'Sin resultados.' : (isCongregacion ? 'No hay voluntarios aún.' : 'No hay personal aún.') }}
+            {{ busqueda ? 'Sin resultados.' : (filtroEstado === 'inactivos' ? 'No hay inactivos.' : (isCongregacion ? 'No hay voluntarios aún.' : 'No hay personal aún.')) }}
           </p>
-          <button v-if="!busqueda && !filtroEstacion" @click="abrirModalAgregar"
+          <button v-if="!busqueda && filtroEstado === 'activos'" @click="abrirModalAgregar"
             class="mt-3 text-xs text-blue-600 dark:text-blue-400 hover:underline">
             Agregar el primero
           </button>
@@ -829,6 +839,36 @@
               </ul>
             </div>
 
+            <!-- Contrato al agregar existente -->
+            <div v-if="empleadoParaAgregar" class="px-5 pt-4 pb-2 border-t border-gray-100 dark:border-gray-700 space-y-3">
+              <p class="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide">Contrato en esta sucursal</p>
+              <div v-if="!isCongregacion">
+                <label class="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">Cargo</label>
+                <select v-model="formContrato.cargo_id"
+                  class="w-full px-3 py-2 text-sm rounded-lg border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500">
+                  <option value="">— Sin cargo —</option>
+                  <option v-for="cargo in cargosEmpresa" :key="cargo.id" :value="cargo.id">{{ cargo.nombre }}</option>
+                </select>
+              </div>
+              <div class="grid grid-cols-2 gap-3">
+                <div>
+                  <label class="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">Fecha inicio <span class="text-red-500">*</span></label>
+                  <input v-model="formContrato.fecha_inicio" type="date" required
+                    class="w-full px-3 py-2 text-sm rounded-lg border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                </div>
+                <div>
+                  <label class="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">Fecha fin <span class="text-gray-400 font-normal">(opcional)</span></label>
+                  <input v-model="formContrato.fecha_fin" type="date"
+                    class="w-full px-3 py-2 text-sm rounded-lg border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                </div>
+              </div>
+              <div v-if="!isCongregacion">
+                <label class="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">Límite horas/semana <span class="text-gray-400 font-normal">(0 = sin límite)</span></label>
+                <input v-model.number="formContrato.limite_horas" type="number" min="0" max="168" step="1"
+                  class="w-full px-3 py-2 text-sm rounded-lg border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500" />
+              </div>
+            </div>
+
             <!-- Footer -->
             <div class="px-5 py-4 border-t border-gray-100 dark:border-gray-700 shrink-0 flex gap-3">
               <button type="button" @click="cerrarModalAgregar"
@@ -837,7 +877,7 @@
               </button>
               <button type="button" @click="confirmarAgregarEmpleado" :disabled="!empleadoParaAgregar"
                 class="flex-1 px-4 py-2 text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed rounded-lg transition-colors">
-                Seleccionar
+                Agregar
               </button>
             </div>
           </template>
@@ -916,6 +956,44 @@
                   <label class="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">Teléfono</label>
                   <input v-model="formNuevo.phone" type="tel" :disabled="!!contactoEncontrado"
                     class="w-full px-3 py-2 text-sm rounded-lg border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-60" />
+                </div>
+              </template>
+
+              <!-- Contrato en la sucursal actual -->
+              <template v-if="isCongregacion ? !alertaPersonalDuplicado : (rutIsValid && !alertaPersonalDuplicado)">
+                <div class="border-t border-gray-100 dark:border-gray-700 pt-4 space-y-3">
+                  <p class="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide">Contrato en esta sucursal</p>
+
+                  <!-- Cargo (solo empresa) -->
+                  <div v-if="!isCongregacion">
+                    <label class="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">Cargo</label>
+                    <select v-model="formContrato.cargo_id"
+                      class="w-full px-3 py-2 text-sm rounded-lg border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500">
+                      <option value="">— Sin cargo —</option>
+                      <option v-for="cargo in cargosEmpresa" :key="cargo.id" :value="cargo.id">{{ cargo.nombre }}</option>
+                    </select>
+                  </div>
+
+                  <!-- Fechas -->
+                  <div class="grid grid-cols-2 gap-3">
+                    <div>
+                      <label class="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">Fecha inicio <span class="text-red-500">*</span></label>
+                      <input v-model="formContrato.fecha_inicio" type="date" required
+                        class="w-full px-3 py-2 text-sm rounded-lg border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                    </div>
+                    <div>
+                      <label class="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">Fecha fin <span class="text-gray-400 font-normal">(opcional)</span></label>
+                      <input v-model="formContrato.fecha_fin" type="date"
+                        class="w-full px-3 py-2 text-sm rounded-lg border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                    </div>
+                  </div>
+
+                  <!-- Límite de horas (solo empresa) -->
+                  <div v-if="!isCongregacion">
+                    <label class="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">Límite horas/semana <span class="text-gray-400 font-normal">(0 = sin límite)</span></label>
+                    <input v-model.number="formContrato.limite_horas" type="number" min="0" max="168" step="1"
+                      class="w-full px-3 py-2 text-sm rounded-lg border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                  </div>
                 </div>
               </template>
 
@@ -1085,18 +1163,20 @@ function contratoVenciendo(emp: Empleado): boolean {
 // ── Lista izquierda ────────────────────────────────────────────────────────────
 
 const busqueda = ref('');
-const filtroEstacion = ref('');
+const filtroEstado = ref<'activos' | 'inactivos' | 'todos'>('activos');
 
 const empleadosFiltrados = computed(() => {
   const ubicId = sessionStore.activeUbicacionId;
-  let lista = empleadoStore.empleados?.filter(e => e.active && !e.deletedAt) ?? [];
-  // Filtrar por sucursal activa: solo empleados con contrato activo en esta sucursal
+  let lista = (empleadoStore.empleados ?? []).filter(e => !e.deletedAt);
+  // Filtrar por sucursal activa: solo empleados con contrato en esta sucursal (activo o no)
   if (ubicId) {
     lista = lista.filter(e =>
-      (e.contratos ?? []).some(c => c.active && !c.deletedAt && c.ubicacion_id === ubicId)
+      (e.contratos ?? []).some(c => !c.deletedAt && c.ubicacion_id === ubicId)
     );
   }
-  if (!isCongregacion.value && filtroEstacion.value) lista = lista.filter(e => e.estacion_ids.includes(filtroEstacion.value));
+  // Filtro activos/inactivos
+  if (filtroEstado.value === 'activos') lista = lista.filter(e => e.active);
+  else if (filtroEstado.value === 'inactivos') lista = lista.filter(e => !e.active);
   if (busqueda.value.trim()) {
     const q = busqueda.value.toLowerCase();
     lista = lista.filter(e =>
@@ -1418,7 +1498,7 @@ const editandoContratoId = ref<string | null>(null);
 const guardandoContrato  = ref(false);
 const errorContrato      = ref('');
 
-const formContrato = reactive({ cargo_id: '', limite_horas: 0, fecha_fin: '' });
+const formContrato = reactive({ cargo_id: '', limite_horas: 0, fecha_inicio: new Date().toISOString().slice(0, 10), fecha_fin: '' });
 
 function toggleEditarContrato(id: string) {
   if (editandoContratoId.value === id) { editandoContratoId.value = null; return; }
@@ -1527,6 +1607,10 @@ function abrirModalAgregar() {
   formNuevo.last_name  = '';
   formNuevo.email      = '';
   formNuevo.phone      = '';
+  formContrato.cargo_id    = '';
+  formContrato.fecha_inicio = new Date().toISOString().slice(0, 10);
+  formContrato.fecha_fin    = '';
+  formContrato.limite_horas = 0;
   modalAgregarOpen.value = true;
 }
 
@@ -1537,19 +1621,18 @@ function seleccionarParaAgregar(emp: Empleado) {
 }
 
 async function confirmarAgregarEmpleado() {
-  if (!empleadoParaAgregar.value) return;
-  // En congregación: crear contrato automáticamente en la ubicación activa
-  if (isCongregacion.value && sessionStore.activeUbicacionId) {
-    await empleadoStore.addContrato(empleadoParaAgregar.value.id, {
-      empleado_id:  empleadoParaAgregar.value.id,
-      ubicacion_id: sessionStore.activeUbicacionId,
-      cargo_id:     '',
-      active:       true,
-      limite_horas: 0,
-      fecha_inicio: new Date(),
-      fecha_fin:    null,
-    });
-  }
+  if (!empleadoParaAgregar.value || !sessionStore.activeUbicacionId) return;
+  const fechaInicio = formContrato.fecha_inicio ? new Date(formContrato.fecha_inicio + 'T12:00:00') : new Date();
+  const fechaFin    = formContrato.fecha_fin ? new Date(formContrato.fecha_fin + 'T12:00:00') : null;
+  await empleadoStore.addContrato(empleadoParaAgregar.value.id, {
+    empleado_id:  empleadoParaAgregar.value.id,
+    ubicacion_id: sessionStore.activeUbicacionId,
+    cargo_id:     formContrato.cargo_id,
+    active:       true,
+    limite_horas: formContrato.limite_horas ?? 0,
+    fecha_inicio: fechaInicio,
+    fecha_fin:    fechaFin,
+  });
   cerrarModalAgregar();
   seleccionar(empleadoParaAgregar.value);
 }
@@ -1627,10 +1710,11 @@ async function guardarNuevoEmpleado() {
       ));
       contactId = newRef.id;
     }
-    // En congregación: crear contrato en la ubicación activa directamente al crear el empleado
     const ubicacionId = sessionStore.activeUbicacionId;
-    const contratosIniciales: Contrato[] = (isCongregacion.value && ubicacionId)
-      ? [new Contrato(crypto.randomUUID(), 'pending', ubicacionId, '', true, 0, new Date(), null)]
+    const fechaInicio = formContrato.fecha_inicio ? new Date(formContrato.fecha_inicio + 'T12:00:00') : new Date();
+    const fechaFin    = formContrato.fecha_fin ? new Date(formContrato.fecha_fin + 'T12:00:00') : null;
+    const contratosIniciales: Contrato[] = ubicacionId
+      ? [new Contrato(crypto.randomUUID(), 'pending', ubicacionId, formContrato.cargo_id, true, formContrato.limite_horas ?? 0, fechaInicio, fechaFin)]
       : [];
 
     await empleadoStore.createEmpleado({

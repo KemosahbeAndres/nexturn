@@ -51,12 +51,11 @@ export const useEmpleadoStore = defineStore('empleado', () => {
     });
   }, { deep: false });
 
-  // Empleados con contacto siempre hidratado desde el Map externo
+  // Empleados con contacto siempre hidratado desde el Map externo (sin mutar el objeto de VueFire)
   const empleados = computed(() =>
     (_empleados.value ?? []).map(emp => {
-      if (!emp.contacto && emp.contact_id && contactosMap.value.has(emp.contact_id)) {
-        emp.contacto = contactosMap.value.get(emp.contact_id);
-      }
+      const contacto = emp.contacto ?? contactosMap.value.get(emp.contact_id);
+      if (contacto && !emp.contacto) return Object.assign(Object.create(Object.getPrototypeOf(emp)), emp, { contacto });
       return emp;
     })
   );
