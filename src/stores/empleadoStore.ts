@@ -4,7 +4,7 @@ import { collection, doc, setDoc, updateDoc, getDocs, getDoc, query, where, Time
 import { ref, computed, watch } from 'vue';
 import { db } from '../firebase';
 import { Empleado, empleadoConverter } from '../models/Empleado';
-import { contactoConverter } from '../models/Contacto';
+import { contactoConverter, type Contacto } from '../models/Contacto';
 import { Contrato, contratoToPlain } from '../models/Contrato';
 
 export const useEmpleadoStore = defineStore('empleado', () => {
@@ -24,21 +24,21 @@ export const useEmpleadoStore = defineStore('empleado', () => {
     );
   });
 
-  const empleados = useCollection(empleadosQuery);
+  const _empleados = useCollection(empleadosQuery);
 
-  // Caché de contactos ya resueltos para no volver a pedirlos en cada disparo del watcher
-  const contactosCargados = new Set<string>();
+  // Map externo contact_id → Contacto para sobrevivir los reemplazos de VueFire
+  const contactosMap = ref<Map<string, Contacto>>(new Map());
+  const contactosCargando = new Set<string>();
 
-  watch(empleados, async (lista) => {
+  watch(_empleados, async (lista) => {
     if (!lista) return;
-    // Recoger solo los contact_id que aún no se han resuelto
-    const pendientes = lista.filter(emp => !emp.contacto && emp.contact_id && !contactosCargados.has(emp.contact_id));
+    const pendientes = lista.filter(
+      emp => emp.contact_id && !contactosMap.value.has(emp.contact_id) && !contactosCargando.has(emp.contact_id)
+    );
     if (pendientes.length === 0) return;
 
-    // Marcar como en-vuelo antes de las peticiones para que disparos rápidos no los dupliquen
-    pendientes.forEach(emp => contactosCargados.add(emp.contact_id));
+    pendientes.forEach(emp => contactosCargando.add(emp.contact_id));
 
-    // Resolver todos en paralelo (una petición por contacto simultáneas)
     const snaps = await Promise.all(
       pendientes.map(emp =>
         getDoc(doc(db, 'contactos', emp.contact_id).withConverter(contactoConverter))
@@ -47,11 +47,21 @@ export const useEmpleadoStore = defineStore('empleado', () => {
     );
 
     snaps.forEach((snap, i) => {
-      if (snap?.exists()) pendientes[i].contacto = snap.data();
+      if (snap?.exists()) contactosMap.value.set(pendientes[i].contact_id, snap.data());
     });
   }, { deep: false });
 
-  const empleadosActivos = computed(() => empleados.value?.filter(e => e.active && !e.deletedAt) ?? []);
+  // Empleados con contacto siempre hidratado desde el Map externo
+  const empleados = computed(() =>
+    (_empleados.value ?? []).map(emp => {
+      if (!emp.contacto && emp.contact_id && contactosMap.value.has(emp.contact_id)) {
+        emp.contacto = contactosMap.value.get(emp.contact_id);
+      }
+      return emp;
+    })
+  );
+
+  const empleadosActivos = computed(() => empleados.value.filter(e => e.active && !e.deletedAt));
 
   async function createEmpleado(data: Omit<Empleado, 'id' | 'createdAt' | 'updatedAt' | 'deletedAt' | 'contacto' | 'displayName' | 'initials'>) {
     const docRef = doc(empleadosRef);
