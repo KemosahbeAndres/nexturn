@@ -108,7 +108,7 @@ export const useAsignacionStore = defineStore('asignacion', () => {
     ubicacionId: string,
     weekStart: string,
     dias: number
-  ): Promise<{ logs: string[]; dias_procesados: number; asignaciones_creadas: number; huecos: any[] }> {
+  ): Promise<{ logs: string[]; dias_procesados: number; asignaciones_creadas: number; huecos: any[]; error?: string }> {
     const result = await generarAsignacionesFn({
       empresa_id: empresaId,
       ubicacion_id: ubicacionId,
@@ -134,9 +134,12 @@ export const useAsignacionStore = defineStore('asignacion', () => {
       dias: 28,
     }).then((res: any) => {
       if (onLog && res.data?.logs) onLog(res.data.logs);
+      if (res.data?.error && onError) onError(res.data.error);
     }).catch((err: any) => {
+      const code = err?.code ?? '';
       const msg = err?.message ?? String(err);
-      if (onError) onError(msg);
+      const details = err?.details ? ` | ${JSON.stringify(err.details)}` : '';
+      if (onError) onError(`[${code}] ${msg}${details}`);
     });
   }
 

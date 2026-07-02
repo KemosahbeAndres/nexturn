@@ -61,6 +61,123 @@
               <path stroke-linecap="round" stroke-linejoin="round" d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0 3.181 3.183a8.25 8.25 0 0 0 13.803-3.7M4.031 9.865a8.25 8.25 0 0 1 13.803-3.7l3.181 3.182m0-4.991v4.99" />
             </svg>
           </button>
+          <!-- Botón diagnóstico (solo manager empresa) -->
+          <div v-if="canManage && !isCongregacion" class="relative" data-diagnostico>
+            <button @click="panelAbierto = !panelAbierto"
+              class="relative w-8 h-8 flex items-center justify-center rounded-lg border transition-colors"
+              :class="diagnosticoListo
+                ? 'border-gray-200 dark:border-gray-600 text-gray-500 hover:bg-gray-50 dark:hover:bg-gray-700'
+                : 'border-amber-300 dark:border-amber-700 text-amber-500 hover:bg-amber-50 dark:hover:bg-amber-900/20'"
+              title="Diagnóstico">
+              <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" class="w-4 h-4">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M14.857 17.082a23.848 23.848 0 0 0 5.454-1.31A8.967 8.967 0 0 1 18 9.75V9A6 6 0 0 0 6 9v.75a8.967 8.967 0 0 1-2.312 6.022c1.733.64 3.56 1.085 5.455 1.31m5.714 0a24.255 24.255 0 0 1-5.714 0m5.714 0a3 3 0 1 1-5.714 0" />
+              </svg>
+              <!-- Badge de problema -->
+              <span v-if="!diagnosticoListo && diagnostico && problemasTotal > 0"
+                class="absolute -top-1 -right-1 w-4 h-4 flex items-center justify-center rounded-full bg-amber-500 text-white text-[9px] font-bold leading-none">
+                {{ problemasTotal > 9 ? '9+' : problemasTotal }}
+              </span>
+              <span v-else-if="cargandoDiagnostico"
+                class="absolute -top-1 -right-1 w-3 h-3 rounded-full bg-gray-300 dark:bg-gray-500 animate-pulse">
+              </span>
+            </button>
+
+            <!-- Dropdown diagnóstico -->
+            <div v-if="panelAbierto"
+              class="absolute right-0 top-10 z-50 w-80 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 shadow-lg overflow-hidden">
+              <div class="flex items-center justify-between px-4 py-3 border-b border-gray-100 dark:border-gray-700">
+                <div class="flex items-center gap-2">
+                  <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor"
+                    class="w-4 h-4 shrink-0"
+                    :class="diagnosticoListo ? 'text-emerald-500' : 'text-amber-500'">
+                    <path v-if="diagnosticoListo" stroke-linecap="round" stroke-linejoin="round" d="M9 12.75 11.25 15 15 9.75M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z" />
+                    <path v-else stroke-linecap="round" stroke-linejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126ZM12 15.75h.007v.008H12v-.008Z" />
+                  </svg>
+                  <span class="text-xs font-semibold text-gray-700 dark:text-gray-200">Diagnóstico</span>
+                  <span v-if="cargandoDiagnostico" class="text-[10px] text-gray-400 animate-pulse">calculando…</span>
+                  <span v-else-if="generandoBorrador" class="text-[10px] text-blue-500 animate-pulse">generando…</span>
+                  <span v-else-if="diagnosticoListo" class="text-[10px] text-emerald-600 dark:text-emerald-400">Todo listo</span>
+                  <span v-else-if="diagnostico" class="text-[10px] text-amber-600 dark:text-amber-400">{{ problemasTotal }} problema(s)</span>
+                </div>
+                <button @click="panelAbierto = false" class="p-1 rounded text-gray-400 hover:text-gray-600 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors">
+                  <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2.5" stroke="currentColor" class="w-3.5 h-3.5">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M6 18 18 6M6 6l12 12" />
+                  </svg>
+                </button>
+              </div>
+              <div class="p-3 space-y-2 max-h-96 overflow-y-auto">
+                <div v-if="cargandoDiagnostico" class="flex items-center gap-2 py-2">
+                  <svg class="w-4 h-4 animate-spin text-gray-400" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                    <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/>
+                    <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/>
+                  </svg>
+                  <span class="text-xs text-gray-400">Cargando datos…</span>
+                </div>
+                <template v-else-if="diagnostico">
+                  <div class="flex items-start gap-2.5 px-2.5 py-2 rounded-lg"
+                    :class="diagnostico.tieneTurnos ? 'bg-emerald-50 dark:bg-emerald-900/15' : 'bg-red-50 dark:bg-red-900/15'">
+                    <span class="text-xs mt-0.5 shrink-0">{{ diagnostico.tieneTurnos ? '✅' : '❌' }}</span>
+                    <div class="flex-1 min-w-0">
+                      <p class="text-xs font-semibold" :class="diagnostico.tieneTurnos ? 'text-emerald-800 dark:text-emerald-300' : 'text-red-700 dark:text-red-400'">Turnos configurados</p>
+                      <p class="text-[11px] mt-0.5" :class="diagnostico.tieneTurnos ? 'text-emerald-700 dark:text-emerald-500' : 'text-red-500 dark:text-red-400'">
+                        {{ diagnostico.tieneTurnos ? `${diagnostico.cantTurnos} turno(s) — días: ${diagnostico.diasConTurno}` : 'Ve a Turnos → Configuraciones y agrega al menos un turno' }}
+                      </p>
+                    </div>
+                  </div>
+                  <div class="flex items-start gap-2.5 px-2.5 py-2 rounded-lg"
+                    :class="diagnostico.tieneEstaciones ? 'bg-emerald-50 dark:bg-emerald-900/15' : 'bg-red-50 dark:bg-red-900/15'">
+                    <span class="text-xs mt-0.5 shrink-0">{{ diagnostico.tieneEstaciones ? '✅' : '❌' }}</span>
+                    <div class="flex-1 min-w-0">
+                      <p class="text-xs font-semibold" :class="diagnostico.tieneEstaciones ? 'text-emerald-800 dark:text-emerald-300' : 'text-red-700 dark:text-red-400'">Estaciones activas</p>
+                      <p class="text-[11px] mt-0.5" :class="diagnostico.tieneEstaciones ? 'text-emerald-700 dark:text-emerald-500' : 'text-red-500 dark:text-red-400'">
+                        {{ diagnostico.tieneEstaciones ? diagnostico.nombresEstaciones : 'Ve a Mi Equipo → Estaciones y crea al menos una' }}
+                      </p>
+                    </div>
+                  </div>
+                  <div v-if="diagnostico.tieneTurnos" class="flex items-start gap-2.5 px-2.5 py-2 rounded-lg"
+                    :class="diagnostico.turnosTienenRequerimientos ? 'bg-emerald-50 dark:bg-emerald-900/15' : 'bg-red-50 dark:bg-red-900/15'">
+                    <span class="text-xs mt-0.5 shrink-0">{{ diagnostico.turnosTienenRequerimientos ? '✅' : '❌' }}</span>
+                    <div class="flex-1 min-w-0">
+                      <p class="text-xs font-semibold" :class="diagnostico.turnosTienenRequerimientos ? 'text-emerald-800 dark:text-emerald-300' : 'text-red-700 dark:text-red-400'">Turnos con requerimientos</p>
+                      <p class="text-[11px] mt-0.5" :class="diagnostico.turnosTienenRequerimientos ? 'text-emerald-700 dark:text-emerald-500' : 'text-red-500 dark:text-red-400'">
+                        {{ diagnostico.turnosTienenRequerimientos ? `Estaciones requeridas: ${diagnostico.nombresEstacionesRequeridas}` : 'Edita cada turno en Turnos y agrega estaciones con cantidad' }}
+                      </p>
+                    </div>
+                  </div>
+                  <div class="flex items-start gap-2.5 px-2.5 py-2 rounded-lg"
+                    :class="diagnostico.tieneEmpleadosConContrato ? 'bg-emerald-50 dark:bg-emerald-900/15' : 'bg-red-50 dark:bg-red-900/15'">
+                    <span class="text-xs mt-0.5 shrink-0">{{ diagnostico.tieneEmpleadosConContrato ? '✅' : '❌' }}</span>
+                    <div class="flex-1 min-w-0">
+                      <p class="text-xs font-semibold" :class="diagnostico.tieneEmpleadosConContrato ? 'text-emerald-800 dark:text-emerald-300' : 'text-red-700 dark:text-red-400'">Empleados asignados</p>
+                      <p class="text-[11px] mt-0.5" :class="diagnostico.tieneEmpleadosConContrato ? 'text-emerald-700 dark:text-emerald-500' : 'text-red-500 dark:text-red-400'">
+                        {{ diagnostico.tieneEmpleadosConContrato ? `${diagnostico.cantConContrato} empleado(s) con contrato activo` : 'Ve a Mi Equipo → Personal y agrégales un contrato en esta sucursal' }}
+                      </p>
+                    </div>
+                  </div>
+                  <div v-if="diagnostico.tieneEmpleadosConContrato && diagnostico.detalleEmpleados.length" class="pt-1">
+                    <p class="text-[10px] font-bold uppercase tracking-widest text-gray-400 mb-1.5 px-1">Estado por empleado</p>
+                    <div class="space-y-1">
+                      <div v-for="emp in diagnostico.detalleEmpleados" :key="emp.id"
+                        class="px-2.5 py-1.5 rounded-lg border"
+                        :class="emp.listo ? 'bg-emerald-50 dark:bg-emerald-900/15 border-emerald-200 dark:border-emerald-800/40' : 'bg-red-50 dark:bg-red-900/15 border-red-200 dark:border-red-800/40'">
+                        <div class="flex items-center gap-1.5">
+                          <span class="text-xs shrink-0">{{ emp.listo ? '✅' : '⚠️' }}</span>
+                          <p class="text-[11px] font-semibold flex-1 truncate" :class="emp.listo ? 'text-emerald-800 dark:text-emerald-300' : 'text-red-700 dark:text-red-400'">{{ emp.nombre }}</p>
+                          <span v-if="emp.listo" class="text-[10px] text-emerald-600 shrink-0">listo</span>
+                        </div>
+                        <ul v-if="emp.problemas.length" class="mt-1 space-y-0.5 ml-5">
+                          <li v-for="p in emp.problemas" :key="p" class="text-[10px] text-red-600 dark:text-red-400 flex items-start gap-1">
+                            <span class="shrink-0">›</span><span>{{ p }}</span>
+                          </li>
+                        </ul>
+                      </div>
+                    </div>
+                  </div>
+                </template>
+                <p v-else class="text-xs text-gray-400 italic px-1 py-2">Recarga la vista para calcular el diagnóstico.</p>
+              </div>
+            </div>
+          </div>
           <button v-if="canManage" @click="isCongregacion ? regenerarBorradorMes() : regenerarBorradorSemana()" :disabled="cargando || generandoBorrador"
             class="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg border border-blue-200 dark:border-blue-700 text-blue-600 dark:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-900/20 transition-colors disabled:opacity-40"
             title="Regenerar sugerencias del algoritmo">
@@ -71,126 +188,6 @@
             {{ generandoBorrador ? 'Generando…' : 'Generar sugerencias' }}
           </button>
         </div>
-      </div>
-
-      <!-- Panel diagnóstico (solo empresa, solo manager) -->
-      <div v-if="canManage && !isCongregacion"
-        class="rounded-xl border bg-white dark:bg-gray-800/60 overflow-hidden"
-        :class="diagnosticoListo ? 'border-gray-200 dark:border-gray-700' : 'border-amber-200 dark:border-amber-700/40'">
-
-        <button type="button" @click="panelAbierto = !panelAbierto"
-          class="w-full flex items-center justify-between px-4 py-3 text-left hover:bg-gray-50 dark:hover:bg-gray-700/40 transition-colors">
-          <div class="flex items-center gap-2 min-w-0">
-            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor"
-              class="w-4 h-4 shrink-0"
-              :class="diagnosticoListo ? 'text-emerald-500' : 'text-amber-500'">
-              <path v-if="diagnosticoListo" stroke-linecap="round" stroke-linejoin="round" d="M9 12.75 11.25 15 15 9.75M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z" />
-              <path v-else stroke-linecap="round" stroke-linejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126ZM12 15.75h.007v.008H12v-.008Z" />
-            </svg>
-            <span class="text-xs font-semibold text-gray-700 dark:text-gray-300 shrink-0">Diagnóstico</span>
-            <span v-if="cargandoDiagnostico" class="text-[10px] text-gray-400 animate-pulse truncate">calculando…</span>
-            <span v-else-if="errorBorrador" class="text-[10px] font-medium text-red-500 truncate">Error: {{ errorBorrador }}</span>
-            <span v-else-if="generandoBorrador" class="text-[10px] text-blue-500 animate-pulse truncate">generando sugerencias…</span>
-            <span v-else-if="diagnosticoListo" class="text-[10px] text-emerald-600 dark:text-emerald-400 truncate">Todo listo</span>
-            <span v-else-if="diagnostico" class="text-[10px] text-amber-600 dark:text-amber-400 truncate">{{ problemasTotal }} problema(s)</span>
-          </div>
-          <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2.5" stroke="currentColor"
-            class="w-3.5 h-3.5 text-gray-400 transition-transform shrink-0" :class="panelAbierto ? 'rotate-180' : ''">
-            <path stroke-linecap="round" stroke-linejoin="round" d="m19.5 8.25-7.5 7.5-7.5-7.5" />
-          </svg>
-        </button>
-
-        <div v-if="panelAbierto" class="border-t border-gray-100 dark:border-gray-700 p-4 space-y-3">
-          <div v-if="cargandoDiagnostico" class="flex items-center gap-2 py-2">
-            <svg class="w-4 h-4 animate-spin text-gray-400" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-              <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/>
-              <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/>
-            </svg>
-            <span class="text-xs text-gray-400">Cargando datos…</span>
-          </div>
-
-          <template v-else-if="diagnostico">
-            <div class="flex items-start gap-3 px-3 py-2.5 rounded-lg"
-              :class="diagnostico.tieneTurnos ? 'bg-emerald-50 dark:bg-emerald-900/15' : 'bg-red-50 dark:bg-red-900/15'">
-              <span class="text-sm mt-0.5 shrink-0">{{ diagnostico.tieneTurnos ? '✅' : '❌' }}</span>
-              <div class="flex-1 min-w-0">
-                <p class="text-xs font-semibold" :class="diagnostico.tieneTurnos ? 'text-emerald-800 dark:text-emerald-300' : 'text-red-700 dark:text-red-400'">Turnos configurados</p>
-                <p class="text-[11px] mt-0.5" :class="diagnostico.tieneTurnos ? 'text-emerald-700 dark:text-emerald-500' : 'text-red-500 dark:text-red-400'">
-                  {{ diagnostico.tieneTurnos ? `${diagnostico.cantTurnos} turno(s) — días: ${diagnostico.diasConTurno}` : 'Ve a Turnos → Configuraciones y agrega al menos un turno' }}
-                </p>
-              </div>
-            </div>
-            <div class="flex items-start gap-3 px-3 py-2.5 rounded-lg"
-              :class="diagnostico.tieneEstaciones ? 'bg-emerald-50 dark:bg-emerald-900/15' : 'bg-red-50 dark:bg-red-900/15'">
-              <span class="text-sm mt-0.5 shrink-0">{{ diagnostico.tieneEstaciones ? '✅' : '❌' }}</span>
-              <div class="flex-1 min-w-0">
-                <p class="text-xs font-semibold" :class="diagnostico.tieneEstaciones ? 'text-emerald-800 dark:text-emerald-300' : 'text-red-700 dark:text-red-400'">Estaciones activas</p>
-                <p class="text-[11px] mt-0.5" :class="diagnostico.tieneEstaciones ? 'text-emerald-700 dark:text-emerald-500' : 'text-red-500 dark:text-red-400'">
-                  {{ diagnostico.tieneEstaciones ? diagnostico.nombresEstaciones : 'Ve a Mi Equipo → Estaciones y crea al menos una' }}
-                </p>
-              </div>
-            </div>
-            <div v-if="diagnostico.tieneTurnos" class="flex items-start gap-3 px-3 py-2.5 rounded-lg"
-              :class="diagnostico.turnosTienenRequerimientos ? 'bg-emerald-50 dark:bg-emerald-900/15' : 'bg-red-50 dark:bg-red-900/15'">
-              <span class="text-sm mt-0.5 shrink-0">{{ diagnostico.turnosTienenRequerimientos ? '✅' : '❌' }}</span>
-              <div class="flex-1 min-w-0">
-                <p class="text-xs font-semibold" :class="diagnostico.turnosTienenRequerimientos ? 'text-emerald-800 dark:text-emerald-300' : 'text-red-700 dark:text-red-400'">Turnos con requerimientos</p>
-                <p class="text-[11px] mt-0.5" :class="diagnostico.turnosTienenRequerimientos ? 'text-emerald-700 dark:text-emerald-500' : 'text-red-500 dark:text-red-400'">
-                  {{ diagnostico.turnosTienenRequerimientos ? `Estaciones requeridas: ${diagnostico.nombresEstacionesRequeridas}` : 'Edita cada turno en Turnos y agrega estaciones con cantidad' }}
-                </p>
-              </div>
-            </div>
-            <div class="flex items-start gap-3 px-3 py-2.5 rounded-lg"
-              :class="diagnostico.tieneEmpleadosConContrato ? 'bg-emerald-50 dark:bg-emerald-900/15' : 'bg-red-50 dark:bg-red-900/15'">
-              <span class="text-sm mt-0.5 shrink-0">{{ diagnostico.tieneEmpleadosConContrato ? '✅' : '❌' }}</span>
-              <div class="flex-1 min-w-0">
-                <p class="text-xs font-semibold" :class="diagnostico.tieneEmpleadosConContrato ? 'text-emerald-800 dark:text-emerald-300' : 'text-red-700 dark:text-red-400'">Empleados asignados</p>
-                <p class="text-[11px] mt-0.5" :class="diagnostico.tieneEmpleadosConContrato ? 'text-emerald-700 dark:text-emerald-500' : 'text-red-500 dark:text-red-400'">
-                  {{ diagnostico.tieneEmpleadosConContrato ? `${diagnostico.cantConContrato} empleado(s) con contrato activo` : 'Ve a Mi Equipo → Personal y agrégales un contrato en esta sucursal' }}
-                </p>
-              </div>
-            </div>
-            <div v-if="diagnostico.tieneEmpleadosConContrato && diagnostico.detalleEmpleados.length">
-              <p class="text-[10px] font-bold uppercase tracking-widest text-gray-400 mb-2 px-1">Estado por empleado</p>
-              <div class="space-y-1.5">
-                <div v-for="emp in diagnostico.detalleEmpleados" :key="emp.id"
-                  class="px-3 py-2 rounded-lg border"
-                  :class="emp.listo ? 'bg-emerald-50 dark:bg-emerald-900/15 border-emerald-200 dark:border-emerald-800/40' : 'bg-red-50 dark:bg-red-900/15 border-red-200 dark:border-red-800/40'">
-                  <div class="flex items-center gap-2">
-                    <span class="text-sm shrink-0">{{ emp.listo ? '✅' : '⚠️' }}</span>
-                    <p class="text-xs font-semibold flex-1 truncate" :class="emp.listo ? 'text-emerald-800 dark:text-emerald-300' : 'text-red-700 dark:text-red-400'">{{ emp.nombre }}</p>
-                    <span v-if="emp.listo" class="text-[10px] text-emerald-600 shrink-0">listo</span>
-                  </div>
-                  <ul v-if="emp.problemas.length" class="mt-1.5 space-y-1 ml-6">
-                    <li v-for="p in emp.problemas" :key="p" class="text-[11px] text-red-600 dark:text-red-400 flex items-start gap-1.5">
-                      <span class="shrink-0 mt-0.5">›</span><span>{{ p }}</span>
-                    </li>
-                  </ul>
-                </div>
-              </div>
-            </div>
-          </template>
-          <p v-else class="text-xs text-gray-400 italic px-1">Presiona Actualizar (↻) para calcular el diagnóstico.</p>
-        </div>
-      </div>
-
-      <!-- Banner error -->
-      <div v-if="errorBorrador"
-        class="flex items-center gap-2 px-3 py-2 rounded-lg bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800/30 text-xs text-red-700 dark:text-red-300">
-        <svg class="w-3.5 h-3.5 shrink-0" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor">
-          <path stroke-linecap="round" stroke-linejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126ZM12 15.75h.007v.008H12v-.008Z" />
-        </svg>
-        {{ errorBorrador }}
-      </div>
-
-      <!-- Banner generando -->
-      <div v-if="generandoBorrador"
-        class="flex items-center gap-2 px-3 py-2 rounded-lg bg-blue-50 dark:bg-blue-900/20 border border-blue-100 dark:border-blue-800/30 text-xs text-blue-700 dark:text-blue-300">
-        <svg class="w-3.5 h-3.5 animate-spin shrink-0" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-          <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/>
-          <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/>
-        </svg>
-        Generando sugerencias…
       </div>
 
       <!-- Sin acceso -->
@@ -558,7 +555,7 @@
 </style>
 
 <script setup lang="ts">
-import { ref, computed, onMounted, watch } from 'vue';
+import { ref, computed, onMounted, onBeforeUnmount, watch } from 'vue';
 import { getDocs, getDoc, doc as fsDoc, query, collection, where, updateDoc, Timestamp } from 'firebase/firestore';
 import { useSessionStore } from '../../stores/sessionStore';
 import { useAsignacionStore } from '../../stores/asignacionStore';
@@ -1135,14 +1132,21 @@ async function regenerarBorradorSemana() {
       companyId.value, ubicacionId.value, hoy(), 28
     );
     if (resp.logs?.length) logStore.pushServerLogs(resp.logs, 'generarAsignaciones');
-    logStore.info(`Regeneración completada: ${resp.dias_procesados} días, ${resp.asignaciones_creadas} asignaciones, ${resp.huecos?.length ?? 0} huecos`, { scope: 'calendario' });
-    asignaciones.value = await asignacionStore.cargarAsignacionesManager(
-      ubicacionId.value, fechaInicio.value, fechaFin.value
-    );
+    if (resp.error) {
+      logStore.error(`Error en CF generarAsignaciones: ${resp.error}`, { scope: 'calendario' });
+      errorBorrador.value = resp.error;
+    } else {
+      logStore.info(`Regeneración completada: ${resp.dias_procesados} días, ${resp.asignaciones_creadas} asignaciones, ${resp.huecos?.length ?? 0} huecos`, { scope: 'calendario' });
+      asignaciones.value = await asignacionStore.cargarAsignacionesManager(
+        ubicacionId.value, fechaInicio.value, fechaFin.value
+      );
+    }
   } catch (err: any) {
+    const code = err?.code ?? '';
     const msg = err?.message ?? String(err);
-    logStore.error(`Error regenerando sugerencias: ${msg}`, { scope: 'calendario' });
-    errorBorrador.value = msg;
+    const details = err?.details ? ` | details: ${JSON.stringify(err.details)}` : '';
+    logStore.error(`Error regenerando sugerencias: [${code}] ${msg}${details}`, { scope: 'calendario' });
+    errorBorrador.value = msg || code || 'Error desconocido';
   } finally {
     generandoBorrador.value = false;
   }
@@ -1264,14 +1268,21 @@ async function regenerarBorradorMes() {
       companyId.value, ubicacionId.value, mesInicio.value, diasDelMesN
     );
     if (resp.logs?.length) logStore.pushServerLogs(resp.logs, 'generarAsignaciones');
-    logStore.info(`Regeneración completada: ${resp.dias_procesados} días, ${resp.asignaciones_creadas} asignaciones, ${resp.huecos?.length ?? 0} huecos`, { scope: 'calendario' });
-    asignaciones.value = await asignacionStore.cargarAsignacionesManager(
-      ubicacionId.value, mesInicio.value, mesFin.value
-    );
+    if (resp.error) {
+      logStore.error(`Error en CF generarAsignaciones: ${resp.error}`, { scope: 'calendario' });
+      errorBorrador.value = resp.error;
+    } else {
+      logStore.info(`Regeneración completada: ${resp.dias_procesados} días, ${resp.asignaciones_creadas} asignaciones, ${resp.huecos?.length ?? 0} huecos`, { scope: 'calendario' });
+      asignaciones.value = await asignacionStore.cargarAsignacionesManager(
+        ubicacionId.value, mesInicio.value, mesFin.value
+      );
+    }
   } catch (err: any) {
+    const code = err?.code ?? '';
     const msg = err?.message ?? String(err);
-    logStore.error(`Error regenerando sugerencias: ${msg}`, { scope: 'calendario' });
-    errorBorrador.value = msg;
+    const details = err?.details ? ` | details: ${JSON.stringify(err.details)}` : '';
+    logStore.error(`Error regenerando sugerencias: [${code}] ${msg}${details}`, { scope: 'calendario' });
+    errorBorrador.value = msg || code || 'Error desconocido';
   } finally {
     generandoBorrador.value = false;
   }
@@ -1421,7 +1432,14 @@ async function agregarVoluntarioCong(empId: string, turno: Turno, fecha: string)
 
 // ── Montaje ───────────────────────────────────────────────────────────────────
 
+function onDocClick(e: MouseEvent) {
+  const target = e.target as Element;
+  if (panelAbierto.value && !target.closest('[data-diagnostico]')) {
+    panelAbierto.value = false;
+  }
+}
 onMounted(async () => {
+  document.addEventListener('click', onDocClick, true);
   logStore.info(`CalendarioView montado — ubicacion=${ubicacionId.value || '(pending)'}, isCongregacion=${isCongregacion.value}, canManage=${canManage.value}`, { scope: 'calendario' });
   miEmpleadoId.value = await resolverMiEmpleadoId();
   const cargarSegunTipo = () => isCongregacion.value ? cargarMes() : cargar();
@@ -1440,5 +1458,8 @@ onMounted(async () => {
       }
     );
   }
+});
+onBeforeUnmount(() => {
+  document.removeEventListener('click', onDocClick, true);
 });
 </script>

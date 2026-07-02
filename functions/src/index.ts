@@ -144,6 +144,7 @@ interface GenerarAsignacionesOutput {
   asignaciones_creadas: number;
   huecos: HuecoReporte[];
   logs: string[];
+  error?: string;
 }
 
 export const generarAsignaciones = onCall<
@@ -542,10 +543,15 @@ export const generarAsignaciones = onCall<
 
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
+    const stack = err instanceof Error && err.stack ? err.stack : '';
     logs.push(`[ERROR] ${msg}`);
+    if (stack) logs.push(`[STACK] ${stack.split('\n').slice(0, 5).join(' | ')}`);
     console.error("generarAsignaciones error:", err);
-    if (err instanceof HttpsError) throw err;
-    throw new HttpsError("internal", msg);
+    if (err instanceof HttpsError) {
+      // Para errores de validación/auth, retornar con flag de error para que los logs lleguen al cliente
+      return { semana: request.data.week_start, dias_procesados: 0, asignaciones_creadas: 0, huecos: [], logs, error: `${err.code}: ${err.message}` };
+    }
+    return { semana: request.data.week_start, dias_procesados: 0, asignaciones_creadas: 0, huecos: [], logs, error: msg };
   }
 });
 
