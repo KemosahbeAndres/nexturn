@@ -1,76 +1,153 @@
 import { defineStore } from 'pinia';
-import { useCollection } from 'vuefire';
-import { collection, doc, setDoc, updateDoc, query, where, Timestamp } from 'firebase/firestore';
-import { ref, computed } from 'vue';
-import { db } from '../firebase';
+import { collection, doc, getDocs, writeBatch, updateDoc, addDoc, query, where, Timestamp } from 'firebase/firestore';
+import { httpsCallable } from 'firebase/functions';
+import { db, functions } from '../firebase';
 import { Asignacion, asignacionConverter } from '../models/Asignacion';
-import type { AsignacionStatus } from '../models/Asignacion';
+
+const generarAsignacionesFn = httpsCallable(functions, 'generarAsignaciones', { timeout: 120000 });
 
 export const useAsignacionStore = defineStore('asignacion', () => {
   const asignacionesRef = collection(db, 'asignaciones').withConverter(asignacionConverter);
 
-  const queryParams = ref<{ ubicacionId: string | null; date?: string }>({ ubicacionId: null });
+  // ── Lecturas puntuales ──────────────────────────────────────────────────────
 
-  function listarAsignaciones(ubicacionId: string, date?: string) {
-    queryParams.value = { ubicacionId, date };
+  async function cargarAsignacionesManager(
+    ubicacionId: string,
+    dateStart: string,
+    dateEnd: string
+  ): Promise<Asignacion[]> {
+    const snap = await getDocs(query(
+      asignacionesRef,
+      where('ubicacion_id', '==', ubicacionId),
+      where('date', '>=', dateStart),
+      where('date', '<=', dateEnd),
+      where('deletedAt', '==', null)
+    ));
+    return snap.docs.map(d => d.data());
   }
 
-  function clearAsignaciones() {
-    queryParams.value = { ubicacionId: null };
+  async function cargarAsignacionesEmpleado(
+    empleadoId: string,
+    dateStart: string,
+    dateEnd: string
+  ): Promise<Asignacion[]> {
+    const snap = await getDocs(query(
+      asignacionesRef,
+      where('empleado_id', '==', empleadoId),
+      where('date', '>=', dateStart),
+      where('date', '<=', dateEnd),
+      where('status', '==', 'publicado'),
+      where('deletedAt', '==', null)
+    ));
+    return snap.docs.map(d => d.data());
   }
 
-  const asignacionesQuery = computed(() => {
-    if (!queryParams.value.ubicacionId) return null;
-    const conditions = [
-      where('ubicacion_id', '==', queryParams.value.ubicacionId),
-      where('deletedAt', '==', null),
-    ];
-    if (queryParams.value.date) {
-      conditions.push(where('date', '==', queryParams.value.date));
+  // ── Mutaciones ──────────────────────────────────────────────────────────────
+
+  async function publicarDia(ubicacionId: string, date: string): Promise<void> {
+    const snap = await getDocs(query(
+      asignacionesRef,
+      where('ubicacion_id', '==', ubicacionId),
+      where('date', '==', date),
+      where('status', '==', 'sugerido'),
+      where('deletedAt', '==', null)
+    ));
+    if (snap.empty) return;
+
+    const BATCH_SIZE = 499;
+    const docs = snap.docs;
+    for (let i = 0; i < docs.length; i += BATCH_SIZE) {
+      const batch = writeBatch(db);
+      docs.slice(i, i + BATCH_SIZE).forEach(d => {
+        batch.update(d.ref, { status: 'publicado', updatedAt: Timestamp.now() });
+      });
+      await batch.commit();
     }
-    return query(asignacionesRef, ...conditions);
-  });
+  }
 
-  const asignaciones = useCollection(asignacionesQuery);
-  const asignacionesDraft = computed(() => asignaciones.value?.filter(a => a.status === 'draft') ?? []);
-  const asignacionesPublicadas = computed(() => asignaciones.value?.filter(a => a.status === 'published') ?? []);
+  async function softDeleteAsignacion(id: string): Promise<void> {
+    await updateDoc(doc(db, 'asignaciones', id), {
+      active: false,
+      deletedAt: Timestamp.now(),
+      updatedAt: Timestamp.now(),
+    });
+  }
 
-  async function createAsignacion(data: {
+  async function crearAsignacion(data: {
     empresa_id: string;
     ubicacion_id: string;
+    empleado_id: string;
     date: string;
-    status?: AsignacionStatus;
-  }) {
-    const docRef = doc(asignacionesRef);
-    const nueva = new Asignacion(
-      docRef.id,
-      data.empresa_id,
-      data.ubicacion_id,
-      data.date,
-      data.status ?? 'draft'
-    );
-    await setDoc(docRef, nueva);
-    return docRef.id;
+    estacion_id: string | null;
+    start: string;
+    end: string;
+  }): Promise<string> {
+    const ref = await addDoc(collection(db, 'asignaciones'), {
+      ...data,
+      status: 'sugerido',
+      active: true,
+      createdAt: Timestamp.now(),
+      updatedAt: Timestamp.now(),
+      deletedAt: null,
+    });
+    return ref.id;
   }
 
-  async function publishAsignacion(id: string) {
-    const docRef = doc(db, 'asignaciones', id);
-    await updateDoc(docRef, { status: 'published', updatedAt: Timestamp.now() });
+  async function actualizarEmpleadoAsignacion(id: string, empleadoId: string): Promise<void> {
+    await updateDoc(doc(db, 'asignaciones', id), {
+      empleado_id: empleadoId,
+      status: 'sugerido',
+      updatedAt: Timestamp.now(),
+    });
   }
 
-  async function softDeleteAsignacion(id: string) {
-    const docRef = doc(db, 'asignaciones', id);
-    await updateDoc(docRef, { deletedAt: Timestamp.now(), updatedAt: Timestamp.now() });
+  // ── Regenerar sugerencias (llama CF generarAsignaciones) ───────────────────
+
+  async function regenerarSugerencias(
+    empresaId: string,
+    ubicacionId: string,
+    weekStart: string,
+    dias: number
+  ): Promise<{ logs: string[]; dias_procesados: number; asignaciones_creadas: number; huecos: any[] }> {
+    const result = await generarAsignacionesFn({
+      empresa_id: empresaId,
+      ubicacion_id: ubicacionId,
+      week_start: weekStart,
+      dias,
+    });
+    return result.data as any;
+  }
+
+  // Fire-and-forget para disparadores reactivos (disponibilidad, excepciones, empleados).
+  // Captura errores y los expone via callbacks para que el caller los vuelque al logStore.
+  function regenerarSugerenciasSilencioso(
+    empresaId: string,
+    ubicacionId: string,
+    onLog?: (logs: string[]) => void,
+    onError?: (msg: string) => void
+  ): void {
+    const hoy = new Date().toISOString().slice(0, 10);
+    generarAsignacionesFn({
+      empresa_id: empresaId,
+      ubicacion_id: ubicacionId,
+      week_start: hoy,
+      dias: 28,
+    }).then((res: any) => {
+      if (onLog && res.data?.logs) onLog(res.data.logs);
+    }).catch((err: any) => {
+      const msg = err?.message ?? String(err);
+      if (onError) onError(msg);
+    });
   }
 
   return {
-    asignaciones,
-    asignacionesDraft,
-    asignacionesPublicadas,
-    listarAsignaciones,
-    clearAsignaciones,
-    createAsignacion,
-    publishAsignacion,
+    cargarAsignacionesManager,
+    cargarAsignacionesEmpleado,
+    publicarDia,
     softDeleteAsignacion,
+    crearAsignacion,
+    actualizarEmpleadoAsignacion,
+    regenerarSugerencias,
+    regenerarSugerenciasSilencioso,
   };
 });

@@ -169,11 +169,21 @@ service cloud.firestore {
     }
 
     // ── asignaciones ──────────────────────────────────────────────────────────
+    // Nuevo schema: empresa_id, ubicacion_id, empleado_id, date, estacion_id,
+    //   start, end, status ('sugerido'|'publicado'), active, deletedAt.
+    // Lectura: cualquier usuario con acceso a la empresa (empleados ven su calendario).
+    // Escritura general: acceso a la empresa.
+    // Regla D5: si el doc existente tiene status='publicado', solo super_admin
+    //   puede modificarlo (la CF generarAsignaciones usa Admin SDK → bypass).
     match /asignaciones/{asignacionId} {
       allow read: if isSuperAdmin() ||
         (isSignedIn() && tieneAccesoEmpresa(resource.data.empresa_id));
-      allow write: if isSuperAdmin() ||
-        (isSignedIn() && tieneAccesoEmpresa(resource.data.empresa_id));
+      allow create: if isSuperAdmin() ||
+        (isSignedIn() && tieneAccesoEmpresa(request.resource.data.empresa_id));
+      allow update, delete: if isSuperAdmin() ||
+        (isSignedIn() &&
+          tieneAccesoEmpresa(resource.data.empresa_id) &&
+          resource.data.status != 'publicado');
     }
 
     // ── excepciones ───────────────────────────────────────────────────────────
@@ -186,22 +196,6 @@ service cloud.firestore {
 
     // ── reglas_asignacion ─────────────────────────────────────────────────────
     match /reglas_asignacion/{reglaId} {
-      allow read: if isSuperAdmin() ||
-        (isSignedIn() && tieneAccesoEmpresa(resource.data.empresa_id));
-      allow write: if isSuperAdmin() ||
-        (isSignedIn() && tieneAccesoEmpresa(resource.data.empresa_id));
-    }
-
-    // ── presencias ────────────────────────────────────────────────────────────
-    match /presencias/{presenciaId} {
-      allow read: if isSuperAdmin() ||
-        (isSignedIn() && tieneAccesoEmpresa(resource.data.empresa_id));
-      allow write: if isSuperAdmin() ||
-        (isSignedIn() && tieneAccesoEmpresa(resource.data.empresa_id));
-    }
-
-    // ── segmentos ─────────────────────────────────────────────────────────────
-    match /segmentos/{segmentoId} {
       allow read: if isSuperAdmin() ||
         (isSignedIn() && tieneAccesoEmpresa(resource.data.empresa_id));
       allow write: if isSuperAdmin() ||

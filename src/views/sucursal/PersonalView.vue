@@ -956,7 +956,8 @@ import { useEmpleadoStore } from '../../stores/empleadoStore';
 import { useUbicacionStore } from '../../stores/ubicacionStore';
 import { useEstacionStore } from '../../stores/estacionStore';
 import { useGrantStore } from '../../stores/grantStore';
-import { useSegmentoStore } from '../../stores/segmentoStore';
+import { useAsignacionStore } from '../../stores/asignacionStore';
+import { useLogStore } from '../../stores/logStore';
 import { useDisponibilidadStore } from '../../stores/disponibilidadStore';
 import { useExcepcionStore } from '../../stores/excepcionStore';
 import { useReglaAsignacionStore } from '../../stores/reglaAsignacionStore';
@@ -993,7 +994,8 @@ const empleadoStore = useEmpleadoStore();
 const ubicacionStore = useUbicacionStore();
 const estacionStore = useEstacionStore();
 const grantStore = useGrantStore();
-const segmentoStore = useSegmentoStore();
+const asignacionStore = useAsignacionStore();
+const logStore = useLogStore();
 const disponibilidadStore = useDisponibilidadStore();
 const excepcionStore = useExcepcionStore();
 const reglaStore = useReglaAsignacionStore();
@@ -1213,7 +1215,7 @@ async function guardarEstaciones() {
     await empleadoStore.updateEmpleado(empleadoSeleccionado.value.id, { estacion_ids: [...form.estacion_ids] });
     const compId = sessionStore.activeCompanyId;
     const ubicId = sessionStore.activeUbicacionId;
-    if (compId && ubicId) segmentoStore.regenerarBorradorMes(compId, ubicId);
+    if (compId && ubicId) asignacionStore.regenerarSugerenciasSilencioso(compId, ubicId, (logs) => logStore.pushServerLogs(logs, "generarAsignaciones"), (msg) => logStore.error(`Regeneración fallida: ${msg}`, { scope: "personal" }));
   } finally {
     guardandoEstaciones.value = false;
   }
@@ -1316,7 +1318,7 @@ async function dispGuardar() {
     setTimeout(() => { dispSuccessMsg.value = ''; }, 3000);
     const compId = sessionStore.activeCompanyId;
     const ubicId = sessionStore.activeUbicacionId;
-    if (compId && ubicId) segmentoStore.regenerarBorradorMes(compId, ubicId);
+    if (compId && ubicId) asignacionStore.regenerarSugerenciasSilencioso(compId, ubicId, (logs) => logStore.pushServerLogs(logs, "generarAsignaciones"), (msg) => logStore.error(`Regeneración fallida: ${msg}`, { scope: "personal" }));
   } catch (e: any) {
     dispErrorMsg.value = e.message ?? 'Error al guardar.';
   } finally {
@@ -1367,7 +1369,7 @@ async function excSubmitAdd() {
     excAddForm.value = { date: '', time_start: '08:00', time_end: '17:00', reason: '', type: 'otro' };
     const compId = sessionStore.activeCompanyId;
     const ubicId = sessionStore.activeUbicacionId;
-    if (compId && ubicId) segmentoStore.regenerarBorradorMes(compId, ubicId);
+    if (compId && ubicId) asignacionStore.regenerarSugerenciasSilencioso(compId, ubicId, (logs) => logStore.pushServerLogs(logs, "generarAsignaciones"), (msg) => logStore.error(`Regeneración fallida: ${msg}`, { scope: "personal" }));
   } catch (e: any) {
     excAddError.value = e.message ?? 'Error al guardar.';
   } finally {
@@ -1380,7 +1382,7 @@ async function excEliminar(id: string) {
   await excepcionStore.softDeleteExcepcion(id);
   const compId = sessionStore.activeCompanyId;
   const ubicId = sessionStore.activeUbicacionId;
-  if (compId && ubicId) segmentoStore.regenerarBorradorMes(compId, ubicId);
+  if (compId && ubicId) asignacionStore.regenerarSugerenciasSilencioso(compId, ubicId, (logs) => logStore.pushServerLogs(logs, "generarAsignaciones"), (msg) => logStore.error(`Regeneración fallida: ${msg}`, { scope: "personal" }));
 }
 
 function excFormatDate(iso: string): string {

@@ -185,14 +185,16 @@ import { ref, computed, watch, onMounted } from 'vue';
 import { useSessionStore } from '../../../stores/sessionStore';
 import { useEmpleadoStore } from '../../../stores/empleadoStore';
 import { useExcepcionStore } from '../../../stores/excepcionStore';
-import { useSegmentoStore } from '../../../stores/segmentoStore';
+import { useAsignacionStore } from '../../../stores/asignacionStore';
+import { useLogStore } from '../../../stores/logStore';
 import type { Empleado } from '../../../models/Empleado';
 import type { ExcepcionType } from '../../../models/Excepcion';
 
 const sessionStore = useSessionStore();
 const empleadoStore = useEmpleadoStore();
 const excepcionStore = useExcepcionStore();
-const segmentoStore = useSegmentoStore();
+const asignacionStore = useAsignacionStore();
+const logStore = useLogStore();
 
 const canManage = computed(() => ['super_admin', 'admin'].includes(sessionStore.currentUser?.system_role ?? ''));
 
@@ -266,7 +268,7 @@ async function submitAdd() {
     addForm.value = { date: '', time_start: '08:00', time_end: '17:00', reason: '', type: 'otro' };
     const compId = sessionStore.activeCompanyId;
     const ubicId = sessionStore.activeUbicacionId;
-    if (compId && ubicId) segmentoStore.regenerarBorradorMes(compId, ubicId);
+    if (compId && ubicId) asignacionStore.regenerarSugerenciasSilencioso(compId, ubicId, (logs) => logStore.pushServerLogs(logs, "generarAsignaciones"), (msg) => logStore.error(`Regeneración fallida: ${msg}`, { scope: "excepciones" }));
   } catch (e: any) {
     addError.value = e.message ?? 'Error al guardar.';
   } finally {
@@ -279,7 +281,7 @@ async function eliminar(id: string) {
   await excepcionStore.softDeleteExcepcion(id);
   const compId = sessionStore.activeCompanyId;
   const ubicId = sessionStore.activeUbicacionId;
-  if (compId && ubicId) segmentoStore.regenerarBorradorMes(compId, ubicId);
+  if (compId && ubicId) asignacionStore.regenerarSugerenciasSilencioso(compId, ubicId, (logs) => logStore.pushServerLogs(logs, "generarAsignaciones"), (msg) => logStore.error(`Regeneración fallida: ${msg}`, { scope: "excepciones" }));
 }
 
 // ── Helpers de visualización ──────────────────────────────────────────────

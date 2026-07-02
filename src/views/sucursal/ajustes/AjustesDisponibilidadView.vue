@@ -233,14 +233,16 @@ import { ref, computed, watch, watchEffect } from 'vue';
 import { useSessionStore } from '../../../stores/sessionStore';
 import { useEmpleadoStore } from '../../../stores/empleadoStore';
 import { useDisponibilidadStore } from '../../../stores/disponibilidadStore';
-import { useSegmentoStore } from '../../../stores/segmentoStore';
+import { useAsignacionStore } from '../../../stores/asignacionStore';
+import { useLogStore } from '../../../stores/logStore';
 import { can } from '../../../auth/access';
 import type { Empleado } from '../../../models/Empleado';
 
 const sessionStore = useSessionStore();
 const empleadoStore = useEmpleadoStore();
 const disponibilidadStore = useDisponibilidadStore();
-const segmentoStore = useSegmentoStore();
+const asignacionStore = useAsignacionStore();
+const logStore = useLogStore();
 
 const canManage = computed(() => {
   if (sessionStore.currentUser?.system_role === 'super_admin') return true;
@@ -406,7 +408,7 @@ async function guardar() {
     // Regenerar borrador del mes en background tras cambio de disponibilidad
     const compId = sessionStore.activeCompanyId;
     const ubicId = sessionStore.activeUbicacionId;
-    if (compId && ubicId) segmentoStore.regenerarBorradorMes(compId, ubicId);
+    if (compId && ubicId) asignacionStore.regenerarSugerenciasSilencioso(compId, ubicId, (logs) => logStore.pushServerLogs(logs, "generarAsignaciones"), (msg) => logStore.error(`Regeneración fallida: ${msg}`, { scope: "disponibilidad" }));
   } catch (e: any) {
     errorMsg.value = e.message ?? 'Error al guardar.';
   } finally {

@@ -1,5 +1,4 @@
 <template>
-  <!-- Layout externo: grilla + sidebar derecha -->
   <div class="flex h-full min-h-0 overflow-hidden">
 
     <!-- ── Panel principal ──────────────────────────────────────────────────── -->
@@ -16,13 +15,6 @@
           </p>
         </div>
         <div class="flex items-center gap-2 flex-wrap">
-          <button v-if="canManage && haySegmentosSugeridos" @click="aprobarTodo" :disabled="accionando"
-            class="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-white bg-emerald-600 hover:bg-emerald-700 rounded-lg transition-colors disabled:opacity-40">
-            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2.5" stroke="currentColor" class="w-3.5 h-3.5">
-              <path stroke-linecap="round" stroke-linejoin="round" d="m4.5 12.75 6 6 9-13.5" />
-            </svg>
-            Aprobar todo
-          </button>
           <!-- Navegación congregación: por mes -->
           <template v-if="isCongregacion">
             <button @click="irMes(-1)"
@@ -81,7 +73,7 @@
         </div>
       </div>
 
-      <!-- Panel diagnóstico (solo empresa) -->
+      <!-- Panel diagnóstico (solo empresa, solo manager) -->
       <div v-if="canManage && !isCongregacion"
         class="rounded-xl border bg-white dark:bg-gray-800/60 overflow-hidden"
         :class="diagnosticoListo ? 'border-gray-200 dark:border-gray-700' : 'border-amber-200 dark:border-amber-700/40'">
@@ -98,7 +90,7 @@
             <span class="text-xs font-semibold text-gray-700 dark:text-gray-300 shrink-0">Diagnóstico</span>
             <span v-if="cargandoDiagnostico" class="text-[10px] text-gray-400 animate-pulse truncate">calculando…</span>
             <span v-else-if="errorBorrador" class="text-[10px] font-medium text-red-500 truncate">Error: {{ errorBorrador }}</span>
-            <span v-else-if="generandoBorrador" class="text-[10px] text-blue-500 animate-pulse truncate">generando borrador…</span>
+            <span v-else-if="generandoBorrador" class="text-[10px] text-blue-500 animate-pulse truncate">generando sugerencias…</span>
             <span v-else-if="diagnosticoListo" class="text-[10px] text-emerald-600 dark:text-emerald-400 truncate">Todo listo</span>
             <span v-else-if="diagnostico" class="text-[10px] text-amber-600 dark:text-amber-400 truncate">{{ problemasTotal }} problema(s)</span>
           </div>
@@ -128,7 +120,7 @@
                 </p>
               </div>
             </div>
-            <div v-if="!isCongregacion" class="flex items-start gap-3 px-3 py-2.5 rounded-lg"
+            <div class="flex items-start gap-3 px-3 py-2.5 rounded-lg"
               :class="diagnostico.tieneEstaciones ? 'bg-emerald-50 dark:bg-emerald-900/15' : 'bg-red-50 dark:bg-red-900/15'">
               <span class="text-sm mt-0.5 shrink-0">{{ diagnostico.tieneEstaciones ? '✅' : '❌' }}</span>
               <div class="flex-1 min-w-0">
@@ -138,7 +130,7 @@
                 </p>
               </div>
             </div>
-            <div v-if="!isCongregacion && diagnostico.tieneTurnos" class="flex items-start gap-3 px-3 py-2.5 rounded-lg"
+            <div v-if="diagnostico.tieneTurnos" class="flex items-start gap-3 px-3 py-2.5 rounded-lg"
               :class="diagnostico.turnosTienenRequerimientos ? 'bg-emerald-50 dark:bg-emerald-900/15' : 'bg-red-50 dark:bg-red-900/15'">
               <span class="text-sm mt-0.5 shrink-0">{{ diagnostico.turnosTienenRequerimientos ? '✅' : '❌' }}</span>
               <div class="flex-1 min-w-0">
@@ -182,6 +174,15 @@
         </div>
       </div>
 
+      <!-- Banner error -->
+      <div v-if="errorBorrador"
+        class="flex items-center gap-2 px-3 py-2 rounded-lg bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800/30 text-xs text-red-700 dark:text-red-300">
+        <svg class="w-3.5 h-3.5 shrink-0" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126ZM12 15.75h.007v.008H12v-.008Z" />
+        </svg>
+        {{ errorBorrador }}
+      </div>
+
       <!-- Banner generando -->
       <div v-if="generandoBorrador"
         class="flex items-center gap-2 px-3 py-2 rounded-lg bg-blue-50 dark:bg-blue-900/20 border border-blue-100 dark:border-blue-800/30 text-xs text-blue-700 dark:text-blue-300">
@@ -189,7 +190,7 @@
           <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/>
           <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/>
         </svg>
-        Generando borrador del mes (4 semanas)…
+        Generando sugerencias…
       </div>
 
       <!-- Sin acceso -->
@@ -204,14 +205,12 @@
 
       <!-- ── Grilla mensual (congregación) ──────────────────────────────────── -->
       <div v-else-if="isCongregacion" class="flex-1 overflow-auto">
-        <!-- Cabeceras de días -->
         <div class="grid grid-cols-7 gap-px mb-1">
           <div v-for="d in ['Lun','Mar','Mié','Jue','Vie','Sáb','Dom']" :key="d"
             class="text-center text-[10px] font-bold uppercase tracking-widest text-gray-400 dark:text-gray-500 py-1">
             {{ d }}
           </div>
         </div>
-        <!-- Celdas del mes -->
         <div class="grid grid-cols-7 gap-px bg-gray-100 dark:bg-gray-700/50 rounded-xl overflow-hidden border border-gray-100 dark:border-gray-700">
           <div v-for="celda in diasDelMes" :key="celda.date"
             class="min-h-[90px] p-1.5 flex flex-col gap-0.5 transition-colors"
@@ -222,7 +221,6 @@
             ]"
             @click="canManage && celda.esMes && turnosEnFecha(celda.date) ? abrirSidebarCong(celda.date) : undefined">
 
-            <!-- Número del día -->
             <div class="flex items-center justify-between mb-0.5">
               <span class="text-xs font-semibold tabular-nums w-6 h-6 flex items-center justify-center rounded-full"
                 :class="celda.esHoy
@@ -232,9 +230,9 @@
                     : 'text-gray-300 dark:text-gray-600'">
                 {{ celda.date.slice(8) }}
               </span>
-              <button v-if="canManage && celda.esMes && tieneTodosAprobadosPorFecha(celda.date)"
+              <button v-if="canManage && celda.esMes && tieneSugeridosPorFecha(celda.date)"
                 @click.stop="publicarFecha(celda.date)" :disabled="accionando"
-                class="text-[9px] font-semibold text-emerald-700 dark:text-emerald-400 hover:underline disabled:opacity-40">
+                class="text-[9px] font-semibold text-violet-700 dark:text-violet-400 hover:underline disabled:opacity-40">
                 Pub.
               </button>
             </div>
@@ -245,19 +243,14 @@
                 <div class="text-[8px] font-bold text-gray-400 dark:text-gray-500 leading-none mt-0.5 px-0.5">
                   {{ turno.start_time }}–{{ turno.end_time }}
                 </div>
-                <div v-for="emp in empleadosPorTurnoFecha(celda.date, turno)" :key="emp.segId"
+                <div v-for="asig in asignacionesPorTurnoFecha(celda.date, turno)" :key="asig.id"
                   class="flex items-center gap-0.5 px-1 py-0.5 rounded text-[9px] font-medium border leading-tight"
-                  :class="claseSeg(emp.status)"
+                  :class="claseAsig(asig.status)"
                   @click.stop="abrirSidebarCong(celda.date)">
-                  <span class="flex-1 truncate">{{ emp.nombre }}</span>
-                  <button v-if="emp.status === 'sugerido'" @click.stop="aprobarPorSegId(emp.segId)" :disabled="accionando"
-                    class="w-3.5 h-3.5 flex items-center justify-center rounded bg-emerald-100 dark:bg-emerald-900/30 text-emerald-600 hover:bg-emerald-200 disabled:opacity-40 shrink-0">
-                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="3" stroke="currentColor" class="w-2 h-2">
-                      <path stroke-linecap="round" stroke-linejoin="round" d="m4.5 12.75 6 6 9-13.5" />
-                    </svg>
-                  </button>
+                  <span class="flex-1 truncate">{{ nombreById(asig.empleado_id) }}</span>
+                  <span class="text-[8px] opacity-70 shrink-0">{{ labelStatus(asig.status) }}</span>
                 </div>
-                <div v-if="!empleadosPorTurnoFecha(celda.date, turno).length"
+                <div v-if="!asignacionesPorTurnoFecha(celda.date, turno).length"
                   class="px-1 py-0.5 text-[9px] text-amber-400 italic leading-tight">
                   Sin asignar
                 </div>
@@ -266,9 +259,9 @@
 
             <!-- Voluntario: sus turnos publicados -->
             <template v-else-if="!canManage && celda.esMes">
-              <div v-for="seg in segmentosFecha(celda.date).filter(s => s.status === 'publicado')" :key="seg.id"
+              <div v-for="asig in asignacionesFecha(celda.date).filter(a => a.status === 'publicado')" :key="asig.id"
                 class="px-1 py-0.5 rounded text-[9px] font-medium bg-violet-50 dark:bg-violet-900/20 border border-violet-200 dark:border-violet-800 text-violet-700 dark:text-violet-300 leading-tight truncate">
-                {{ seg.start }}–{{ seg.end }}
+                {{ asig.start }}–{{ asig.end }}
               </div>
             </template>
 
@@ -287,8 +280,8 @@
               <p class="text-xs font-semibold tabular-nums mt-0.5">{{ fechaDia(i).slice(8) }}</p>
             </div>
 
-            <button v-if="canManage && tieneTodosAprobados(i)" @click="publicarDia(i)" :disabled="accionando"
-              class="w-full py-1 text-[10px] font-semibold text-emerald-700 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-900/20 border border-emerald-200 dark:border-emerald-800/40 rounded-lg hover:bg-emerald-100 transition-colors disabled:opacity-40">
+            <button v-if="canManage && tieneSugeridosDia(i)" @click="publicarDia(i)" :disabled="accionando"
+              class="w-full py-1 text-[10px] font-semibold text-violet-700 dark:text-violet-400 bg-violet-50 dark:bg-violet-900/20 border border-violet-200 dark:border-violet-800/40 rounded-lg hover:bg-violet-100 transition-colors disabled:opacity-40">
               Publicar día
             </button>
 
@@ -309,40 +302,31 @@
                 </div>
 
                 <div class="p-1.5 space-y-1">
-                  <template v-for="req in turno.requerimientos.filter(r => r.estacion_id && r.cantidad > 0)" :key="req.estacion_id">
+                  <template v-for="req in turno.requerimientos.filter(r => r.cantidad > 0)" :key="req.estacion_id ?? 'general'">
                     <div v-for="cupoIdx in req.cantidad" :key="`${req.estacion_id}-${cupoIdx}`">
-                      <button v-if="segmentoParaCupo(i, turno, req.estacion_id, cupoIdx - 1)"
+                      <button v-if="asignacionParaCupo(i, turno, req.estacion_id, cupoIdx - 1)"
                         class="w-full text-left px-2 pt-1.5 pb-1 rounded-lg text-xs border transition-all"
                         :class="[
-                          claseSeg(segmentoParaCupo(i, turno, req.estacion_id, cupoIdx - 1)!.status),
-                          sidebarSeg?.id === segmentoParaCupo(i, turno, req.estacion_id, cupoIdx - 1)!.id
+                          claseAsig(asignacionParaCupo(i, turno, req.estacion_id, cupoIdx - 1)!.status),
+                          sidebarAsig?.id === asignacionParaCupo(i, turno, req.estacion_id, cupoIdx - 1)!.id
                             ? 'ring-2 ring-violet-400 dark:ring-violet-500'
                             : 'hover:brightness-95'
                         ]"
-                        @click="abrirSidebar(segmentoParaCupo(i, turno, req.estacion_id, cupoIdx - 1)!, turno, req.estacion_id, fechaDia(i))">
+                        @click="abrirSidebar(asignacionParaCupo(i, turno, req.estacion_id, cupoIdx - 1)!, turno, req.estacion_id, fechaDia(i))">
                         <div class="flex items-center justify-between gap-1">
                           <span class="text-[10px] font-semibold opacity-70 truncate">{{ nombreEstacion(req.estacion_id) }}</span>
                           <span class="text-[9px] font-bold uppercase tracking-wide shrink-0"
-                            :class="claseChipStatus(segmentoParaCupo(i, turno, req.estacion_id, cupoIdx - 1)!.status)">
-                            {{ labelStatus(segmentoParaCupo(i, turno, req.estacion_id, cupoIdx - 1)!.status) }}
+                            :class="claseChipStatus(asignacionParaCupo(i, turno, req.estacion_id, cupoIdx - 1)!.status)">
+                            {{ labelStatus(asignacionParaCupo(i, turno, req.estacion_id, cupoIdx - 1)!.status) }}
                           </span>
                         </div>
                         <div class="flex items-center gap-1 mt-0.5">
                           <div class="w-4 h-4 rounded-full flex items-center justify-center text-[8px] font-bold shrink-0 bg-current/20">
-                            {{ inicialesById(segmentoParaCupo(i, turno, req.estacion_id, cupoIdx - 1)!.empleado_id) }}
+                            {{ inicialesById(asignacionParaCupo(i, turno, req.estacion_id, cupoIdx - 1)!.empleado_id) }}
                           </div>
                           <span class="text-[10px] font-medium truncate flex-1">
-                            {{ nombreById(segmentoParaCupo(i, turno, req.estacion_id, cupoIdx - 1)!.empleado_id) }}
+                            {{ nombreById(asignacionParaCupo(i, turno, req.estacion_id, cupoIdx - 1)!.empleado_id) }}
                           </span>
-                          <button v-if="segmentoParaCupo(i, turno, req.estacion_id, cupoIdx - 1)!.status === 'sugerido'"
-                            @click.stop="aprobar(segmentoParaCupo(i, turno, req.estacion_id, cupoIdx - 1)!.id)"
-                            :disabled="accionando"
-                            class="w-5 h-5 flex items-center justify-center rounded bg-emerald-100 dark:bg-emerald-900/30 text-emerald-600 hover:bg-emerald-200 transition-colors disabled:opacity-40 shrink-0"
-                            title="Aprobar">
-                            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="3" stroke="currentColor" class="w-2.5 h-2.5">
-                              <path stroke-linecap="round" stroke-linejoin="round" d="m4.5 12.75 6 6 9-13.5" />
-                            </svg>
-                          </button>
                         </div>
                       </button>
                       <button v-else
@@ -353,9 +337,9 @@
                       </button>
                     </div>
                   </template>
-                  <div v-if="!turno.requerimientos.filter(r => r.estacion_id && r.cantidad > 0).length"
+                  <div v-if="!turno.requerimientos.filter(r => r.cantidad > 0).length"
                     class="px-2 py-2 rounded-lg border border-dashed border-amber-200 dark:border-amber-700/40 bg-amber-50/40 dark:bg-amber-900/10">
-                    <p class="text-[10px] text-amber-500 dark:text-amber-400 italic">Sin estaciones requeridas</p>
+                    <p class="text-[10px] text-amber-500 dark:text-amber-400 italic">Sin requerimientos</p>
                   </div>
                 </div>
               </div>
@@ -363,17 +347,14 @@
 
             <!-- Vista empleado -->
             <template v-else>
-              <div v-if="!segmentosDia(i).length"
+              <div v-if="!asignacionesDia(i).length"
                 class="flex-1 flex items-center justify-center py-4 text-[10px] text-gray-300 dark:text-gray-600 border border-dashed border-gray-200 dark:border-gray-700 rounded-xl">
                 Libre
               </div>
-              <div v-for="seg in segmentosDia(i)" :key="seg.id"
-                class="px-2 py-2 rounded-xl text-xs font-medium border"
-                :class="seg.tipo === 'descanso'
-                  ? 'bg-gray-50 dark:bg-gray-700/40 border-gray-200 dark:border-gray-600 text-gray-400'
-                  : 'bg-violet-50 dark:bg-violet-900/20 border-violet-200 dark:border-violet-800 text-violet-700 dark:text-violet-300'">
-                <p class="tabular-nums font-semibold leading-tight">{{ seg.start }} – {{ seg.end }}</p>
-                <p class="text-[10px] mt-0.5 opacity-75">{{ seg.tipo === 'descanso' ? 'Descanso' : nombreEstacion(seg.estacion_id) }}</p>
+              <div v-for="asig in asignacionesDia(i)" :key="asig.id"
+                class="px-2 py-2 rounded-xl text-xs font-medium border bg-violet-50 dark:bg-violet-900/20 border-violet-200 dark:border-violet-800 text-violet-700 dark:text-violet-300">
+                <p class="tabular-nums font-semibold leading-tight">{{ asig.start }} – {{ asig.end }}</p>
+                <p class="text-[10px] mt-0.5 opacity-75">{{ nombreEstacion(asig.estacion_id) }}</p>
               </div>
             </template>
 
@@ -388,7 +369,6 @@
         </template>
         <template v-if="canManage">
           <div class="flex items-center gap-1.5"><span class="w-3 h-3 rounded bg-amber-200 dark:bg-amber-800"></span><span class="text-xs text-gray-500 dark:text-gray-400">Sugerido</span></div>
-          <div class="flex items-center gap-1.5"><span class="w-3 h-3 rounded bg-emerald-200 dark:bg-emerald-800"></span><span class="text-xs text-gray-500 dark:text-gray-400">Aprobado</span></div>
           <div class="flex items-center gap-1.5"><span class="w-3 h-3 rounded bg-violet-200 dark:bg-violet-800"></span><span class="text-xs text-gray-500 dark:text-gray-400">Publicado</span></div>
         </template>
         <template v-else>
@@ -421,50 +401,41 @@
           </button>
         </div>
 
-        <!-- ── Sidebar CONGREGACIÓN: vista por turno del día ── -->
+        <!-- ── Sidebar CONGREGACIÓN ── -->
         <template v-if="isCongregacion">
           <div class="flex-1 overflow-y-auto">
             <div v-for="turno in turnosDeFecha(sidebarFechaCong)" :key="turno.start_time" class="border-b border-gray-100 dark:border-gray-700 last:border-b-0">
-              <!-- Encabezado del turno -->
               <div class="px-4 py-2 bg-gray-50 dark:bg-gray-800/60 flex items-center justify-between">
                 <div>
                   <p class="text-xs font-bold text-gray-700 dark:text-gray-200 tabular-nums">{{ turno.start_time }} – {{ turno.end_time }}</p>
                   <p class="text-[10px] text-gray-400">
-                    {{ empleadosPorTurnoFecha(sidebarFechaCong, turno).length }} /
+                    {{ asignacionesPorTurnoFecha(sidebarFechaCong, turno).length }} /
                     {{ turno.requerimientos[0]?.cantidad ?? 0 }} voluntarios
                   </p>
                 </div>
-                <button v-if="tieneTodosAprobadosPorTurnoFecha(sidebarFechaCong, turno)"
+                <button v-if="asignacionesPorTurnoFecha(sidebarFechaCong, turno).some(a => a.status === 'sugerido')"
                   @click="publicarFecha(sidebarFechaCong)" :disabled="accionando"
-                  class="text-[9px] px-2 py-1 rounded bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-400 font-semibold hover:bg-emerald-200 disabled:opacity-40">
+                  class="text-[9px] px-2 py-1 rounded bg-violet-100 dark:bg-violet-900/30 text-violet-700 dark:text-violet-400 font-semibold hover:bg-violet-200 disabled:opacity-40">
                   Publicar
                 </button>
               </div>
 
-              <!-- Voluntarios asignados -->
               <div class="px-3 py-2 space-y-1">
                 <p class="text-[9px] font-semibold uppercase tracking-widest text-gray-400 mb-1">Asignados</p>
-                <div v-if="!empleadosPorTurnoFecha(sidebarFechaCong, turno).length"
+                <div v-if="!asignacionesPorTurnoFecha(sidebarFechaCong, turno).length"
                   class="text-[10px] text-gray-400 italic py-1">Sin asignar</div>
-                <div v-for="emp in empleadosPorTurnoFecha(sidebarFechaCong, turno)" :key="emp.segId"
+                <div v-for="asig in asignacionesPorTurnoFecha(sidebarFechaCong, turno)" :key="asig.id"
                   class="flex items-center gap-2 px-2 py-1.5 rounded-lg border"
-                  :class="claseSeg(emp.status)">
+                  :class="claseAsig(asig.status)">
                   <div class="w-6 h-6 rounded-full bg-current/20 flex items-center justify-center text-[9px] font-bold shrink-0">
-                    {{ inicialesById(emp.empId) }}
+                    {{ inicialesById(asig.empleado_id) }}
                   </div>
                   <div class="flex-1 min-w-0">
-                    <p class="text-[10px] font-semibold truncate">{{ emp.nombre }}</p>
-                    <p class="text-[9px] opacity-60">{{ labelStatus(emp.status) }}</p>
+                    <p class="text-[10px] font-semibold truncate">{{ nombreById(asig.empleado_id) }}</p>
+                    <p class="text-[9px] opacity-60">{{ labelStatus(asig.status) }}</p>
                   </div>
                   <div class="flex gap-1 shrink-0">
-                    <button v-if="emp.status === 'sugerido'" @click="aprobarPorSegId(emp.segId)" :disabled="accionando"
-                      class="w-5 h-5 flex items-center justify-center rounded bg-emerald-100 dark:bg-emerald-900/30 text-emerald-600 hover:bg-emerald-200 disabled:opacity-40"
-                      title="Aprobar">
-                      <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="3" stroke="currentColor" class="w-2.5 h-2.5">
-                        <path stroke-linecap="round" stroke-linejoin="round" d="m4.5 12.75 6 6 9-13.5" />
-                      </svg>
-                    </button>
-                    <button v-if="emp.status !== 'publicado'" @click="quitarVoluntarioCong(emp.segId)" :disabled="accionando"
+                    <button @click="quitarVoluntarioCong(asig.id)" :disabled="accionando"
                       class="w-5 h-5 flex items-center justify-center rounded bg-red-50 dark:bg-red-900/20 text-red-400 hover:bg-red-100 disabled:opacity-40"
                       title="Quitar">
                       <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="3" stroke="currentColor" class="w-2.5 h-2.5">
@@ -474,7 +445,6 @@
                   </div>
                 </div>
 
-                <!-- Voluntarios disponibles para agregar -->
                 <p class="text-[9px] font-semibold uppercase tracking-widest text-gray-400 mt-2 mb-1">Disponibles</p>
                 <div class="relative mb-1">
                   <input v-model="busquedaCong" type="text" placeholder="Buscar voluntario…"
@@ -503,33 +473,31 @@
           </div>
         </template>
 
-        <!-- ── Sidebar EMPRESA: cupo individual ── -->
+        <!-- ── Sidebar EMPRESA ── -->
         <template v-else>
-          <!-- Empleado asignado actualmente -->
-          <div v-if="sidebarSeg" class="px-4 py-3 border-b border-gray-100 dark:border-gray-700 shrink-0">
+          <div v-if="sidebarAsig" class="px-4 py-3 border-b border-gray-100 dark:border-gray-700 shrink-0">
             <p class="text-[10px] font-semibold uppercase tracking-widest text-gray-400 mb-2">Asignado actualmente</p>
-            <div class="flex items-center gap-2 p-2 rounded-lg" :class="claseSeg(sidebarSeg.status)">
+            <div class="flex items-center gap-2 p-2 rounded-lg" :class="claseAsig(sidebarAsig.status)">
               <div class="w-7 h-7 rounded-full bg-current/20 flex items-center justify-center text-xs font-bold shrink-0">
-                {{ inicialesById(sidebarSeg.empleado_id) }}
+                {{ inicialesById(sidebarAsig.empleado_id) }}
               </div>
               <div class="flex-1 min-w-0">
-                <p class="text-xs font-semibold truncate">{{ nombreById(sidebarSeg.empleado_id) }}</p>
-                <p class="text-[10px] opacity-70">{{ labelStatus(sidebarSeg.status) }}</p>
+                <p class="text-xs font-semibold truncate">{{ nombreById(sidebarAsig.empleado_id) }}</p>
+                <p class="text-[10px] opacity-70">{{ labelStatus(sidebarAsig.status) }}</p>
               </div>
-              <button v-if="sidebarSeg.status === 'sugerido'" @click="aprobarDesideSidebar" :disabled="accionando"
-                class="flex items-center gap-1 px-2 py-1 rounded-md bg-emerald-600 hover:bg-emerald-700 text-white text-[10px] font-semibold transition-colors disabled:opacity-40 shrink-0">
+              <button @click="quitarAsignacion(sidebarAsig.id)" :disabled="accionando"
+                class="w-6 h-6 flex items-center justify-center rounded bg-red-50 dark:bg-red-900/20 text-red-400 hover:bg-red-100 disabled:opacity-40 shrink-0"
+                title="Quitar asignación">
                 <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2.5" stroke="currentColor" class="w-3 h-3">
-                  <path stroke-linecap="round" stroke-linejoin="round" d="m4.5 12.75 6 6 9-13.5" />
+                  <path stroke-linecap="round" stroke-linejoin="round" d="M6 18 18 6M6 6l12 12" />
                 </svg>
-                Aprobar
               </button>
             </div>
           </div>
 
-          <!-- Buscador -->
           <div class="px-4 py-2.5 border-b border-gray-100 dark:border-gray-700 shrink-0">
             <p class="text-[10px] font-semibold uppercase tracking-widest text-gray-400 mb-2">
-              {{ sidebarSeg ? 'Cambiar empleado' : 'Asignar empleado' }}
+              {{ sidebarAsig ? 'Cambiar empleado' : 'Asignar empleado' }}
             </p>
             <div class="relative">
               <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor"
@@ -541,22 +509,21 @@
             </div>
           </div>
 
-          <!-- Lista de empleados empresa -->
           <div class="flex-1 overflow-y-auto p-2 space-y-1">
-            <p v-if="!empleadosSidebar.length" class="text-[11px] text-gray-400 italic text-center py-4">
-              Sin empleados disponibles para este turno
+            <p v-if="!empleadosFiltrados.length" class="text-[11px] text-gray-400 italic text-center py-4">
+              Sin empleados disponibles
             </p>
             <button v-for="emp in empleadosFiltrados" :key="emp.id"
               @click="reasignar(emp.id)" :disabled="accionando"
               class="w-full text-left flex items-center gap-2.5 px-3 py-2 rounded-lg border transition-all disabled:opacity-40"
               :class="[
-                emp.id === sidebarSeg?.empleado_id
+                emp.id === sidebarAsig?.empleado_id
                   ? 'border-violet-300 dark:border-violet-700 bg-violet-50 dark:bg-violet-900/20'
                   : 'border-transparent hover:border-gray-200 dark:hover:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-800',
                 emp.disponible ? '' : 'opacity-50'
               ]">
               <div class="w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold shrink-0"
-                :class="emp.id === sidebarSeg?.empleado_id
+                :class="emp.id === sidebarAsig?.empleado_id
                   ? 'bg-violet-100 dark:bg-violet-900/40 text-violet-700 dark:text-violet-300'
                   : 'bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300'">
                 {{ emp.iniciales }}
@@ -564,12 +531,12 @@
               <div class="flex-1 min-w-0">
                 <p class="text-xs font-medium truncate text-gray-800 dark:text-gray-200">{{ emp.nombre }}</p>
                 <p class="text-[10px] text-gray-400 truncate">
-                  <span v-if="emp.id === sidebarSeg?.empleado_id" class="text-violet-500 font-semibold">Asignado · </span>
+                  <span v-if="emp.id === sidebarAsig?.empleado_id" class="text-violet-500 font-semibold">Asignado · </span>
                   <span v-if="!emp.disponible" class="text-amber-500">Sin disponibilidad · </span>
                   {{ emp.estacionesNombre || '—' }}
                 </p>
               </div>
-              <svg v-if="emp.id === sidebarSeg?.empleado_id"
+              <svg v-if="emp.id === sidebarAsig?.empleado_id"
                 xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2.5" stroke="currentColor"
                 class="w-3.5 h-3.5 text-violet-500 shrink-0">
                 <path stroke-linecap="round" stroke-linejoin="round" d="m4.5 12.75 6 6 9-13.5" />
@@ -592,24 +559,25 @@
 
 <script setup lang="ts">
 import { ref, computed, onMounted, watch } from 'vue';
-import { httpsCallable } from 'firebase/functions';
-import { getDocs, getDoc, doc as fsDoc, query, collection, where, updateDoc, addDoc, Timestamp } from 'firebase/firestore';
+import { getDocs, getDoc, doc as fsDoc, query, collection, where, updateDoc, Timestamp } from 'firebase/firestore';
 import { useSessionStore } from '../../stores/sessionStore';
-import { useSegmentoStore } from '../../stores/segmentoStore';
+import { useAsignacionStore } from '../../stores/asignacionStore';
 import { useGrantStore } from '../../stores/grantStore';
 import { useEmpresaStore } from '../../stores/empresaStore';
+import { useLogStore } from '../../stores/logStore';
 import { ubicacionConverter } from '../../models/Ubicacion';
 import { estacionConverter } from '../../models/Estacion';
 import { empleadoConverter } from '../../models/Empleado';
 import { contactoConverter } from '../../models/Contacto';
-import { functions, db } from '../../firebase';
-import type { Segmento, SegmentoStatus } from '../../models/Segmento';
+import { db } from '../../firebase';
+import type { Asignacion, AsignacionStatus } from '../../models/Asignacion';
 import type { Turno } from '../../models/Ubicacion';
 
 const sessionStore = useSessionStore();
-const segmentoStore = useSegmentoStore();
+const asignacionStore = useAsignacionStore();
 const grantStore = useGrantStore();
 const empresaStore = useEmpresaStore();
+const logStore = useLogStore();
 
 const isCongregacion = computed(() => empresaStore.isCongregacion);
 
@@ -641,20 +609,25 @@ const miEmpleadoId = ref<string | null>(null);
 async function resolverMiEmpleadoId(): Promise<string | null> {
   const user = sessionStore.currentUser;
   if (!user?.contact_id || !companyId.value) return null;
-  const snap = await getDocs(query(
-    collection(db, 'empleados'),
-    where('company_id', '==', companyId.value),
-    where('contact_id', '==', user.contact_id),
-    where('active', '==', true)
-  ));
-  const doc = snap.docs.find(d => !d.data().deletedAt);
-  return doc?.id ?? null;
+  try {
+    const snap = await getDocs(query(
+      collection(db, 'empleados'),
+      where('company_id', '==', companyId.value),
+      where('contact_id', '==', user.contact_id),
+      where('active', '==', true)
+    ));
+    const docFound = snap.docs.find(d => !d.data().deletedAt);
+    if (!docFound) logStore.warn('CalendarioView: no se encontró empleado para este usuario', { scope: 'calendario' });
+    return docFound?.id ?? null;
+  } catch (err: any) {
+    logStore.error(`CalendarioView: error resolviendo empleadoId — ${err?.message ?? err}`, { scope: 'calendario' });
+    return null;
+  }
 }
 
 const puedeVer = computed(() => canManage.value || !!miEmpleadoId.value);
 
-// ── Caché local (llenado en calcularDiagnostico vía getDocs, nunca del store reactivo) ──
-// Los stores de useCollection llegan vacíos en el primer render; el caché los evita.
+// ── Caché local ───────────────────────────────────────────────────────────────
 
 interface EmpleadoCacheEntry {
   id: string;
@@ -666,7 +639,7 @@ interface EmpleadoCacheEntry {
 }
 
 const empleadosCache = ref<EmpleadoCacheEntry[]>([]);
-const estacionesCache = ref<Map<string, string>>(new Map()); // id → nombre
+const estacionesCache = ref<Map<string, string>>(new Map());
 
 function nombreById(id: string): string {
   return empleadosCache.value.find(e => e.id === id)?.nombre ?? id.slice(0, 8) + '…';
@@ -683,7 +656,7 @@ function nombreEstacion(id: string | null): string {
 
 // ── Estado ────────────────────────────────────────────────────────────────────
 
-const segmentos = ref<Segmento[]>([]);
+const asignaciones = ref<Asignacion[]>([]);
 const cargando = ref(false);
 const generandoBorrador = ref(false);
 const accionando = ref(false);
@@ -727,69 +700,44 @@ async function irSemana(dir: number) {
     fechaInicio.value = d.toISOString().slice(0, 10);
   }
   cerrarSidebar();
-  cargando.value = true;
-  try {
-    if (canManage.value) {
-      await calcularDiagnostico();
-      segmentos.value = await segmentoStore.cargarSegmentosManager(
-        ubicacionId.value, fechaInicio.value, fechaFin.value
-      );
-    } else if (miEmpleadoId.value) {
-      segmentos.value = await segmentoStore.cargarSegmentosEmpleado(
-        miEmpleadoId.value, fechaInicio.value, fechaFin.value
-      );
-    }
-  } finally {
-    cargando.value = false;
-  }
+  await cargar();
 }
 
-// ── Grilla ────────────────────────────────────────────────────────────────────
+// ── Grilla empresa ────────────────────────────────────────────────────────────
 
 function turnosDelDia(diaIdx: number): Turno[] {
   return turnosConfiguracion.value.filter(t => t.day_of_week === diasSemana[diaIdx]);
 }
 
-function segmentosDia(diaIdx: number): Segmento[] {
-  return segmentos.value
-    .filter(s => s.date === fechaDia(diaIdx))
+function asignacionesDia(diaIdx: number): Asignacion[] {
+  return asignaciones.value
+    .filter(a => a.date === fechaDia(diaIdx))
     .sort((a, b) => a.start.localeCompare(b.start));
 }
 
-// Devuelve un segmento representante por empleado para el cupo N.
-// El algoritmo escribe N buckets de 30 min por empleado por turno; aquí
-// los colapsamos: un cupo = un empleado distinto. El representante es el
-// primer bucket de ese empleado en el turno (para tener id, status, empleado_id).
-function empleadosPorTurno(diaIdx: number, turno: Turno, estacionId: string | null): Segmento[] {
+// Un cupo de un turno = una asignación con esa estación que se solapa con el turno.
+// cupoOffset: el N-ésimo empleado asignado a esa estación en ese turno.
+function asignacionesParaTurno(diaIdx: number, turno: Turno, estacionId: string | null): Asignacion[] {
   const fecha = fechaDia(diaIdx);
-  const del_turno = segmentos.value.filter(s =>
-    s.date === fecha &&
-    s.estacion_id === estacionId &&
-    s.status !== 'rechazado' &&
-    s.start < turno.end_time && s.end > turno.start_time
+  return asignaciones.value.filter(a =>
+    a.date === fecha &&
+    a.estacion_id === estacionId &&
+    a.start < turno.end_time && a.end > turno.start_time
   );
-  const porEmpleado = new Map<string, Segmento>();
-  for (const s of del_turno.sort((a, b) => a.start.localeCompare(b.start))) {
-    if (!porEmpleado.has(s.empleado_id)) porEmpleado.set(s.empleado_id, s);
-  }
-  return [...porEmpleado.values()].sort((a, b) => a.empleado_id.localeCompare(b.empleado_id));
 }
 
-function segmentoParaCupo(diaIdx: number, turno: Turno, estacionId: string | null, cupoOffset: number): Segmento | undefined {
-  return empleadosPorTurno(diaIdx, turno, estacionId)[cupoOffset];
+function asignacionParaCupo(diaIdx: number, turno: Turno, estacionId: string | null, cupoOffset: number): Asignacion | undefined {
+  return asignacionesParaTurno(diaIdx, turno, estacionId)[cupoOffset];
 }
 
-const haySegmentosSugeridos = computed(() => segmentos.value.some(s => s.status === 'sugerido'));
-
-function tieneTodosAprobados(diaIdx: number): boolean {
-  const delDia = segmentosDia(diaIdx);
-  return delDia.length > 0 && delDia.every(s => s.status === 'aprobado');
+function tieneSugeridosDia(diaIdx: number): boolean {
+  return asignacionesDia(diaIdx).some(a => a.status === 'sugerido');
 }
 
-// ── Sidebar de asignación ─────────────────────────────────────────────────────
+// ── Sidebar de asignación (empresa) ──────────────────────────────────────────
 
-const sidebarAbierta = ref(true);
-const sidebarSeg = ref<Segmento | null>(null);
+const sidebarAbierta = ref(false);
+const sidebarAsig = ref<Asignacion | null>(null);
 const sidebarTurno = ref<Turno | null>(null);
 const sidebarEstacionId = ref<string | null>(null);
 const sidebarFecha = ref<string>('');
@@ -800,7 +748,7 @@ interface EmpleadoSidebar {
   nombre: string;
   iniciales: string;
   estacionesNombre: string;
-  disponible: boolean;   // si su disponibilidad cubre el horario del turno
+  disponible: boolean;
 }
 
 const empleadosSidebar = ref<EmpleadoSidebar[]>([]);
@@ -811,8 +759,8 @@ const empleadosFiltrados = computed(() => {
   return empleadosSidebar.value.filter(e => e.nombre.toLowerCase().includes(q));
 });
 
-function abrirSidebar(seg: Segmento, turno: Turno, estacionId: string | null, fecha: string) {
-  sidebarSeg.value = seg;
+function abrirSidebar(asig: Asignacion, turno: Turno, estacionId: string | null, fecha: string) {
+  sidebarAsig.value = asig;
   sidebarTurno.value = turno;
   sidebarEstacionId.value = estacionId;
   sidebarFecha.value = fecha;
@@ -822,7 +770,7 @@ function abrirSidebar(seg: Segmento, turno: Turno, estacionId: string | null, fe
 }
 
 function abrirSidebarVacio(turno: Turno, estacionId: string | null, fecha: string) {
-  sidebarSeg.value = null;
+  sidebarAsig.value = null;
   sidebarTurno.value = turno;
   sidebarEstacionId.value = estacionId;
   sidebarFecha.value = fecha;
@@ -833,31 +781,13 @@ function abrirSidebarVacio(turno: Turno, estacionId: string | null, fecha: strin
 
 function cerrarSidebar() {
   sidebarAbierta.value = false;
-  sidebarSeg.value = null;
+  sidebarAsig.value = null;
   sidebarFechaCong.value = '';
 }
 
 function toMin(hhmm: string): number {
   const [h, m] = hhmm.split(':').map(Number);
   return h * 60 + m;
-}
-
-function fromMin(mins: number): string {
-  const h = Math.floor(mins / 60) % 24;
-  const m = mins % 60;
-  return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
-}
-
-function generarBuckets30(start: string, end: string): { start: string; end: string }[] {
-  const buckets: { start: string; end: string }[] = [];
-  let cur = toMin(start);
-  const fin = toMin(end);
-  while (cur < fin) {
-    const next = Math.min(cur + 30, fin);
-    buckets.push({ start: fromMin(cur), end: fromMin(next) });
-    cur = next;
-  }
-  return buckets;
 }
 
 function cargarEmpleadosSidebar(turno: Turno, estacionId: string | null, fecha: string) {
@@ -867,69 +797,53 @@ function cargarEmpleadosSidebar(turno: Turno, estacionId: string | null, fecha: 
   const tStart = toMin(turno.start_time);
   const tEnd = toMin(turno.end_time);
 
-  const yaAsignadosHoy = new Set(
-    segmentos.value
-      .filter(s =>
-        s.date === fecha &&
-        s.status !== 'rechazado' &&
-        s.empleado_id !== sidebarSeg.value?.empleado_id
+  // Empleados que ya tienen una asignación que se solapa con este turno ese día (D4)
+  const yaOcupadosEnTurno = new Set(
+    asignaciones.value
+      .filter(a =>
+        a.date === fecha &&
+        a.empleado_id !== sidebarAsig.value?.empleado_id &&
+        toMin(a.start) < tEnd && toMin(a.end) > tStart
       )
-      .map(s => s.empleado_id)
+      .map(a => a.empleado_id)
   );
 
   const lista: EmpleadoSidebar[] = empleadosCache.value
-    .filter(emp => !yaAsignadosHoy.has(emp.id))
+    .filter(emp => !yaOcupadosEnTurno.has(emp.id))
     .map(emp => {
       const ventanas: any[] = emp.disponibilidad?.ventanas ?? [];
       const tieneDisponibilidad = ventanas.some((v: any) =>
         v.day_of_week === diaSemana &&
         toMin(v.start) <= tStart && toMin(v.end) >= tEnd
       );
-      // En congregación solo importa la disponibilidad; en empresa también la estación
       const disponible = estacionId
         ? emp.estacion_ids.includes(estacionId) && tieneDisponibilidad
         : tieneDisponibilidad;
       const estacionesNombre = emp.estacion_ids
-        .map(id => nombreEstacion(id))
+        .map((id: string) => nombreEstacion(id))
         .filter(Boolean)
         .join(', ');
       return { id: emp.id, nombre: emp.nombre, iniciales: emp.iniciales, estacionesNombre, disponible };
     });
 
   lista.sort((a, b) => {
-    const aEsAsignado = a.id === sidebarSeg.value?.empleado_id ? -1 : 0;
-    const bEsAsignado = b.id === sidebarSeg.value?.empleado_id ? -1 : 0;
-    if (aEsAsignado !== bEsAsignado) return aEsAsignado - bEsAsignado;
+    if (a.id === sidebarAsig.value?.empleado_id) return -1;
+    if (b.id === sidebarAsig.value?.empleado_id) return 1;
     return (b.disponible ? 1 : 0) - (a.disponible ? 1 : 0);
   });
 
   empleadosSidebar.value = lista;
 }
 
-// Devuelve todos los buckets de un empleado en un turno+estación+fecha
-function bucketsDeTurno(empleadoId: string, turno: Turno, estacionId: string | null, fecha: string): Segmento[] {
-  return segmentos.value.filter(s =>
-    s.date === fecha &&
-    s.empleado_id === empleadoId &&
-    s.estacion_id === estacionId &&
-    s.start < turno.end_time && s.end > turno.start_time
-  );
-}
-
-async function aprobarDesideSidebar() {
-  if (!sidebarSeg.value || !sidebarTurno.value) return;
+async function quitarAsignacion(id: string) {
   accionando.value = true;
   try {
-    // Aprobar todos los buckets de este empleado en este turno
-    const buckets = bucketsDeTurno(
-      sidebarSeg.value.empleado_id,
-      sidebarTurno.value,
-      sidebarEstacionId.value,
-      sidebarFecha.value
-    );
-    await Promise.all(buckets.map(s => segmentoStore.aprobarSegmento(s.id)));
-    buckets.forEach(s => { s.status = 'aprobado'; });
-    sidebarSeg.value = { ...sidebarSeg.value, status: 'aprobado' };
+    await asignacionStore.softDeleteAsignacion(id);
+    asignaciones.value = asignaciones.value.filter(a => a.id !== id);
+    sidebarAsig.value = null;
+    if (sidebarTurno.value) cargarEmpleadosSidebar(sidebarTurno.value, sidebarEstacionId.value, sidebarFecha.value);
+  } catch (err: any) {
+    logStore.error(`Error quitando asignación: ${err?.message ?? err}`, { scope: 'calendario' });
   } finally {
     accionando.value = false;
   }
@@ -937,115 +851,56 @@ async function aprobarDesideSidebar() {
 
 async function reasignar(nuevoEmpleadoId: string) {
   if (!sidebarTurno.value || !sidebarFecha.value) return;
-  // Click en el empleado ya asignado → deseleccionar (eliminar segmentos del turno)
-  if (nuevoEmpleadoId === sidebarSeg.value?.empleado_id && sidebarSeg.value) {
-    accionando.value = true;
-    try {
-      const buckets = bucketsDeTurno(
-        sidebarSeg.value.empleado_id,
-        sidebarTurno.value,
-        sidebarEstacionId.value,
-        sidebarFecha.value
-      );
-      await Promise.all(buckets.map(s =>
-        updateDoc(fsDoc(db, 'segmentos', s.id), {
-          active: false,
-          deletedAt: Timestamp.now(),
-          updatedAt: Timestamp.now(),
-        })
-      ));
-      segmentos.value = segmentos.value.filter(s => !buckets.some(b => b.id === s.id));
-      sidebarSeg.value = null;
-      cargarEmpleadosSidebar(sidebarTurno.value, sidebarEstacionId.value, sidebarFecha.value);
-    } finally {
-      accionando.value = false;
-    }
+
+  // Click en el empleado ya asignado → quitar
+  if (nuevoEmpleadoId === sidebarAsig.value?.empleado_id && sidebarAsig.value) {
+    await quitarAsignacion(sidebarAsig.value.id);
     return;
   }
+
   accionando.value = true;
   try {
-    if (sidebarSeg.value) {
-      // Actualizar TODOS los buckets del empleado actual en este turno
-      const buckets = bucketsDeTurno(
-        sidebarSeg.value.empleado_id,
-        sidebarTurno.value,
-        sidebarEstacionId.value,
-        sidebarFecha.value
-      );
-      await Promise.all(buckets.map(s =>
-        updateDoc(fsDoc(db, 'segmentos', s.id), {
-          empleado_id: nuevoEmpleadoId,
-          status: 'sugerido',
-          updatedAt: Timestamp.now(),
-        })
-      ));
-      // Actualizar estado local
-      buckets.forEach(s => {
-        s.empleado_id = nuevoEmpleadoId;
-        s.status = 'sugerido';
-      });
-      sidebarSeg.value = { ...sidebarSeg.value, empleado_id: nuevoEmpleadoId, status: 'sugerido' };
-    } else {
-      // Cupo vacío: generar buckets de 30 min para el turno completo
-      let asignacionId = segmentos.value.find(s =>
-        s.date === sidebarFecha.value && s.ubicacion_id === ubicacionId.value
-      )?.asignacion_id ?? '';
-
-      if (!asignacionId) {
-        const aRef = await addDoc(collection(db, 'asignaciones'), {
-          empresa_id: companyId.value,
-          ubicacion_id: ubicacionId.value,
-          date: sidebarFecha.value,
-          status: 'draft',
-          createdAt: Timestamp.now(),
-          updatedAt: Timestamp.now(),
-          deletedAt: null,
-        });
-        asignacionId = aRef.id;
+    if (sidebarAsig.value) {
+      // Actualizar empleado de la asignación existente
+      await asignacionStore.actualizarEmpleadoAsignacion(sidebarAsig.value.id, nuevoEmpleadoId);
+      const asig = asignaciones.value.find(a => a.id === sidebarAsig.value!.id);
+      if (asig) {
+        asig.empleado_id = nuevoEmpleadoId;
+        asig.status = 'sugerido';
       }
-
-      // Crear buckets de 30 min igual que el algoritmo
-      const buckets = generarBuckets30(sidebarTurno.value.start_time, sidebarTurno.value.end_time);
-      const primeroRef = await addDoc(collection(db, 'segmentos'), {
+      sidebarAsig.value = { ...sidebarAsig.value, empleado_id: nuevoEmpleadoId, status: 'sugerido' };
+    } else {
+      // Crear nueva asignación
+      const id = await asignacionStore.crearAsignacion({
         empresa_id: companyId.value,
         ubicacion_id: ubicacionId.value,
         empleado_id: nuevoEmpleadoId,
         date: sidebarFecha.value,
         estacion_id: sidebarEstacionId.value,
-        tipo: 'estacion',
-        start: buckets[0].start,
-        end: buckets[0].end,
-        asignacion_id: asignacionId,
-        status: 'sugerido',
-        createdAt: Timestamp.now(),
-        updatedAt: Timestamp.now(),
-        deletedAt: null,
+        start: sidebarTurno.value.start_time,
+        end: sidebarTurno.value.end_time,
       });
-      await Promise.all(buckets.slice(1).map(b =>
-        addDoc(collection(db, 'segmentos'), {
-          empresa_id: companyId.value,
-          ubicacion_id: ubicacionId.value,
-          empleado_id: nuevoEmpleadoId,
-          date: sidebarFecha.value,
-          estacion_id: sidebarEstacionId.value,
-          tipo: 'estacion',
-          start: b.start,
-          end: b.end,
-          asignacion_id: asignacionId,
-          status: 'sugerido',
-          createdAt: Timestamp.now(),
-          updatedAt: Timestamp.now(),
-          deletedAt: null,
-        })
-      ));
-
-      // Recargar y apuntar al representante
-      segmentos.value = await segmentoStore.cargarSegmentosManager(
-        ubicacionId.value, fechaInicio.value, fechaFin.value
-      );
-      const nuevo = segmentos.value.find(s => s.id === primeroRef.id);
-      if (nuevo) sidebarSeg.value = nuevo;
+      asignaciones.value.push({
+        id,
+        empresa_id: companyId.value,
+        ubicacion_id: ubicacionId.value,
+        empleado_id: nuevoEmpleadoId,
+        date: sidebarFecha.value,
+        estacion_id: sidebarEstacionId.value,
+        start: sidebarTurno.value.start_time,
+        end: sidebarTurno.value.end_time,
+        status: 'sugerido',
+        active: true,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+        deletedAt: null,
+        get isPublished() { return this.status === 'publicado'; },
+      });
+      sidebarAsig.value = asignaciones.value.find(a => a.id === id) ?? null;
     }
+    cargarEmpleadosSidebar(sidebarTurno.value, sidebarEstacionId.value, sidebarFecha.value);
+  } catch (err: any) {
+    logStore.error(`Error reasignando: ${err?.message ?? err}`, { scope: 'calendario' });
   } finally {
     accionando.value = false;
   }
@@ -1059,34 +914,26 @@ function formatRango(ini: string, fin: string): string {
   return `${fmt(ini)} – ${fmt(fin)}`;
 }
 
-function claseSeg(status: SegmentoStatus): string {
+function claseAsig(status: AsignacionStatus): string {
   switch (status) {
     case 'sugerido':  return 'bg-amber-50 dark:bg-amber-900/20 border-amber-200 dark:border-amber-800 text-amber-700 dark:text-amber-300';
-    case 'aprobado':  return 'bg-emerald-50 dark:bg-emerald-900/20 border-emerald-200 dark:border-emerald-800 text-emerald-700 dark:text-emerald-300';
-    case 'rechazado': return 'bg-red-50 dark:bg-red-900/20 border-red-200 dark:border-red-800 text-red-500 line-through opacity-60';
     case 'publicado': return 'bg-violet-50 dark:bg-violet-900/20 border-violet-200 dark:border-violet-800 text-violet-700 dark:text-violet-300';
     default:          return 'bg-gray-50 dark:bg-gray-700/40 border-gray-200 dark:border-gray-600 text-gray-500';
   }
 }
 
-function claseChipStatus(status: SegmentoStatus): string {
+function claseChipStatus(status: AsignacionStatus): string {
   switch (status) {
     case 'sugerido':  return 'text-amber-600 dark:text-amber-400';
-    case 'aprobado':  return 'text-emerald-600 dark:text-emerald-400';
-    case 'rechazado': return 'text-red-500 dark:text-red-400';
     case 'publicado': return 'text-violet-600 dark:text-violet-400';
     default:          return 'text-gray-400';
   }
 }
 
-function labelStatus(status: SegmentoStatus): string {
-  const map: Record<string, string> = { sugerido: 'Sugerido', aprobado: 'Aprobado', rechazado: 'Rechazado', publicado: 'Publicado' };
+function labelStatus(status: AsignacionStatus): string {
+  const map: Record<string, string> = { sugerido: 'Sugerido', publicado: 'Publicado' };
   return map[status] ?? status;
 }
-
-// ── CF ────────────────────────────────────────────────────────────────────────
-
-const actualizarBorradorFn = httpsCallable(functions, 'actualizarBorrador', { timeout: 120000 });
 
 // ── Diagnóstico ───────────────────────────────────────────────────────────────
 
@@ -1143,7 +990,7 @@ async function calcularDiagnostico() {
     turnosConfiguracion.value = turnosValidos as Turno[];
 
     const turnosConReq = turnosValidos.filter((t: any) =>
-      (t.requerimientos ?? []).some((r: any) => r.estacion_id && r.cantidad > 0)
+      (t.requerimientos ?? []).some((r: any) => r.cantidad > 0)
     );
     const estacionIdsRequeridas = new Set<string>(
       turnosConReq.flatMap((t: any) => (t.requerimientos ?? []).map((r: any) => r.estacion_id).filter(Boolean))
@@ -1156,7 +1003,6 @@ async function calcularDiagnostico() {
     ));
     const estaciones = estSnap.docs.map(d => d.data());
 
-    // Poblar caché de estaciones (id → nombre) para que el template no dependa del store reactivo
     const cacheEst = new Map<string, string>();
     estaciones.forEach(e => cacheEst.set(e.id, e.nombre));
     estacionesCache.value = cacheEst;
@@ -1177,7 +1023,6 @@ async function calcularDiagnostico() {
       e.id === managerId
     );
 
-    // Hidratar contactos en paralelo
     await Promise.all(todos.map(async emp => {
       if (!emp.contacto && emp.contact_id) {
         try {
@@ -1187,7 +1032,6 @@ async function calcularDiagnostico() {
       }
     }));
 
-    // Poblar caché de empleados (todos los de la empresa, para la sidebar)
     empleadosCache.value = conContrato.map(emp => ({
       id: emp.id,
       nombre: emp.displayName,
@@ -1241,6 +1085,9 @@ async function calcularDiagnostico() {
       tieneEmpleadosConContrato: conContrato.length > 0, cantConContrato: conContrato.length,
       detalleEmpleados,
     };
+    logStore.info(`Diagnóstico: ${turnosValidos.length} turnos, ${conContrato.length} empleados con contrato, ${detalleEmpleados.filter(e=>e.listo).length} listos`, { scope: 'calendario' });
+  } catch (err: any) {
+    logStore.error(`Error en diagnóstico: ${err?.message ?? err}`, { scope: 'calendario' });
   } finally {
     cargandoDiagnostico.value = false;
   }
@@ -1255,17 +1102,24 @@ async function cargar() {
   cargando.value = true;
   errorBorrador.value = '';
   try {
+    logStore.info(`CalendarioView: cargando semana ${fechaInicio.value}–${fechaFin.value}`, { scope: 'calendario' });
     if (canManage.value) {
       await calcularDiagnostico();
-      segmentos.value = await segmentoStore.cargarSegmentosManager(
+      asignaciones.value = await asignacionStore.cargarAsignacionesManager(
         ubicacionId.value, fechaInicio.value, fechaFin.value
       );
+      logStore.info(`CalendarioView: ${asignaciones.value.length} asignaciones cargadas`, { scope: 'calendario' });
     } else {
       if (!miEmpleadoId.value) return;
-      segmentos.value = await segmentoStore.cargarSegmentosEmpleado(
+      asignaciones.value = await asignacionStore.cargarAsignacionesEmpleado(
         miEmpleadoId.value, fechaInicio.value, fechaFin.value
       );
+      logStore.info(`CalendarioView: ${asignaciones.value.length} asignaciones publicadas cargadas`, { scope: 'calendario' });
     }
+  } catch (err: any) {
+    const msg = err?.message ?? String(err);
+    logStore.error(`Error cargando calendario: ${msg}`, { scope: 'calendario' });
+    errorBorrador.value = msg;
   } finally {
     cargando.value = false;
   }
@@ -1273,21 +1127,22 @@ async function cargar() {
 
 async function regenerarBorradorSemana() {
   if (!canManage.value || !companyId.value || !ubicacionId.value) return;
-  if (!diagnostico.value?.tieneTurnos || !diagnostico.value?.tieneEmpleadosConContrato) return;
   errorBorrador.value = '';
   generandoBorrador.value = true;
+  logStore.info('Iniciando regeneración de sugerencias (semana)…', { scope: 'calendario' });
   try {
-    await actualizarBorradorFn({
-      empresa_id: companyId.value,
-      ubicacion_id: ubicacionId.value,
-      week_start: hoy(),
-      dias: 28,
-    });
-    segmentos.value = await segmentoStore.cargarSegmentosManager(
+    const resp = await asignacionStore.regenerarSugerencias(
+      companyId.value, ubicacionId.value, hoy(), 28
+    );
+    if (resp.logs?.length) logStore.pushServerLogs(resp.logs, 'generarAsignaciones');
+    logStore.info(`Regeneración completada: ${resp.dias_procesados} días, ${resp.asignaciones_creadas} asignaciones, ${resp.huecos?.length ?? 0} huecos`, { scope: 'calendario' });
+    asignaciones.value = await asignacionStore.cargarAsignacionesManager(
       ubicacionId.value, fechaInicio.value, fechaFin.value
     );
   } catch (err: any) {
-    errorBorrador.value = err?.message ?? String(err);
+    const msg = err?.message ?? String(err);
+    logStore.error(`Error regenerando sugerencias: ${msg}`, { scope: 'calendario' });
+    errorBorrador.value = msg;
   } finally {
     generandoBorrador.value = false;
   }
@@ -1295,103 +1150,20 @@ async function regenerarBorradorSemana() {
 
 // ── Acciones ──────────────────────────────────────────────────────────────────
 
-// Elimina segmentos duplicados sugeridos: si el mismo empleado aparece en más de un
-// turno el mismo día, conserva el turno con start más temprano y borra los demás.
-// Opera sobre segmentos.value en memoria y los sincroniza con Firestore.
-async function limpiarDuplicadosSugeridos(fechasFiltro?: Set<string>) {
-  // Agrupar sugeridos por (date, empleado_id) → lista de buckets
-  const porDiaEmpleado = new Map<string, Segmento[]>();
-  for (const s of segmentos.value) {
-    if (s.status !== 'sugerido' && s.status !== ('draft' as any)) continue;
-    if (fechasFiltro && !fechasFiltro.has(s.date)) continue;
-    const key = `${s.date}__${s.empleado_id}`;
-    const arr = porDiaEmpleado.get(key) ?? [];
-    arr.push(s);
-    porDiaEmpleado.set(key, arr);
-  }
-
-  const aBorrar: Segmento[] = [];
-  porDiaEmpleado.forEach((segs) => {
-    if (segs.length <= 1) return;
-    // Identificar los turnos distintos: agrupamos buckets por rango contiguo (mismo turno)
-    // Un "turno" = grupo de buckets donde cada uno empieza donde termina el anterior.
-    segs.sort((a, b) => a.start.localeCompare(b.start));
-    // Detectar cambios de turno: hay un salto si el start del siguiente != end del anterior
-    const turnos: Segmento[][] = [];
-    let grupoActual: Segmento[] = [segs[0]];
-    for (let i = 1; i < segs.length; i++) {
-      const prev = segs[i - 1];
-      const curr = segs[i];
-      // Si el bucket actual empieza exactamente donde terminó el anterior → mismo turno
-      if (curr.start === prev.end) {
-        grupoActual.push(curr);
-      } else {
-        turnos.push(grupoActual);
-        grupoActual = [curr];
-      }
-    }
-    turnos.push(grupoActual);
-    if (turnos.length <= 1) return; // solo 1 turno, sin duplicado
-    // Conservar el primer turno (menor start), borrar los demás
-    for (let t = 1; t < turnos.length; t++) aBorrar.push(...turnos[t]);
-  });
-
-  if (!aBorrar.length) return;
-
-  // Borrar en Firestore
-  await Promise.all(aBorrar.map(s =>
-    updateDoc(fsDoc(db, 'segmentos', s.id), {
-      active: false,
-      deletedAt: Timestamp.now(),
-      updatedAt: Timestamp.now(),
-    })
-  ));
-  // Eliminar del estado local
-  const idsBorrados = new Set(aBorrar.map(s => s.id));
-  segmentos.value = segmentos.value.filter(s => !idsBorrados.has(s.id));
-}
-
-// Aprobar el cupo completo: busca todos los buckets del mismo empleado+estación+turno
-async function aprobar(segRepresentanteId: string) {
-  accionando.value = true;
-  try {
-    const rep = segmentos.value.find(s => s.id === segRepresentanteId);
-    if (!rep) return;
-    // Limpiar duplicados sugeridos del mismo día antes de aprobar
-    await limpiarDuplicadosSugeridos(new Set([rep.date]));
-    // Todos los buckets de este empleado en esta estación y fecha que se solapen
-    const todos = segmentos.value.filter(s =>
-      s.date === rep.date &&
-      s.empleado_id === rep.empleado_id &&
-      s.estacion_id === rep.estacion_id &&
-      s.status === 'sugerido'
-    );
-    await Promise.all(todos.map(s => segmentoStore.aprobarSegmento(s.id)));
-    todos.forEach(s => { s.status = 'aprobado'; });
-  } finally { accionando.value = false; }
-}
-
-async function aprobarTodo() {
-  accionando.value = true;
-  try {
-    // Limpiar todos los duplicados sugeridos de la semana visible antes de aprobar
-    await limpiarDuplicadosSugeridos();
-    const sugeridos = segmentos.value.filter(s => s.status === 'sugerido');
-    await Promise.all(sugeridos.map(s => segmentoStore.aprobarSegmento(s.id)));
-    sugeridos.forEach(s => { s.status = 'aprobado'; });
-  } finally { accionando.value = false; }
-}
-
 async function publicarDia(diaIdx: number) {
   if (!ubicacionId.value) return;
   const fecha = fechaDia(diaIdx);
   accionando.value = true;
   try {
-    await segmentoStore.publicarDia(ubicacionId.value, fecha);
-    segmentos.value
-      .filter(s => s.date === fecha && s.status === 'aprobado')
-      .forEach(s => { s.status = 'publicado'; });
-  } finally { accionando.value = false; }
+    await asignacionStore.publicarDia(ubicacionId.value, fecha);
+    asignaciones.value
+      .filter(a => a.date === fecha && a.status === 'sugerido')
+      .forEach(a => { a.status = 'publicado'; });
+  } catch (err: any) {
+    logStore.error(`Error publicando día ${fecha}: ${err?.message ?? err}`, { scope: 'calendario' });
+  } finally {
+    accionando.value = false;
+  }
 }
 
 // ── Mes (congregación) ────────────────────────────────────────────────────────
@@ -1460,16 +1232,22 @@ async function cargarMes() {
   cargando.value = true;
   errorBorrador.value = '';
   try {
+    logStore.info(`CalendarioView: cargando mes ${mesInicio.value}–${mesFin.value}`, { scope: 'calendario' });
     if (canManage.value) {
       await calcularDiagnostico();
-      segmentos.value = await segmentoStore.cargarSegmentosManager(
+      asignaciones.value = await asignacionStore.cargarAsignacionesManager(
         ubicacionId.value, mesInicio.value, mesFin.value
       );
+      logStore.info(`CalendarioView: ${asignaciones.value.length} asignaciones cargadas`, { scope: 'calendario' });
     } else if (miEmpleadoId.value) {
-      segmentos.value = await segmentoStore.cargarSegmentosEmpleado(
+      asignaciones.value = await asignacionStore.cargarAsignacionesEmpleado(
         miEmpleadoId.value, mesInicio.value, mesFin.value
       );
     }
+  } catch (err: any) {
+    const msg = err?.message ?? String(err);
+    logStore.error(`Error cargando calendario mes: ${msg}`, { scope: 'calendario' });
+    errorBorrador.value = msg;
   } finally {
     cargando.value = false;
   }
@@ -1477,78 +1255,53 @@ async function cargarMes() {
 
 async function regenerarBorradorMes() {
   if (!canManage.value || !companyId.value || !ubicacionId.value) return;
-  if (!diagnostico.value?.tieneTurnos || !diagnostico.value?.tieneEmpleadosConContrato) return;
   errorBorrador.value = '';
   generandoBorrador.value = true;
+  const diasDelMesN = new Date(mesBase.value.year, mesBase.value.month + 1, 0).getDate();
+  logStore.info(`Iniciando regeneración de sugerencias (mes ${labelMes.value})…`, { scope: 'calendario' });
   try {
-    await actualizarBorradorFn({
-      empresa_id: companyId.value,
-      ubicacion_id: ubicacionId.value,
-      week_start: mesInicio.value,
-      dias: new Date(mesBase.value.year, mesBase.value.month + 1, 0).getDate(),
-    });
-    segmentos.value = await segmentoStore.cargarSegmentosManager(
+    const resp = await asignacionStore.regenerarSugerencias(
+      companyId.value, ubicacionId.value, mesInicio.value, diasDelMesN
+    );
+    if (resp.logs?.length) logStore.pushServerLogs(resp.logs, 'generarAsignaciones');
+    logStore.info(`Regeneración completada: ${resp.dias_procesados} días, ${resp.asignaciones_creadas} asignaciones, ${resp.huecos?.length ?? 0} huecos`, { scope: 'calendario' });
+    asignaciones.value = await asignacionStore.cargarAsignacionesManager(
       ubicacionId.value, mesInicio.value, mesFin.value
     );
   } catch (err: any) {
-    errorBorrador.value = err?.message ?? String(err);
+    const msg = err?.message ?? String(err);
+    logStore.error(`Error regenerando sugerencias: ${msg}`, { scope: 'calendario' });
+    errorBorrador.value = msg;
   } finally {
     generandoBorrador.value = false;
   }
 }
 
-function segmentosFecha(date: string): Segmento[] {
-  return segmentos.value
-    .filter(s => s.date === date)
+// ── Helpers congregación ──────────────────────────────────────────────────────
+
+function asignacionesFecha(date: string): Asignacion[] {
+  return asignaciones.value
+    .filter(a => a.date === date)
     .sort((a, b) => a.start.localeCompare(b.start));
 }
 
-function empleadosPorFecha(date: string): { nombre: string; horario: string; status: SegmentoStatus; id: string }[] {
-  const porEmpleado = new Map<string, Segmento>();
-  for (const s of segmentos.value.filter(s => s.date === date && s.status !== 'rechazado').sort((a, b) => a.start.localeCompare(b.start))) {
-    if (!porEmpleado.has(s.empleado_id)) porEmpleado.set(s.empleado_id, s);
-  }
-  return [...porEmpleado.entries()].map(([empId, s]) => ({
-    id: s.id,
-    nombre: nombreById(empId),
-    horario: `${s.start}–${s.end}`,
-    status: s.status,
-  }));
-}
-
-// ── Helpers vista mensual (congregación) ──────────────────────────────────────
-
-function tieneTodosAprobadosPorFecha(date: string): boolean {
-  const del_dia = segmentos.value.filter(s => s.date === date && s.status !== 'rechazado');
-  return del_dia.length > 0 && del_dia.every(s => s.status === 'aprobado');
+function tieneSugeridosPorFecha(date: string): boolean {
+  return asignaciones.value.some(a => a.date === date && a.status === 'sugerido');
 }
 
 async function publicarFecha(date: string) {
   if (!ubicacionId.value) return;
   accionando.value = true;
   try {
-    await segmentoStore.publicarDia(ubicacionId.value, date);
-    segmentos.value
-      .filter(s => s.date === date && s.status === 'aprobado')
-      .forEach(s => { s.status = 'publicado'; });
-  } finally { accionando.value = false; }
-}
-
-async function aprobarPorSegId(segId: string) {
-  accionando.value = true;
-  try {
-    const rep = segmentos.value.find(s => s.id === segId);
-    if (!rep) return;
-    await limpiarDuplicadosSugeridos(new Set([rep.date]));
-    const todos = segmentos.value.filter(s =>
-      s.date === rep.date &&
-      s.empleado_id === rep.empleado_id &&
-      s.estacion_id === rep.estacion_id &&
-      s.status === 'sugerido'
-    );
-    await Promise.all(todos.map(s => segmentoStore.aprobarSegmento(s.id)));
-    todos.forEach(s => { s.status = 'aprobado'; });
-  } finally { accionando.value = false; }
+    await asignacionStore.publicarDia(ubicacionId.value, date);
+    asignaciones.value
+      .filter(a => a.date === date && a.status === 'sugerido')
+      .forEach(a => { a.status = 'publicado'; });
+  } catch (err: any) {
+    logStore.error(`Error publicando fecha ${date}: ${err?.message ?? err}`, { scope: 'calendario' });
+  } finally {
+    accionando.value = false;
+  }
 }
 
 function turnosEnFecha(date: string): boolean {
@@ -1579,28 +1332,12 @@ function turnosDeFecha(fecha: string): Turno[] {
   return turnosConfiguracion.value.filter(t => t.day_of_week === dow);
 }
 
-// Empleados asignados a un turno específico en una fecha dada
-function empleadosPorTurnoFecha(fecha: string, turno: Turno): { segId: string; empId: string; nombre: string; status: SegmentoStatus }[] {
-  const porEmpleado = new Map<string, Segmento>();
-  for (const s of segmentos.value.filter(s =>
-    s.date === fecha &&
-    s.status !== 'rechazado' &&
-    s.start === turno.start_time &&
-    s.end === turno.end_time
-  )) {
-    if (!porEmpleado.has(s.empleado_id)) porEmpleado.set(s.empleado_id, s);
-  }
-  return [...porEmpleado.entries()].map(([empId, s]) => ({
-    segId: s.id,
-    empId,
-    nombre: nombreById(empId),
-    status: s.status,
-  }));
-}
-
-function tieneTodosAprobadosPorTurnoFecha(fecha: string, turno: Turno): boolean {
-  const asigs = empleadosPorTurnoFecha(fecha, turno);
-  return asigs.length > 0 && asigs.every(a => a.status === 'aprobado');
+// Asignaciones para un turno en una fecha: compara por solape (B2 del plan)
+function asignacionesPorTurnoFecha(fecha: string, turno: Turno): Asignacion[] {
+  return asignaciones.value.filter(a =>
+    a.date === fecha &&
+    a.start < turno.end_time && a.end > turno.start_time
+  );
 }
 
 function disponiblesParaTurno(fecha: string, turno: Turno): { id: string; nombre: string; iniciales: string; disponible: boolean }[] {
@@ -1611,8 +1348,7 @@ function disponiblesParaTurno(fecha: string, turno: Turno): { id: string; nombre
   const tStart = toMin(turno.start_time);
   const tEnd = toMin(turno.end_time);
 
-  // IDs ya asignados en este turno
-  const yaAsignados = new Set(empleadosPorTurnoFecha(fecha, turno).map(e => e.empId));
+  const yaAsignados = new Set(asignacionesPorTurnoFecha(fecha, turno).map(a => a.empleado_id));
 
   const q = busquedaCong.value.toLowerCase().trim();
   return empleadosCache.value
@@ -1631,28 +1367,18 @@ function disponiblesParaTurno(fecha: string, turno: Turno): { id: string; nombre
 function abrirSidebarCong(fecha: string) {
   sidebarFechaCong.value = fecha;
   busquedaCong.value = '';
-  // limpiar estado de sidebar empresa
-  sidebarSeg.value = null;
+  sidebarAsig.value = null;
   sidebarTurno.value = null;
   sidebarAbierta.value = true;
 }
 
-async function quitarVoluntarioCong(segId: string) {
+async function quitarVoluntarioCong(asigId: string) {
   accionando.value = true;
   try {
-    // Borrar todos los segmentos del mismo empleado en el mismo turno ese día
-    const rep = segmentos.value.find(s => s.id === segId);
-    if (!rep) return;
-    const aBorrar = segmentos.value.filter(s =>
-      s.date === rep.date &&
-      s.empleado_id === rep.empleado_id &&
-      s.start === rep.start &&
-      s.end === rep.end
-    );
-    await Promise.all(aBorrar.map(s =>
-      updateDoc(fsDoc(db, 'segmentos', s.id), { active: false, deletedAt: Timestamp.now(), updatedAt: Timestamp.now() })
-    ));
-    segmentos.value = segmentos.value.filter(s => !aBorrar.some(b => b.id === s.id));
+    await asignacionStore.softDeleteAsignacion(asigId);
+    asignaciones.value = asignaciones.value.filter(a => a.id !== asigId);
+  } catch (err: any) {
+    logStore.error(`Error quitando voluntario: ${err?.message ?? err}`, { scope: 'calendario' });
   } finally {
     accionando.value = false;
   }
@@ -1661,53 +1387,33 @@ async function quitarVoluntarioCong(segId: string) {
 async function agregarVoluntarioCong(empId: string, turno: Turno, fecha: string) {
   accionando.value = true;
   try {
-    let asignacionId = segmentos.value.find(s => s.date === fecha && s.ubicacion_id === ubicacionId.value)?.asignacion_id ?? '';
-    if (!asignacionId) {
-      const aRef = await addDoc(collection(db, 'asignaciones'), {
-        empresa_id: companyId.value,
-        ubicacion_id: ubicacionId.value,
-        date: fecha,
-        status: 'draft',
-        createdAt: Timestamp.now(),
-        updatedAt: Timestamp.now(),
-        deletedAt: null,
-      });
-      asignacionId = aRef.id;
-    }
-    const ref = await addDoc(collection(db, 'segmentos'), {
+    const id = await asignacionStore.crearAsignacion({
       empresa_id: companyId.value,
       ubicacion_id: ubicacionId.value,
       empleado_id: empId,
       date: fecha,
       estacion_id: null,
-      tipo: 'estacion',
       start: turno.start_time,
       end: turno.end_time,
-      asignacion_id: asignacionId,
-      status: 'sugerido',
-      active: true,
-      createdAt: Timestamp.now(),
-      updatedAt: Timestamp.now(),
-      deletedAt: null,
     });
-    // Agregar al estado local sin recargar
-    segmentos.value.push({
-      id: ref.id,
+    asignaciones.value.push({
+      id,
       empresa_id: companyId.value,
       ubicacion_id: ubicacionId.value,
       empleado_id: empId,
       date: fecha,
       estacion_id: null,
-      tipo: 'estacion',
       start: turno.start_time,
       end: turno.end_time,
-      asignacion_id: asignacionId,
       status: 'sugerido',
       active: true,
       createdAt: new Date(),
       updatedAt: new Date(),
       deletedAt: null,
+      get isPublished() { return this.status === 'publicado'; },
     });
+  } catch (err: any) {
+    logStore.error(`Error agregando voluntario: ${err?.message ?? err}`, { scope: 'calendario' });
   } finally {
     accionando.value = false;
   }
@@ -1716,14 +1422,22 @@ async function agregarVoluntarioCong(empId: string, turno: Turno, fecha: string)
 // ── Montaje ───────────────────────────────────────────────────────────────────
 
 onMounted(async () => {
+  logStore.info(`CalendarioView montado — ubicacion=${ubicacionId.value || '(pending)'}, isCongregacion=${isCongregacion.value}, canManage=${canManage.value}`, { scope: 'calendario' });
   miEmpleadoId.value = await resolverMiEmpleadoId();
   const cargarSegunTipo = () => isCongregacion.value ? cargarMes() : cargar();
   if (sessionStore.activeUbicacionId) {
     await cargarSegunTipo();
   } else {
+    logStore.warn('CalendarioView: activeUbicacionId no disponible, esperando…', { scope: 'calendario' });
     const stop = watch(
       () => sessionStore.activeUbicacionId,
-      async (val) => { if (val) { stop(); await cargarSegunTipo(); } }
+      async (val) => {
+        if (val) {
+          stop();
+          logStore.info(`CalendarioView: activeUbicacionId resuelto: ${val}`, { scope: 'calendario' });
+          await cargarSegunTipo();
+        }
+      }
     );
   }
 });

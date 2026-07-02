@@ -8,7 +8,7 @@ setGlobalOptions({ maxInstances: 10 });
 
 const db = admin.firestore();
 
-// ─── Types (espejo de los modelos del frontend) ───────────────────────────────
+// ─── Types ────────────────────────────────────────────────────────────────────
 
 interface Requerimiento {
   estacion_id: string | null;
@@ -38,13 +38,6 @@ interface Estacion {
   max_continuo_min: number | null;
 }
 
-interface Presencia {
-  id: string;
-  empleado_id: string;
-  start: string;
-  end: string;
-}
-
 interface VentanaDisponibilidad {
   day_of_week: string;
   start: string;
@@ -60,39 +53,25 @@ interface Regla {
   type: ReglaType;
 }
 
-interface SegmentoToWrite {
+// El registro de una asignación a escribir en Firestore
+interface AsignacionToWrite {
   empresa_id: string;
   ubicacion_id: string;
   empleado_id: string;
   date: string;
   estacion_id: string | null;
-  tipo: "estacion" | "descanso";
   start: string;
   end: string;
-  asignacion_id: string;
-  status: "sugerido" | "draft";
+  status: "sugerido";
 }
 
 export interface HuecoReporte {
   date: string;
-  bucket_start: string;
-  bucket_end: string;
+  turno_start: string;
+  turno_end: string;
   estacion_id: string | null;
   requerido: number;
   asignado: number;
-}
-
-interface GenerarBorradorInput {
-  empresa_id: string;
-  ubicacion_id: string;
-  date: string;
-  configuracion_id: string;
-}
-
-interface GenerarBorradorOutput {
-  asignacion_id: string;
-  segmentos_creados: number;
-  huecos: HuecoReporte[];
 }
 
 // ─── Helpers de tiempo ────────────────────────────────────────────────────────
@@ -102,78 +81,31 @@ function toMinutes(hhmm: string): number {
   return h * 60 + m;
 }
 
-function fromMinutes(mins: number): string {
-  const h = Math.floor(mins / 60) % 24;
-  const m = mins % 60;
-  return `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}`;
-}
-
-function generarBuckets(
-  start: string,
-  end: string,
-  duracionMin = 30
-): Array<{ start: string; end: string }> {
-  const buckets: Array<{ start: string; end: string }> = [];
-  let cur = toMinutes(start);
-  let fin = toMinutes(end);
-  if (fin <= cur) fin += 24 * 60;
-  while (cur < fin) {
-    const next = Math.min(cur + duracionMin, fin);
-    buckets.push({ start: fromMinutes(cur), end: fromMinutes(next) });
-    cur = next;
-  }
-  return buckets;
-}
-
-const DIAS = [
-  "Domingo",
-  "Lunes",
-  "Martes",
-  "Miércoles",
-  "Jueves",
-  "Viernes",
-  "Sábado",
-];
+const DIAS = ["Domingo", "Lunes", "Martes", "Miércoles", "Jueves", "Viernes", "Sábado"];
 
 function dateToSpanishDay(dateStr: string): string {
   const [y, m, d] = dateStr.split("-").map(Number);
-  const date = new Date(Date.UTC(y, m - 1, d));
-  return DIAS[date.getUTCDay()];
+  return DIAS[new Date(Date.UTC(y, m - 1, d)).getUTCDay()];
 }
 
-function seProlapan(
-  aStart: string,
-  aEnd: string,
-  bStart: string,
-  bEnd: string
-): boolean {
-  return (
-    toMinutes(aStart) < toMinutes(bEnd) &&
-    toMinutes(bStart) < toMinutes(aEnd)
-  );
+function addDays(dateStr: string, n: number): string {
+  const [y, m, d] = dateStr.split("-").map(Number);
+  const dt = new Date(Date.UTC(y, m - 1, d));
+  dt.setUTCDate(dt.getUTCDate() + n);
+  return dt.toISOString().slice(0, 10);
 }
 
-// Intervalo en minutos [start, end). Usado para restar ausencias de la oferta.
-interface Intervalo {
-  start: number;
-  end: number;
+function seProlapan(aStart: string, aEnd: string, bStart: string, bEnd: string): boolean {
+  return toMinutes(aStart) < toMinutes(bEnd) && toMinutes(bStart) < toMinutes(aEnd);
 }
 
-// Resta un conjunto de ausencias a una ventana, devolviendo los tramos libres
-// (ordenados, sin solapes). Si las ausencias cubren toda la ventana → [].
-function restarIntervalos(
-  ventana: Intervalo,
-  ausencias: Intervalo[]
-): Intervalo[] {
-  // Normalizar y ordenar las ausencias que tocan la ventana.
+interface Intervalo { start: number; end: number; }
+
+function restarIntervalos(ventana: Intervalo, ausencias: Intervalo[]): Intervalo[] {
   const cortes = ausencias
-    .map((a) => ({
-      start: Math.max(a.start, ventana.start),
-      end: Math.min(a.end, ventana.end),
-    }))
+    .map((a) => ({ start: Math.max(a.start, ventana.start), end: Math.min(a.end, ventana.end) }))
     .filter((a) => a.end > a.start)
     .sort((a, b) => a.start - b.start);
-
   const libres: Intervalo[] = [];
   let cursor = ventana.start;
   for (const a of cortes) {
@@ -184,563 +116,114 @@ function restarIntervalos(
   return libres;
 }
 
-// ─── Selección de ConfiguracionTurnos activa ──────────────────────────────────
-
-function resolverConfigActiva(
-  configuraciones: ConfiguracionTurnos[],
-  configuracionId: string,
-  date: string
-): ConfiguracionTurnos | null {
-  const porId = configuraciones.find((c) => c.id === configuracionId);
-  if (porId) return porId;
-
-  // Fallback: precedencia range > month > default
+// Seleccionar configuración activa: precedencia range > month > default
+function resolverConfigActiva(configuraciones: ConfiguracionTurnos[], fecha: string): ConfiguracionTurnos | null {
   const activas = configuraciones.filter((c) => {
-    if (c.scope === "range" && c.date_start && c.date_end) {
-      return date >= c.date_start && date <= c.date_end;
-    }
-    if (c.scope === "month" && c.month) {
-      return date.startsWith(c.month);
-    }
+    if (c.scope === "range" && c.date_start && c.date_end)
+      return fecha >= c.date_start && fecha <= c.date_end;
+    if (c.scope === "month" && c.month) return fecha.startsWith(c.month);
     return c.scope === "default";
   });
-
   const porScope: Record<string, number> = { range: 3, month: 2, default: 1 };
   activas.sort((a, b) => (porScope[b.scope] ?? 0) - (porScope[a.scope] ?? 0));
   return activas[0] ?? null;
 }
 
-// ─── Cloud Function ───────────────────────────────────────────────────────────
+// ─── generarAsignaciones — greedy por rango, escribe a 'asignaciones' ─────────
 
-export const generarBorrador = onCall<
-  GenerarBorradorInput,
-  Promise<GenerarBorradorOutput>
->({ region: "southamerica-west1" }, async (request) => {
-  const { empresa_id, ubicacion_id, date, configuracion_id } = request.data;
-
-  if (!empresa_id || !ubicacion_id || !date || !configuracion_id) {
-    throw new HttpsError("invalid-argument", "Faltan parámetros requeridos.");
-  }
-
-  // 1. Cargar Ubicacion y extraer ConfiguracionTurnos
-  const ubicacionSnap = await db
-    .collection("ubicaciones")
-    .doc(ubicacion_id)
-    .get();
-  if (!ubicacionSnap.exists) {
-    throw new HttpsError("not-found", "Ubicación no encontrada.");
-  }
-  const ubicacionData = ubicacionSnap.data()!;
-  const configuraciones: ConfiguracionTurnos[] =
-    ubicacionData.configuraciones ?? [];
-  const config = resolverConfigActiva(configuraciones, configuracion_id, date);
-  if (!config) {
-    throw new HttpsError(
-      "not-found",
-      "No se encontró configuración de turnos válida."
-    );
-  }
-
-  // 2. Filtrar Turnos por día de semana
-  const diaEsp = dateToSpanishDay(date);
-  const turnosDelDia = config.turnos.filter(
-    (t) => t.day_of_week === diaEsp
-  );
-  if (turnosDelDia.length === 0) {
-    throw new HttpsError(
-      "failed-precondition",
-      `No hay turnos configurados para ${diaEsp}.`
-    );
-  }
-
-  // 3. Cargar estaciones de la empresa
-  const estacionesSnap = await db
-    .collection("estaciones")
-    .where("empresa_id", "==", empresa_id)
-    .where("active", "==", true)
-    .get();
-  const estacionesMap = new Map<string, Estacion>();
-  estacionesSnap.docs.forEach((d) => {
-    const e = d.data();
-    estacionesMap.set(d.id, {
-      id: d.id,
-      intensidad: e.intensidad ?? "media",
-      max_continuo_min: e.max_continuo_min ?? null,
-    });
-  });
-
-  // 4. Cargar la OFERTA del día (cuándo puede cada empleado).
-  //    Oferta base = ventanas de disponibilidad de empleados activos que tienen
-  //    contrato activo en ESTA sucursal O son el encargado de sucursal
-  //    (ubicacion.manager_id). El encargado de zona (zona.manager_id) queda
-  //    excluido — opera a nivel de zona, no de sucursal.
-  const managerId: string | null = ubicacionData.manager_id ?? null;
-
-  const empleadosSnap = await db
-    .collection("empleados")
-    .where("company_id", "==", empresa_id)
-    .where("active", "==", true)
-    .where("deletedAt", "==", null)
-    .get();
-
-  // empleado_id → ventanas del día (en minutos)
-  const ventanasPorEmpleado = new Map<string, Intervalo[]>();
-  empleadosSnap.docs.forEach((doc) => {
-    const e = doc.data();
-
-    // Incluir si tiene contrato activo en esta sucursal O es el encargado de sucursal.
-    const contratos: any[] = e.contratos ?? [];
-    const enSucursal =
-      contratos.some((c) => c?.active && c?.ubicacion_id === ubicacion_id) ||
-      doc.id === managerId;
-    if (!enSucursal) return;
-
-    const ventanas: VentanaDisponibilidad[] = e.disponibilidad?.ventanas ?? [];
-    const delDia = ventanas
-      .filter((v) => v.day_of_week === diaEsp && v.start && v.end)
-      .map((v) => ({ start: toMinutes(v.start), end: toMinutes(v.end) }))
-      .filter((iv) => iv.end > iv.start);
-    if (delDia.length > 0) ventanasPorEmpleado.set(doc.id, delDia);
-  });
-
-  // Restar las excepciones (ausencias) del día a la oferta de cada empleado.
-  const empleadoIdsConOferta = [...ventanasPorEmpleado.keys()];
-  if (empleadoIdsConOferta.length > 0) {
-    // Firestore limita `in` a 30 valores → trocear en lotes.
-    const ausenciasPorEmpleado = new Map<string, Intervalo[]>();
-    for (let i = 0; i < empleadoIdsConOferta.length; i += 30) {
-      const lote = empleadoIdsConOferta.slice(i, i + 30);
-      const excSnap = await db
-        .collection("excepciones")
-        .where("date", "==", date)
-        .where("active", "==", true)
-        .where("deletedAt", "==", null)
-        .where("employee_id", "in", lote)
-        .get();
-      excSnap.docs.forEach((d) => {
-        const x = d.data();
-        if (!x.time_start || !x.time_end) return;
-        const iv = { start: toMinutes(x.time_start), end: toMinutes(x.time_end) };
-        if (iv.end <= iv.start) return;
-        const arr = ausenciasPorEmpleado.get(x.employee_id) ?? [];
-        arr.push(iv);
-        ausenciasPorEmpleado.set(x.employee_id, arr);
-      });
-    }
-
-    for (const [empId, ventanas] of ventanasPorEmpleado) {
-      const ausencias = ausenciasPorEmpleado.get(empId);
-      if (!ausencias?.length) continue;
-      const libres: Intervalo[] = [];
-      for (const v of ventanas) libres.push(...restarIntervalos(v, ausencias));
-      if (libres.length > 0) ventanasPorEmpleado.set(empId, libres);
-      else ventanasPorEmpleado.delete(empId);
-    }
-  }
-
-  // Aplanar a la lista de presencias efectivas que consume el resto del algoritmo.
-  const presencias: Presencia[] = [];
-  for (const [empId, intervalos] of ventanasPorEmpleado) {
-    intervalos.forEach((iv) => {
-      presencias.push({
-        id: `oferta-${empId}-${iv.start}-${iv.end}`,
-        empleado_id: empId,
-        start: fromMinutes(iv.start),
-        end: fromMinutes(iv.end),
-      });
-    });
-  }
-
-  if (presencias.length === 0) {
-    throw new HttpsError(
-      "failed-precondition",
-      "No hay disponibilidad efectiva para esta fecha. Revisa las ventanas de disponibilidad del equipo y sus excepciones (ausencias) de este día."
-    );
-  }
-
-  const empleadoIds = [...new Set(presencias.map((p) => p.empleado_id))];
-
-  // 5. Cargar reglas de asignación relevantes
-  const reglasMap = new Map<string, Regla[]>();
-  if (empleadoIds.length > 0) {
-    const chunkSize = 30; // Firestore 'in' limit
-    const allReglas: Regla[] = [];
-    for (let i = 0; i < empleadoIds.length; i += chunkSize) {
-      const chunk = empleadoIds.slice(i, i + chunkSize);
-      const [r1, r2] = await Promise.all([
-        db
-          .collection("reglas_asignacion")
-          .where("person_uno_id", "in", chunk)
-          .where("deletedAt", "==", null)
-          .get(),
-        db
-          .collection("reglas_asignacion")
-          .where("person_dos_id", "in", chunk)
-          .where("deletedAt", "==", null)
-          .get(),
-      ]);
-      r1.docs.forEach((d) => allReglas.push(d.data() as Regla));
-      r2.docs.forEach((d) => allReglas.push(d.data() as Regla));
-    }
-    empleadoIds.forEach((eid) => {
-      reglasMap.set(
-        eid,
-        allReglas.filter(
-          (r) => r.person_uno_id === eid || r.person_dos_id === eid
-        )
-      );
-    });
-  }
-
-  // 6. Borrar borradores previos para esta (ubicacion_id, date)
-  const borradorPrevioSnap = await db
-    .collection("asignaciones")
-    .where("ubicacion_id", "==", ubicacion_id)
-    .where("date", "==", date)
-    .where("status", "==", "draft")
-    .get();
-
-  if (!borradorPrevioSnap.empty) {
-    const deleteBatch = db.batch();
-    borradorPrevioSnap.docs.forEach((d) => {
-      deleteBatch.update(d.ref, {
-        deletedAt: admin.firestore.FieldValue.serverTimestamp(),
-        updatedAt: admin.firestore.FieldValue.serverTimestamp(),
-      });
-    });
-    await deleteBatch.commit();
-
-    for (const aid of borradorPrevioSnap.docs.map((d) => d.id)) {
-      const segsSnap = await db
-        .collection("segmentos")
-        .where("asignacion_id", "==", aid)
-        .get();
-      if (!segsSnap.empty) {
-        const segBatch = db.batch();
-        segsSnap.docs.forEach((d) => {
-          segBatch.update(d.ref, {
-            deletedAt: admin.firestore.FieldValue.serverTimestamp(),
-            updatedAt: admin.firestore.FieldValue.serverTimestamp(),
-          });
-        });
-        await segBatch.commit();
-      }
-    }
-  }
-
-  // 7. Algoritmo greedy
-  type EstadoEmpleado = {
-    minConsecutivosEnAlta: number;
-    segmentos: SegmentoToWrite[];
-  };
-
-  const estadosEmpleado = new Map<string, EstadoEmpleado>();
-  empleadoIds.forEach((eid) => {
-    estadosEmpleado.set(eid, { minConsecutivosEnAlta: 0, segmentos: [] });
-  });
-
-  const huecos: HuecoReporte[] = [];
-  const segmentosAccumulados: SegmentoToWrite[] = [];
-
-  for (const turno of turnosDelDia) {
-    for (const req of turno.requerimientos) {
-      const estacion = req.estacion_id ? estacionesMap.get(req.estacion_id) : null;
-      if (req.estacion_id && !estacion) continue;
-
-      const buckets = generarBuckets(turno.start_time, turno.end_time);
-
-      for (const bucket of buckets) {
-        // a. Empleados dentro de su ventana de presencia
-        const disponibles = presencias
-          .filter(
-            (p) =>
-              toMinutes(p.start) <= toMinutes(bucket.start) &&
-              toMinutes(p.end) >= toMinutes(bucket.end)
-          )
-          .map((p) => p.empleado_id);
-
-        // b. Excluir empleados con segmento solapado
-        const sinSolape = disponibles.filter((eid) => {
-          const estado = estadosEmpleado.get(eid)!;
-          return !estado.segmentos.some((s) =>
-            seProlapan(s.start, s.end, bucket.start, bucket.end)
-          );
-        });
-
-        // c. Anti-saturación (solo empresa — estación con max_continuo_min)
-        const sinSaturation = sinSolape.filter((eid) => {
-          if (!estacion) return true;
-          const estado = estadosEmpleado.get(eid)!;
-          if (
-            estacion.max_continuo_min !== null &&
-            estado.minConsecutivosEnAlta >= estacion.max_continuo_min
-          ) {
-            const yaDescansa = estado.segmentos.some(
-              (s) =>
-                s.tipo === "descanso" &&
-                seProlapan(s.start, s.end, bucket.start, bucket.end)
-            );
-            if (!yaDescansa) {
-              const descanso: SegmentoToWrite = {
-                empresa_id,
-                ubicacion_id,
-                empleado_id: eid,
-                date,
-                estacion_id: null,
-                tipo: "descanso",
-                start: bucket.start,
-                end: bucket.end,
-                asignacion_id: "",
-                status: "draft",
-              };
-              estado.segmentos.push(descanso);
-              segmentosAccumulados.push(descanso);
-              estado.minConsecutivosEnAlta = 0;
-            }
-            return false;
-          }
-          return true;
-        });
-
-        // d. Aplicar reglas hard (solo empresa)
-        const candidatos = estacion
-          ? sinSaturation.filter((eid) => {
-              const reglas = reglasMap.get(eid) ?? [];
-              for (const regla of reglas) {
-                if (!regla.is_strict || regla.type !== "nunca_juntos") continue;
-                const otro =
-                  regla.person_uno_id === eid
-                    ? regla.person_dos_id
-                    : regla.person_uno_id;
-                const otroEstado = estadosEmpleado.get(otro);
-                if (
-                  otroEstado?.segmentos.some(
-                    (s) =>
-                      s.tipo === "estacion" &&
-                      seProlapan(s.start, s.end, bucket.start, bucket.end)
-                  )
-                ) {
-                  return false;
-                }
-              }
-              return true;
-            })
-          : sinSaturation;
-
-        // e. Ordenar por equidad
-        candidatos.sort((a, b) => {
-          const fa = estadosEmpleado.get(a)?.minConsecutivosEnAlta ?? 0;
-          const fb = estadosEmpleado.get(b)?.minConsecutivosEnAlta ?? 0;
-          if (fa !== fb) return fa - fb;
-          return (estadosEmpleado.get(a)?.segmentos.length ?? 0) -
-                 (estadosEmpleado.get(b)?.segmentos.length ?? 0);
-        });
-
-        // f. Asignar hasta `cantidad`
-        const asignados = candidatos.slice(0, req.cantidad);
-
-        if (asignados.length < req.cantidad) {
-          huecos.push({
-            date,
-            bucket_start: bucket.start,
-            bucket_end: bucket.end,
-            estacion_id: req.estacion_id,
-            requerido: req.cantidad,
-            asignado: asignados.length,
-          });
-        }
-
-        for (const eid of asignados) {
-          const seg: SegmentoToWrite = {
-            empresa_id,
-            ubicacion_id,
-            empleado_id: eid,
-            date,
-            estacion_id: req.estacion_id,
-            tipo: "estacion",
-            start: bucket.start,
-            end: bucket.end,
-            asignacion_id: "",
-            status: "draft",
-          };
-          const estado = estadosEmpleado.get(eid)!;
-          estado.segmentos.push(seg);
-          segmentosAccumulados.push(seg);
-
-          if (estacion?.intensidad === "alta") {
-            estado.minConsecutivosEnAlta += 30;
-          } else {
-            estado.minConsecutivosEnAlta = 0;
-          }
-        }
-      }
-    }
-  }
-
-  // 8. Batch write: Asignacion + Segmentos
-  const asignacionRef = db.collection("asignaciones").doc();
-  const asignacionId = asignacionRef.id;
-  segmentosAccumulados.forEach((s) => {
-    s.asignacion_id = asignacionId;
-  });
-
-  const now = admin.firestore.FieldValue.serverTimestamp();
-  const BATCH_SIZE = 499;
-
-  const mainBatch = db.batch();
-  mainBatch.set(asignacionRef, {
-    empresa_id,
-    ubicacion_id,
-    date,
-    status: "draft",
-    createdAt: now,
-    updatedAt: now,
-    deletedAt: null,
-  });
-
-  let currentBatch = mainBatch;
-  let opCount = 1;
-
-  for (const seg of segmentosAccumulados) {
-    if (opCount >= BATCH_SIZE) {
-      await currentBatch.commit();
-      currentBatch = db.batch();
-      opCount = 0;
-    }
-    const segRef = db.collection("segmentos").doc();
-    currentBatch.set(segRef, {
-      ...seg,
-      createdAt: now,
-      updatedAt: now,
-      deletedAt: null,
-    });
-    opCount++;
-  }
-  await currentBatch.commit();
-
-  return {
-    asignacion_id: asignacionId,
-    segmentos_creados: segmentosAccumulados.length,
-    huecos,
-  };
-});
-
-// ─── actualizarBorrador — greedy por semana, respeta aprobado/publicado ──────
-
-interface ActualizarBorradorInput {
+interface GenerarAsignacionesInput {
   empresa_id: string;
   ubicacion_id: string;
-  week_start: string;   // YYYY-MM-DD — primer día del rango a generar
-  dias?: number;        // cuántos días hacia adelante (default 28 = 4 semanas)
+  week_start: string;
+  dias?: number;
 }
 
-interface ActualizarBorradorOutput {
+interface GenerarAsignacionesOutput {
   semana: string;
   dias_procesados: number;
-  segmentos_creados: number;
+  asignaciones_creadas: number;
   huecos: HuecoReporte[];
+  logs: string[];
 }
 
-function addDays(dateStr: string, n: number): string {
-  const [y, m, d] = dateStr.split("-").map(Number);
-  const dt = new Date(Date.UTC(y, m - 1, d));
-  dt.setUTCDate(dt.getUTCDate() + n);
-  return dt.toISOString().slice(0, 10);
-}
-
-export const actualizarBorrador = onCall<
-  ActualizarBorradorInput,
-  Promise<ActualizarBorradorOutput>
+export const generarAsignaciones = onCall<
+  GenerarAsignacionesInput,
+  Promise<GenerarAsignacionesOutput>
 >({ region: "southamerica-west1", timeoutSeconds: 120 }, async (request) => {
-  const { empresa_id, ubicacion_id, week_start } = request.data;
-  const dias = Math.min(request.data.dias ?? 28, 56); // máximo 8 semanas
+  const logs: string[] = [];
+  const log = (msg: string) => { logs.push(msg); console.log(msg); };
+  const logWarn = (msg: string) => { logs.push(`[WARN] ${msg}`); console.warn(msg); };
 
-  if (!empresa_id || !ubicacion_id || !week_start) {
-    throw new HttpsError("invalid-argument", "Faltan parámetros requeridos.");
-  }
+  try {
+    const { empresa_id, ubicacion_id, week_start } = request.data;
+    const dias = Math.min(request.data.dias ?? 28, 56);
 
-  // Construir el rango de días a procesar
-  const fechas = Array.from({ length: dias }, (_, i) => addDays(week_start, i));
+    if (!empresa_id || !ubicacion_id || !week_start) {
+      throw new HttpsError("invalid-argument", "Faltan parámetros: empresa_id, ubicacion_id, week_start.");
+    }
 
-  // Cargar ubicación y empresa una vez
-  const [ubicacionSnap, empresaSnap] = await Promise.all([
-    db.collection("ubicaciones").doc(ubicacion_id).get(),
-    db.collection("empresas").doc(empresa_id).get(),
-  ]);
-  if (!ubicacionSnap.exists) {
-    throw new HttpsError("not-found", "Ubicación no encontrada.");
-  }
-  const ubicacionDataSemanal = ubicacionSnap.data()!;
-  const configuraciones: ConfiguracionTurnos[] = ubicacionDataSemanal.configuraciones ?? [];
-  const managerIdSemanal: string | null = ubicacionDataSemanal.manager_id ?? null;
-  const esCongregacion = (empresaSnap.data()?.type ?? "empresa") === "congregacion";
+    log(`generarAsignaciones iniciado — empresa=${empresa_id} ubicacion=${ubicacion_id} week_start=${week_start} dias=${dias}`);
 
-  // Cargar estaciones de la empresa
-  const estacionesSnap = await db
-    .collection("estaciones")
-    .where("empresa_id", "==", empresa_id)
-    .where("active", "==", true)
-    .get();
-  const estacionesMap = new Map<string, Estacion>();
-  estacionesSnap.docs.forEach((d) => {
-    const e = d.data();
-    estacionesMap.set(d.id, {
-      id: d.id,
-      intensidad: e.intensidad ?? "media",
-      max_continuo_min: e.max_continuo_min ?? null,
+    const fechas = Array.from({ length: dias }, (_, i) => addDays(week_start, i));
+    const week_end = fechas[fechas.length - 1];
+
+    // 1. Cargar ubicación y empresa
+    const [ubicacionSnap, empresaSnap] = await Promise.all([
+      db.collection("ubicaciones").doc(ubicacion_id).get(),
+      db.collection("empresas").doc(empresa_id).get(),
+    ]);
+    if (!ubicacionSnap.exists) throw new HttpsError("not-found", "Ubicación no encontrada.");
+    const ubicacionData = ubicacionSnap.data()!;
+    const configuraciones: ConfiguracionTurnos[] = ubicacionData.configuraciones ?? [];
+    const managerIdUbic: string | null = ubicacionData.manager_id ?? null;
+    const esCongregacion = (empresaSnap.data()?.type ?? "empresa") === "congregacion";
+
+    log(`Tipo de tenant: ${esCongregacion ? "congregacion" : "empresa"}`);
+
+    // 2. Cargar estaciones (solo empresa)
+    const estacionesMap = new Map<string, Estacion>();
+    if (!esCongregacion) {
+      const estSnap = await db.collection("estaciones")
+        .where("empresa_id", "==", empresa_id).where("active", "==", true).get();
+      estSnap.docs.forEach((d) => {
+        const e = d.data();
+        estacionesMap.set(d.id, { id: d.id, intensidad: e.intensidad ?? "media", max_continuo_min: e.max_continuo_min ?? null });
+      });
+      log(`Estaciones cargadas: ${estacionesMap.size}`);
+    }
+
+    // 3. Cargar empleados con contrato activo en la sucursal o encargado de sucursal
+    const empSnap = await db.collection("empleados")
+      .where("company_id", "==", empresa_id).where("active", "==", true).where("deletedAt", "==", null).get();
+    const empleadosDocs = empSnap.docs.filter((d) => {
+      const contratos: any[] = d.data().contratos ?? [];
+      return contratos.some((c) => c?.active && c?.ubicacion_id === ubicacion_id) || d.id === managerIdUbic;
     });
-  });
-  // Cargar empleados con contrato activo en la sucursal o que sean encargado de sucursal.
-  // El encargado de zona (zona.manager_id) queda excluido — opera a nivel de zona.
-  const empleadosSnap = await db
-    .collection("empleados")
-    .where("company_id", "==", empresa_id)
-    .where("active", "==", true)
-    .where("deletedAt", "==", null)
-    .get();
 
-  const empleadosDocs = empleadosSnap.docs.filter((d) => {
-    const contratos: any[] = d.data().contratos ?? [];
-    return (
-      contratos.some((c) => c?.active && c?.ubicacion_id === ubicacion_id) ||
-      d.id === managerIdSemanal
-    );
-  });
+    if (empleadosDocs.length === 0) {
+      logWarn("No hay empleados con contrato activo en esta sucursal.");
+      return { semana: week_start, dias_procesados: 0, asignaciones_creadas: 0, huecos: [], logs };
+    }
+    log(`Empleados en sucursal: ${empleadosDocs.length}`);
 
-  // Límite de horas semanales por empleado (del contrato activo en esta sucursal, o 0 = sin límite)
-  const limiteMinutosPorEmpleado = new Map<string, number>();
-  empleadosDocs.forEach((d) => {
-    const contratos: any[] = d.data().contratos ?? [];
-    const contrato = contratos.find((c: any) => c?.active && c?.ubicacion_id === ubicacion_id);
-    const limiteHoras = contrato?.limite_horas ?? 0;
-    limiteMinutosPorEmpleado.set(d.id, limiteHoras > 0 ? limiteHoras * 60 : 0);
-  });
+    const empleadoIds = empleadosDocs.map((d) => d.id);
 
-  // Acumulador de minutos asignados en el rango por empleado.
-  // Se inicializa con los minutos de segmentos aprobados/publicados ya existentes,
-  // para que la equidad entre fechas sea real y no siempre elija el mismo subconjunto.
-  const minutosAsignadosSemana = new Map<string, number>();
-  empleadosDocs.forEach((d) => minutosAsignadosSemana.set(d.id, 0));
+    // Límite de horas por empleado
+    const limiteMinutosPorEmpleado = new Map<string, number>();
+    empleadosDocs.forEach((d) => {
+      const contratos: any[] = d.data().contratos ?? [];
+      const c = contratos.find((c: any) => c?.active && c?.ubicacion_id === ubicacion_id);
+      limiteMinutosPorEmpleado.set(d.id, (c?.limite_horas ?? 0) > 0 ? (c.limite_horas as number) * 60 : 0);
+    });
 
-  // Cargar excepciones de la semana (lotes de 30 employee_ids)
-  const empleadoIds = empleadosDocs.map((d) => d.id);
-  const week_end = addDays(week_start, dias - 1);
-  const ausenciasPorEmpleadoFecha = new Map<string, Intervalo[]>(); // key: `${emp}_${date}`
-
-  // Query de excepciones: solo por employee_id (un campo), todo lo demás en memoria.
-  // Firestore requeriría índices compuestos si combinamos `in` con otros filtros.
-  if (empleadoIds.length > 0) {
+    // 4. Cargar excepciones del rango
+    const ausenciasPorEmpleadoFecha = new Map<string, Intervalo[]>();
     for (let i = 0; i < empleadoIds.length; i += 30) {
       const lote = empleadoIds.slice(i, i + 30);
-      const excSnap = await db
-        .collection("excepciones")
-        .where("employee_id", "in", lote)
-        .get();
+      const excSnap = await db.collection("excepciones").where("employee_id", "in", lote).get();
       excSnap.docs.forEach((d) => {
         const x = d.data();
-        // Filtrar en memoria: activa, no borrada, dentro del rango y con horas válidas
-        if (x.active === false) return;
-        if (x.deletedAt != null) return;
+        if (x.active === false || x.deletedAt != null) return;
         if (!x.date || x.date < week_start || x.date > week_end) return;
         if (!x.time_start || !x.time_end) return;
         const iv = { start: toMinutes(x.time_start), end: toMinutes(x.time_end) };
@@ -751,462 +234,319 @@ export const actualizarBorrador = onCall<
         ausenciasPorEmpleadoFecha.set(key, arr);
       });
     }
-  }
+    log(`Excepciones cargadas: ${ausenciasPorEmpleadoFecha.size} combinaciones empleado-fecha`);
 
-  // Cargar reglas de asignación.
-  // Usamos solo `where("person_uno_id", "in", chunk)` y `where("person_dos_id", "in", chunk)`
-  // sin filtro extra de deletedAt para evitar requerir índices compuestos.
-  // El filtro de deletedAt se aplica en memoria.
-  const reglasMap = new Map<string, Regla[]>();
-  if (empleadoIds.length > 0) {
-    const allReglas: Regla[] = [];
-    const vistos = new Set<string>();
-    for (let i = 0; i < empleadoIds.length; i += 30) {
-      const chunk = empleadoIds.slice(i, i + 30);
-      const [r1, r2] = await Promise.all([
-        db.collection("reglas_asignacion").where("person_uno_id", "in", chunk).get(),
-        db.collection("reglas_asignacion").where("person_dos_id", "in", chunk).get(),
-      ]);
-      for (const d of [...r1.docs, ...r2.docs]) {
-        if (vistos.has(d.id)) continue;
-        vistos.add(d.id);
-        const data = d.data();
-        // Filtrar en memoria: solo reglas no borradas
-        if (data.deletedAt != null) continue;
-        allReglas.push(data as Regla);
-      }
-    }
-    empleadoIds.forEach((eid) => {
-      reglasMap.set(eid, allReglas.filter((r) => r.person_uno_id === eid || r.person_dos_id === eid));
-    });
-  }
-
-  // Cargar segmentos existentes del rango para respetar aprobado/publicado.
-  // Filtramos por ubicacion_id + rango de fecha; deletedAt se filtra en memoria.
-  const segmentosExistentesSnap = await db
-    .collection("segmentos")
-    .where("ubicacion_id", "==", ubicacion_id)
-    .where("date", ">=", week_start)
-    .where("date", "<=", week_end)
-    .get();
-
-  // Agrupar segmentos existentes por fecha
-  const segmentosPorFecha = new Map<string, { aprobados: Set<string>; asignacionId: string | null }>();
-
-  // Detectar y eliminar duplicados: mismo empleado en más de un turno el mismo día.
-  // Aplica a aprobado, publicado Y sugerido. Se conserva el turno con menor start; el resto se borra.
-  const duplicadosABorrar = new Set<string>();
-  {
-    const porDiaEmpleado = new Map<string, { id: string; start: string; end: string }[]>();
-    segmentosExistentesSnap.docs.forEach((d) => {
-      const s = d.data();
-      if (s.deletedAt != null) return; // filtrar borrados en memoria
-      if (s.tipo !== "estacion") return;
-      // Incluir aprobado, publicado Y sugerido/draft
-      const statusValido = ["aprobado", "publicado", "sugerido", "draft"].includes(s.status);
-      if (!statusValido) return;
-      const key = `${s.date}_${s.empleado_id}`;
-      const arr = porDiaEmpleado.get(key) ?? [];
-      arr.push({ id: d.id, start: s.start, end: s.end });
-      porDiaEmpleado.set(key, arr);
-    });
-
-    porDiaEmpleado.forEach((segs) => {
-      if (segs.length <= 1) return;
-      segs.sort((a, b) => a.start.localeCompare(b.start));
-      // Identificar turnos contiguos: buckets del mismo turno tienen start[i+1] == end[i]
-      const turnos: { id: string; start: string; end: string }[][] = [];
-      let grupo: typeof segs = [segs[0]];
-      for (let i = 1; i < segs.length; i++) {
-        if (segs[i].start === segs[i - 1].end) {
-          grupo.push(segs[i]);
-        } else {
-          turnos.push(grupo);
-          grupo = [segs[i]];
+    // 5. Cargar reglas de asignación
+    const reglasMap = new Map<string, Regla[]>();
+    if (!esCongregacion && empleadoIds.length > 0) {
+      const allReglas: Regla[] = [];
+      const vistos = new Set<string>();
+      for (let i = 0; i < empleadoIds.length; i += 30) {
+        const chunk = empleadoIds.slice(i, i + 30);
+        const [r1, r2] = await Promise.all([
+          db.collection("reglas_asignacion").where("person_uno_id", "in", chunk).get(),
+          db.collection("reglas_asignacion").where("person_dos_id", "in", chunk).get(),
+        ]);
+        for (const d of [...r1.docs, ...r2.docs]) {
+          if (vistos.has(d.id)) continue;
+          vistos.add(d.id);
+          const data = d.data();
+          if (data.deletedAt != null) continue;
+          allReglas.push(data as Regla);
         }
       }
-      turnos.push(grupo);
-      if (turnos.length <= 1) return; // un solo turno, sin duplicado
-      // Conservar el primer turno (menor start), borrar el resto
-      for (let t = 1; t < turnos.length; t++) {
-        turnos[t].forEach((s) => duplicadosABorrar.add(s.id));
-      }
-    });
-  }
-
-  if (duplicadosABorrar.size > 0) {
-    const dupBatch = db.batch();
-    const now2 = admin.firestore.FieldValue.serverTimestamp();
-    duplicadosABorrar.forEach((id) => {
-      dupBatch.update(db.collection("segmentos").doc(id), { active: false, deletedAt: now2, updatedAt: now2 });
-    });
-    await dupBatch.commit();
-  }
-
-  segmentosExistentesSnap.docs.forEach((d) => {
-    if (duplicadosABorrar.has(d.id)) return; // ya borrado
-    const s = d.data();
-    if (s.deletedAt != null) return; // filtrar borrados en memoria
-    if (!segmentosPorFecha.has(s.date)) {
-      segmentosPorFecha.set(s.date, { aprobados: new Set(), asignacionId: s.asignacion_id ?? null });
-    }
-    const entry = segmentosPorFecha.get(s.date)!;
-    if (s.status === "aprobado" || s.status === "publicado") {
-      entry.aprobados.add(d.id);
-      // Acumular minutos de segmentos aprobados/publicados en el contador de equidad
-      if (s.tipo === "estacion" && s.empleado_id && s.start && s.end) {
-        const min = toMinutes(s.end) - toMinutes(s.start);
-        minutosAsignadosSemana.set(s.empleado_id, (minutosAsignadosSemana.get(s.empleado_id) ?? 0) + min);
-      }
-    }
-    if (s.asignacion_id && !entry.asignacionId) {
-      entry.asignacionId = s.asignacion_id;
-    }
-  });
-
-  const allHuecos: HuecoReporte[] = [];
-  let totalSegmentosCreados = 0;
-  let diasProcesados = 0;
-  const now = admin.firestore.FieldValue.serverTimestamp();
-
-  for (const fecha of fechas) {
-    const diaEsp = dateToSpanishDay(fecha);
-    const config = resolverConfigActiva(configuraciones, "", fecha);
-    if (!config) continue;
-
-    const turnosDelDia = config.turnos.filter((t) => t.day_of_week === diaEsp);
-    if (turnosDelDia.length === 0) continue;
-
-    // Borrar los segmentos `sugerido` y `draft` de este día.
-    // Query simple por dos campos iguales; status y deletedAt se filtran en memoria.
-    const delSnap = await db.collection("segmentos")
-      .where("ubicacion_id", "==", ubicacion_id)
-      .where("date", "==", fecha)
-      .get();
-    const sugeridosDelDia = delSnap.docs.filter((d) => {
-      const s = d.data();
-      return s.deletedAt == null && (s.status === "sugerido" || s.status === "draft");
-    });
-    if (sugeridosDelDia.length > 0) {
-      const delBatch = db.batch();
-      sugeridosDelDia.forEach((d) => {
-        delBatch.update(d.ref, {
-          deletedAt: admin.firestore.FieldValue.serverTimestamp(),
-          updatedAt: admin.firestore.FieldValue.serverTimestamp(),
-        });
+      empleadoIds.forEach((eid) => {
+        reglasMap.set(eid, allReglas.filter((r) => r.person_uno_id === eid || r.person_dos_id === eid));
       });
-      await delBatch.commit();
+      log(`Reglas cargadas: ${allReglas.length}`);
     }
 
-    // Calcular oferta del día
-    const ventanasPorEmpleado = new Map<string, Intervalo[]>();
-    empleadosDocs.forEach((doc) => {
-      const e = doc.data();
-      const ventanas: VentanaDisponibilidad[] = e.disponibilidad?.ventanas ?? [];
-      const delDia = ventanas
-        .filter((v) => v.day_of_week === diaEsp && v.start && v.end)
-        .map((v) => ({ start: toMinutes(v.start), end: toMinutes(v.end) }))
-        .filter((iv) => iv.end > iv.start);
-      if (delDia.length === 0) return;
-
-      const ausencias = ausenciasPorEmpleadoFecha.get(`${doc.id}_${fecha}`) ?? [];
-      let libres: Intervalo[] = [];
-      for (const v of delDia) libres.push(...restarIntervalos(v, ausencias));
-      if (libres.length > 0) ventanasPorEmpleado.set(doc.id, libres);
-    });
-
-    if (ventanasPorEmpleado.size === 0) continue;
-
-    const presencias: Presencia[] = [];
-    for (const [empId, intervalos] of ventanasPorEmpleado) {
-      intervalos.forEach((iv) => {
-        presencias.push({
-          id: `oferta-${empId}-${iv.start}-${iv.end}`,
-          empleado_id: empId,
-          start: fromMinutes(iv.start),
-          end: fromMinutes(iv.end),
-        });
+    // 6. Acumulador de equidad: inicializar con asignaciones publicadas ya existentes
+    const minutosAsignadosSemana = new Map<string, number>();
+    empleadoIds.forEach((id) => minutosAsignadosSemana.set(id, 0));
+    {
+      const pubSnap = await db.collection("asignaciones")
+        .where("ubicacion_id", "==", ubicacion_id)
+        .where("date", ">=", week_start)
+        .where("date", "<=", week_end)
+        .where("status", "==", "publicado")
+        .where("deletedAt", "==", null)
+        .get();
+      pubSnap.docs.forEach((d) => {
+        const a = d.data();
+        if (!a.empleado_id || !a.start || !a.end) return;
+        const min = toMinutes(a.end) - toMinutes(a.start);
+        minutosAsignadosSemana.set(a.empleado_id, (minutosAsignadosSemana.get(a.empleado_id) ?? 0) + min);
       });
+      log(`Minutos publicados pre-cargados para ${pubSnap.docs.length} asignaciones`);
     }
 
-    // Determinar asignacion_id para este día
-    const entradaDia = segmentosPorFecha.get(fecha);
-    let asignacionId: string;
+    // 7. Procesar cada fecha
+    const allHuecos: HuecoReporte[] = [];
+    let totalCreadas = 0;
+    let diasProcesados = 0;
+    const now = admin.firestore.FieldValue.serverTimestamp();
+    const BATCH_SIZE = 499;
 
-    if (entradaDia?.asignacionId) {
-      asignacionId = entradaDia.asignacionId;
-    } else {
-      // Crear nueva Asignacion para este día
-      const asignacionRef = db.collection("asignaciones").doc();
-      asignacionId = asignacionRef.id;
-      const asigBatch = db.batch();
-      asigBatch.set(asignacionRef, {
-        empresa_id,
-        ubicacion_id,
-        date: fecha,
-        status: "draft",
-        createdAt: now,
-        updatedAt: now,
-        deletedAt: null,
-      });
-      await asigBatch.commit();
-    }
+    for (const fecha of fechas) {
+      const diaEsp = dateToSpanishDay(fecha);
+      const config = resolverConfigActiva(configuraciones, fecha);
+      if (!config) { log(`[${fecha}] Sin configuración de turnos activa`); continue; }
 
-    // Ejecutar greedy para este día
-    type EstadoEmpleado = { minConsecutivosEnAlta: number; segmentos: SegmentoToWrite[] };
-    const empleadoIdsDelDia = [...ventanasPorEmpleado.keys()];
-    const estadosEmpleado = new Map<string, EstadoEmpleado>();
-    empleadoIdsDelDia.forEach((eid) => {
-      estadosEmpleado.set(eid, { minConsecutivosEnAlta: 0, segmentos: [] });
-    });
+      const turnosDelDia = config.turnos.filter((t) => !(t as any).deletedAt && t.day_of_week === diaEsp);
+      if (turnosDelDia.length === 0) { continue; }
 
-    const segmentosDelDia: SegmentoToWrite[] = [];
-    const huecosDelDia: HuecoReporte[] = [];
-    const turnoAsignadoHoy = new Set<string>(); // empleados ya asignados a un turno hoy (empresa)
+      log(`[${fecha}] ${diaEsp} — ${turnosDelDia.length} turno(s) a procesar`);
 
-    if (esCongregacion) {
-      // ── Greedy congregación: un segmento por voluntario por turno ────────────
-      // Un voluntario cubre el turno completo si su disponibilidad lo contiene.
-      // No se sub-divide en buckets de 30 min: un solo segmento start→end del turno.
-      // Restricción dura: no se asigna a dos turnos solapados el mismo día.
-
-      for (const turno of turnosDelDia) {
-        const tStart = toMinutes(turno.start_time);
-        const tEnd   = toMinutes(turno.end_time);
-        const durMin = tEnd - tStart;
-
-        for (const req of turno.requerimientos) {
-          if ((req.cantidad ?? 0) <= 0) continue;
-
-          // a. Voluntarios cuya disponibilidad cubre el turno completo
-          const disponibles = presencias
-            .filter((p) => toMinutes(p.start) <= tStart && toMinutes(p.end) >= tEnd)
-            .map((p) => p.empleado_id);
-
-          // b. Excluir los que ya tienen un segmento solapado con este turno
-          const sinSolape = disponibles.filter((eid) => {
-            const estado = estadosEmpleado.get(eid)!;
-            return !estado.segmentos.some((s) =>
-              s.tipo === "estacion" &&
-              seProlapan(s.start, s.end, turno.start_time, turno.end_time)
-            );
+      // Borrar sugeridos previos de este día (idempotencia — D3)
+      const delSnap = await db.collection("asignaciones")
+        .where("ubicacion_id", "==", ubicacion_id)
+        .where("date", "==", fecha)
+        .where("status", "==", "sugerido")
+        .get();
+      const sugeridosPrevios = delSnap.docs.filter((d) => !d.data().deletedAt);
+      if (sugeridosPrevios.length > 0) {
+        log(`[${fecha}] Eliminando ${sugeridosPrevios.length} sugerido(s) previos`);
+        for (let i = 0; i < sugeridosPrevios.length; i += BATCH_SIZE) {
+          const b = db.batch();
+          sugeridosPrevios.slice(i, i + BATCH_SIZE).forEach((d) => {
+            b.update(d.ref, { active: false, deletedAt: now, updatedAt: now });
           });
-
-          // c. Reglas hard nunca_juntos
-          const candidatos = sinSolape.filter((eid) => {
-            const reglas = reglasMap.get(eid) ?? [];
-            for (const regla of reglas) {
-              if (!regla.is_strict || regla.type !== "nunca_juntos") continue;
-              const otro = regla.person_uno_id === eid ? regla.person_dos_id : regla.person_uno_id;
-              const otroEstado = estadosEmpleado.get(otro);
-              if (otroEstado?.segmentos.some((s) =>
-                s.tipo === "estacion" &&
-                seProlapan(s.start, s.end, turno.start_time, turno.end_time)
-              )) return false;
-            }
-            return true;
-          });
-
-          // d. Equidad: menos minutos acumulados en la semana van primero;
-          //    tiebreaker: menos segmentos asignados hoy
-          candidatos.sort((a, b) => {
-            const ma = minutosAsignadosSemana.get(a) ?? 0;
-            const mb = minutosAsignadosSemana.get(b) ?? 0;
-            if (ma !== mb) return ma - mb;
-            return (estadosEmpleado.get(a)?.segmentos.length ?? 0) -
-                   (estadosEmpleado.get(b)?.segmentos.length ?? 0);
-          });
-
-          const asignados = candidatos.slice(0, req.cantidad);
-
-          if (asignados.length < req.cantidad) {
-            huecosDelDia.push({
-              date: fecha,
-              bucket_start: turno.start_time,
-              bucket_end: turno.end_time,
-              estacion_id: null,
-              requerido: req.cantidad,
-              asignado: asignados.length,
-            });
-          }
-
-          for (const eid of asignados) {
-            const seg: SegmentoToWrite = {
-              empresa_id, ubicacion_id, empleado_id: eid, date: fecha,
-              estacion_id: null, tipo: "estacion",
-              start: turno.start_time, end: turno.end_time,
-              asignacion_id: asignacionId, status: "sugerido",
-            };
-            estadosEmpleado.get(eid)!.segmentos.push(seg);
-            segmentosDelDia.push(seg);
-            minutosAsignadosSemana.set(eid, (minutosAsignadosSemana.get(eid) ?? 0) + durMin);
-          }
+          await b.commit();
         }
       }
-    } else {
-      // ── Greedy empresa: sub-buckets de 30 min con estaciones ─────────────────
 
-      for (const turno of turnosDelDia) {
-        const duracionTurnoMin = toMinutes(turno.end_time) - toMinutes(turno.start_time);
+      // Calcular oferta del día (disponibilidad − excepciones)
+      const ventanasPorEmpleado = new Map<string, Intervalo[]>();
+      empleadosDocs.forEach((doc) => {
+        const e = doc.data();
+        const ventanas: VentanaDisponibilidad[] = e.disponibilidad?.ventanas ?? [];
+        const delDia = ventanas
+          .filter((v) => v.day_of_week === diaEsp && v.start && v.end)
+          .map((v) => ({ start: toMinutes(v.start), end: toMinutes(v.end) }))
+          .filter((iv) => iv.end > iv.start);
+        if (delDia.length === 0) return;
+        const ausencias = ausenciasPorEmpleadoFecha.get(`${doc.id}_${fecha}`) ?? [];
+        const libres: Intervalo[] = [];
+        for (const v of delDia) libres.push(...restarIntervalos(v, ausencias));
+        if (libres.length > 0) ventanasPorEmpleado.set(doc.id, libres);
+      });
 
-        for (const req of turno.requerimientos) {
-          const estacion = req.estacion_id ? estacionesMap.get(req.estacion_id) : null;
-          if (req.estacion_id && !estacion) continue;
+      if (ventanasPorEmpleado.size === 0) {
+        logWarn(`[${fecha}] Sin disponibilidad efectiva`);
+        continue;
+      }
+      log(`[${fecha}] ${ventanasPorEmpleado.size} empleados con disponibilidad`);
 
-          const buckets = generarBuckets(turno.start_time, turno.end_time);
+      // Convertir oferta a lista de ventanas planas para lookup rápido
+      interface OfertaPlana { empleado_id: string; start: number; end: number; }
+      const oferta: OfertaPlana[] = [];
+      ventanasPorEmpleado.forEach((ivs, empId) => {
+        ivs.forEach((iv) => oferta.push({ empleado_id: empId, start: iv.start, end: iv.end }));
+      });
 
-          for (const bucket of buckets) {
-            // a. Empleados cuya ventana cubre el bucket
-            const disponibles = presencias
-              .filter(
-                (p) =>
-                  toMinutes(p.start) <= toMinutes(bucket.start) &&
-                  toMinutes(p.end) >= toMinutes(bucket.end)
-              )
-              .map((p) => p.empleado_id);
+      // Estado greedy por empleado dentro del día
+      interface EstadoEmp { asignaciones: AsignacionToWrite[]; minutosAlta: number; }
+      const estadoEmp = new Map<string, EstadoEmp>();
+      empleadoIds.forEach((id) => estadoEmp.set(id, { asignaciones: [], minutosAlta: 0 }));
 
-            // b. Sin solape
+      const asignacionesDelDia: AsignacionToWrite[] = [];
+      const huecosDelDia: HuecoReporte[] = [];
+
+      // D4 — tracker de empleados ya asignados en cada turno del día (por solapamiento)
+      // Un empleado no puede aparecer dos veces en el mismo turno ni en turnos que se solapen.
+
+      if (esCongregacion) {
+        // ── Greedy congregación ────────────────────────────────────────────────
+        // Un voluntario cubre el turno completo (sin sub-buckets).
+        // D4: no se asigna si ya tiene una asignación solapada ese día.
+
+        for (const turno of turnosDelDia) {
+          const tStartMin = toMinutes(turno.start_time);
+          const tEndMin = toMinutes(turno.end_time);
+          const durMin = tEndMin - tStartMin;
+
+          for (const req of turno.requerimientos) {
+            if ((req.cantidad ?? 0) <= 0) continue;
+
+            // a. Disponibles para el turno completo
+            const disponibles = oferta
+              .filter((o) => o.start <= tStartMin && o.end >= tEndMin)
+              .map((o) => o.empleado_id);
+
+            // b. D4: excluir si tiene asignación solapada en este día
             const sinSolape = disponibles.filter((eid) => {
-              const estado = estadosEmpleado.get(eid)!;
-              return !estado.segmentos.some((s) =>
-                seProlapan(s.start, s.end, bucket.start, bucket.end)
+              return !estadoEmp.get(eid)!.asignaciones.some((a) =>
+                seProlapan(a.start, a.end, turno.start_time, turno.end_time)
               );
             });
 
-            // b2. 1 turno por día en empresa
-            const sinTurnoRepetido = sinSolape.filter((eid) => !turnoAsignadoHoy.has(eid));
+            // c. Equidad: menos minutos en semana, tiebreaker aleatorio
+            const order = sinSolape.map((eid) => ({
+              eid,
+              min: minutosAsignadosSemana.get(eid) ?? 0,
+              r: Math.random(),
+            }));
+            order.sort((a, b) => a.min !== b.min ? a.min - b.min : a.r - b.r);
+            const asignados = order.slice(0, req.cantidad).map((x) => x.eid);
 
-            // b3. Sin exceder límite de horas
-            const sinExcederLimite = sinTurnoRepetido.filter((eid) => {
+            if (asignados.length < req.cantidad) {
+              logWarn(`[${fecha}] HUECO turno ${turno.start_time}–${turno.end_time}: necesita ${req.cantidad}, asignados ${asignados.length}`);
+              huecosDelDia.push({ date: fecha, turno_start: turno.start_time, turno_end: turno.end_time, estacion_id: null, requerido: req.cantidad, asignado: asignados.length });
+            } else {
+              log(`[${fecha}] Turno ${turno.start_time}–${turno.end_time}: ${asignados.length} voluntarios asignados`);
+            }
+
+            for (const eid of asignados) {
+              const a: AsignacionToWrite = {
+                empresa_id, ubicacion_id, empleado_id: eid, date: fecha,
+                estacion_id: null, start: turno.start_time, end: turno.end_time, status: "sugerido",
+              };
+              estadoEmp.get(eid)!.asignaciones.push(a);
+              asignacionesDelDia.push(a);
+              minutosAsignadosSemana.set(eid, (minutosAsignadosSemana.get(eid) ?? 0) + durMin);
+            }
+          }
+        }
+
+      } else {
+        // ── Greedy empresa ─────────────────────────────────────────────────────
+        // Una asignación = un empleado en el turno completo (start→end del turno).
+        // D4: no repetir en el mismo turno (strict) ni en turnos solapados.
+        // Anti-saturación y reglas hard se mantienen.
+
+        const limiteMinutosAcumHoy = new Map<string, number>();
+        empleadoIds.forEach((id) => limiteMinutosAcumHoy.set(id, 0));
+
+        for (const turno of turnosDelDia) {
+          const tStartMin = toMinutes(turno.start_time);
+          const tEndMin = toMinutes(turno.end_time);
+          const durMin = tEndMin - tStartMin;
+
+          for (const req of turno.requerimientos) {
+            if ((req.cantidad ?? 0) <= 0) continue;
+
+            const estacion = req.estacion_id ? estacionesMap.get(req.estacion_id) : null;
+            if (req.estacion_id && !estacion) {
+              logWarn(`[${fecha}] estacion_id ${req.estacion_id} no encontrada en catálogo`);
+              continue;
+            }
+
+            // a. Calificados para esta estación y con disponibilidad
+            const disponibles = oferta
+              .filter((o) => {
+                if (o.start > tStartMin || o.end < tEndMin) return false; // no cubre el turno
+                if (req.estacion_id) {
+                  const empData = empleadosDocs.find((d) => d.id === o.empleado_id)?.data();
+                  const estIds: string[] = empData?.estacion_ids ?? [];
+                  if (!estIds.includes(req.estacion_id)) return false;
+                }
+                return true;
+              })
+              .map((o) => o.empleado_id);
+
+            // b. D4: excluir empleados ya asignados a un turno solapado este día
+            const sinSolape = disponibles.filter((eid) =>
+              !estadoEmp.get(eid)!.asignaciones.some((a) =>
+                seProlapan(a.start, a.end, turno.start_time, turno.end_time)
+              )
+            );
+
+            // c. Límite de horas semanal
+            const sinExcederLimite = sinSolape.filter((eid) => {
               const limMin = limiteMinutosPorEmpleado.get(eid) ?? 0;
               if (limMin === 0) return true;
-              const yaMinutos = minutosAsignadosSemana.get(eid) ?? 0;
-              return yaMinutos + duracionTurnoMin <= limMin;
+              return (minutosAsignadosSemana.get(eid) ?? 0) + durMin <= limMin;
             });
 
-            // c. Anti-saturación
-            const sinSaturation = sinExcederLimite.filter((eid) => {
-              if (!estacion) return true;
-              const estado = estadosEmpleado.get(eid)!;
-              if (
-                estacion.max_continuo_min !== null &&
-                estado.minConsecutivosEnAlta >= estacion.max_continuo_min
-              ) {
-                const yaDescansa = estado.segmentos.some(
-                  (s) =>
-                    s.tipo === "descanso" &&
-                    seProlapan(s.start, s.end, bucket.start, bucket.end)
-                );
-                if (!yaDescansa) {
-                  const descanso: SegmentoToWrite = {
-                    empresa_id, ubicacion_id, empleado_id: eid, date: fecha,
-                    estacion_id: null, tipo: "descanso",
-                    start: bucket.start, end: bucket.end,
-                    asignacion_id: asignacionId, status: "sugerido",
-                  };
-                  estado.segmentos.push(descanso);
-                  segmentosDelDia.push(descanso);
-                  estado.minConsecutivosEnAlta = 0;
-                }
-                return false;
-              }
-              return true;
+            // d. Anti-saturación (estaciones con max_continuo_min)
+            const sinSaturacion = sinExcederLimite.filter((eid) => {
+              if (!estacion?.max_continuo_min) return true;
+              return estadoEmp.get(eid)!.minutosAlta < estacion.max_continuo_min;
             });
 
-            // d. Reglas hard de convivencia
-            const candidatos = sinSaturation.filter((eid) => {
+            // e. Reglas hard nunca_juntos
+            const candidatos = sinSaturacion.filter((eid) => {
               const reglas = reglasMap.get(eid) ?? [];
               for (const regla of reglas) {
                 if (!regla.is_strict || regla.type !== "nunca_juntos") continue;
                 const otro = regla.person_uno_id === eid ? regla.person_dos_id : regla.person_uno_id;
-                const otroEstado = estadosEmpleado.get(otro);
-                if (otroEstado?.segmentos.some((s) => s.tipo === "estacion" && seProlapan(s.start, s.end, bucket.start, bucket.end))) {
-                  return false;
-                }
+                const otroEst = estadoEmp.get(otro);
+                if (otroEst?.asignaciones.some((a) =>
+                  seProlapan(a.start, a.end, turno.start_time, turno.end_time)
+                )) return false;
               }
               return true;
             });
 
-            // e. Equidad
-            candidatos.sort((a, b) => {
-              const ma = minutosAsignadosSemana.get(a) ?? 0;
-              const mb = minutosAsignadosSemana.get(b) ?? 0;
-              if (ma !== mb) return ma - mb;
-              const fa = estadosEmpleado.get(a)?.minConsecutivosEnAlta ?? 0;
-              const fb = estadosEmpleado.get(b)?.minConsecutivosEnAlta ?? 0;
-              if (fa !== fb) return fa - fb;
-              return (estadosEmpleado.get(a)?.segmentos.length ?? 0) -
-                     (estadosEmpleado.get(b)?.segmentos.length ?? 0);
-            });
+            if (candidatos.length === 0) {
+              logWarn(`[${fecha}] Sin candidatos para ${turno.start_time}–${turno.end_time} est=${req.estacion_id ?? "general"}`);
+            }
 
-            const asignados = candidatos.slice(0, req.cantidad);
+            // f. Equidad: menos minutos semanales primero, tiebreaker aleatorio
+            const order = candidatos.map((eid) => ({
+              eid,
+              min: minutosAsignadosSemana.get(eid) ?? 0,
+              r: Math.random(),
+            }));
+            order.sort((a, b) => a.min !== b.min ? a.min - b.min : a.r - b.r);
+            const asignados = order.slice(0, req.cantidad).map((x) => x.eid);
 
             if (asignados.length < req.cantidad) {
-              huecosDelDia.push({
-                date: fecha,
-                bucket_start: bucket.start,
-                bucket_end: bucket.end,
-                estacion_id: req.estacion_id,
-                requerido: req.cantidad,
-                asignado: asignados.length,
-              });
+              logWarn(`[${fecha}] HUECO ${turno.start_time}–${turno.end_time} est=${req.estacion_id ?? "general"}: necesita ${req.cantidad}, asignados ${asignados.length}`);
+              huecosDelDia.push({ date: fecha, turno_start: turno.start_time, turno_end: turno.end_time, estacion_id: req.estacion_id, requerido: req.cantidad, asignado: asignados.length });
+            } else {
+              log(`[${fecha}] Turno ${turno.start_time}–${turno.end_time} est=${req.estacion_id}: ${asignados.length} asignados`);
             }
 
             for (const eid of asignados) {
-              const seg: SegmentoToWrite = {
+              const a: AsignacionToWrite = {
                 empresa_id, ubicacion_id, empleado_id: eid, date: fecha,
-                estacion_id: req.estacion_id, tipo: "estacion",
-                start: bucket.start, end: bucket.end,
-                asignacion_id: asignacionId, status: "sugerido",
+                estacion_id: req.estacion_id, start: turno.start_time, end: turno.end_time, status: "sugerido",
               };
-              const estado = estadosEmpleado.get(eid)!;
-              estado.segmentos.push(seg);
-              segmentosDelDia.push(seg);
-              turnoAsignadoHoy.add(eid);
+              const est = estadoEmp.get(eid)!;
+              est.asignaciones.push(a);
+              asignacionesDelDia.push(a);
+              minutosAsignadosSemana.set(eid, (minutosAsignadosSemana.get(eid) ?? 0) + durMin);
               if (estacion?.intensidad === "alta") {
-                estado.minConsecutivosEnAlta += 30;
+                est.minutosAlta += durMin;
               } else {
-                estado.minConsecutivosEnAlta = 0;
+                est.minutosAlta = 0;
               }
             }
           }
         }
       }
+
+      // 8. Escribir asignaciones del día en lotes
+      if (asignacionesDelDia.length > 0) {
+        for (let i = 0; i < asignacionesDelDia.length; i += BATCH_SIZE) {
+          const b = db.batch();
+          asignacionesDelDia.slice(i, i + BATCH_SIZE).forEach((a) => {
+            b.set(db.collection("asignaciones").doc(), {
+              ...a, active: true, createdAt: now, updatedAt: now, deletedAt: null,
+            });
+          });
+          await b.commit();
+        }
+        log(`[${fecha}] ${asignacionesDelDia.length} asignaciones escritas`);
+      }
+
+      allHuecos.push(...huecosDelDia);
+      totalCreadas += asignacionesDelDia.length;
+      diasProcesados++;
     }
 
-    // Acumular minutos de este día al contador semanal (solo empresa; congregación lo hace inline)
-    if (!esCongregacion) {
-      const empleadosAsignadosHoy = new Set(segmentosDelDia.map((s) => s.empleado_id));
-      empleadosAsignadosHoy.forEach((eid) => {
-        const minHoy = segmentosDelDia
-          .filter((s) => s.empleado_id === eid && s.tipo === "estacion")
-          .reduce((acc, s) => acc + (toMinutes(s.end) - toMinutes(s.start)), 0);
-        minutosAsignadosSemana.set(eid, (minutosAsignadosSemana.get(eid) ?? 0) + minHoy);
-      });
-    }
+    log(`Completado — ${diasProcesados} días procesados, ${totalCreadas} asignaciones creadas, ${allHuecos.length} hueco(s)`);
+    return { semana: week_start, dias_procesados: diasProcesados, asignaciones_creadas: totalCreadas, huecos: allHuecos, logs };
 
-    // Escribir segmentos del día en lotes
-    const BATCH_SIZE = 499;
-    for (let i = 0; i < segmentosDelDia.length; i += BATCH_SIZE) {
-      const batch = db.batch();
-      segmentosDelDia.slice(i, i + BATCH_SIZE).forEach((seg) => {
-        const ref = db.collection("segmentos").doc();
-        batch.set(ref, { ...seg, createdAt: now, updatedAt: now, deletedAt: null });
-      });
-      await batch.commit();
-    }
-
-    allHuecos.push(...huecosDelDia);
-    totalSegmentosCreados += segmentosDelDia.length;
-    diasProcesados++;
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    logs.push(`[ERROR] ${msg}`);
+    console.error("generarAsignaciones error:", err);
+    if (err instanceof HttpsError) throw err;
+    throw new HttpsError("internal", msg);
   }
-
-  return {
-    semana: week_start,
-    dias_procesados: diasProcesados,
-    segmentos_creados: totalSegmentosCreados,
-    huecos: allHuecos,
-  };
 });
 
 // ─── Facturación — MercadoPago ────────────────────────────────────────────────
@@ -1223,7 +563,6 @@ const PLAN_ENTITLEMENTS: Record<string, { max_empleados: number; max_sucursales:
   business: { max_empleados: -1,  max_sucursales: -1, features: ["algoritmo", "reglas", "exportaciones", "roles_finos", "sso", "api"] },
 };
 
-// Crea un preapproval (suscripción) en MercadoPago y guarda el init_point
 export const crearSuscripcion = onCall<
   { empresa_id: string; plan: string },
   Promise<{ init_point: string }>
@@ -1249,7 +588,6 @@ export const crearSuscripcion = onCall<
   const iva = Math.round(montoNeto * 0.19);
   const montoTotal = montoNeto + iva;
 
-  // Calcular trial end (7 días)
   const trialEnds = new Date();
   trialEnds.setDate(trialEnds.getDate() + 7);
 
@@ -1261,10 +599,7 @@ export const crearSuscripcion = onCall<
       frequency_type: "months",
       transaction_amount: montoTotal,
       currency_id: "CLP",
-      free_trial: {
-        frequency: 7,
-        frequency_type: "days",
-      },
+      free_trial: { frequency: 7, frequency_type: "days" },
     },
     back_url: `${backUrl}/${empresa.slug}/facturacion`,
     payer_email: empresa.mp_payer_email ?? null,
@@ -1274,10 +609,7 @@ export const crearSuscripcion = onCall<
 
   const mpRes = await fetch("https://api.mercadopago.com/preapproval", {
     method: "POST",
-    headers: {
-      Authorization: `Bearer ${MP_ACCESS_TOKEN}`,
-      "Content-Type": "application/json",
-    },
+    headers: { Authorization: `Bearer ${MP_ACCESS_TOKEN}`, "Content-Type": "application/json" },
     body: JSON.stringify(body),
   });
 
@@ -1290,9 +622,7 @@ export const crearSuscripcion = onCall<
 
   const now = admin.firestore.FieldValue.serverTimestamp();
   await db.collection("empresas").doc(empresa_id).update({
-    plan,
-    mp_preapproval_id: mpData.id,
-    subscription_status: "trialing",
+    plan, mp_preapproval_id: mpData.id, subscription_status: "trialing",
     entitlements: PLAN_ENTITLEMENTS[plan],
     trial_ends_at: admin.firestore.Timestamp.fromDate(trialEnds),
     updatedAt: now,
@@ -1301,7 +631,6 @@ export const crearSuscripcion = onCall<
   return { init_point: mpData.init_point };
 });
 
-// Cancela la suscripción activa de una empresa
 export const cancelarSuscripcion = onCall<
   { empresa_id: string },
   Promise<{ ok: boolean }>
@@ -1321,17 +650,11 @@ export const cancelarSuscripcion = onCall<
 
   const res = await fetch(`https://api.mercadopago.com/preapproval/${preapprovalId}`, {
     method: "PUT",
-    headers: {
-      Authorization: `Bearer ${MP_ACCESS_TOKEN}`,
-      "Content-Type": "application/json",
-    },
+    headers: { Authorization: `Bearer ${MP_ACCESS_TOKEN}`, "Content-Type": "application/json" },
     body: JSON.stringify({ status: "cancelled" }),
   });
 
-  if (!res.ok) {
-    const err = await res.text();
-    throw new HttpsError("internal", `MercadoPago error: ${err}`);
-  }
+  if (!res.ok) throw new HttpsError("internal", `MercadoPago error: ${await res.text()}`);
 
   await db.collection("empresas").doc(empresa_id).update({
     subscription_status: "canceled",
@@ -1341,20 +664,15 @@ export const cancelarSuscripcion = onCall<
   return { ok: true };
 });
 
-// Webhook de MercadoPago — recibe notificaciones de pago y suscripción
 export const webhookMercadoPago = onRequest(
   { region: "southamerica-west1" },
   async (req, res) => {
-    // Validar firma x-signature para prevenir spoofing
     const xSignature = req.headers["x-signature"] as string | undefined;
     const xRequestId = req.headers["x-request-id"] as string | undefined;
     const MP_WEBHOOK_SECRET = process.env.MP_WEBHOOK_SECRET;
 
     if (MP_WEBHOOK_SECRET) {
-      if (!xSignature) {
-        res.status(401).send("Firma requerida");
-        return;
-      }
+      if (!xSignature) { res.status(401).send("Firma requerida"); return; }
       const parts = xSignature.split(",");
       const ts = parts.find(p => p.startsWith("ts="))?.split("=")[1];
       const v1 = parts.find(p => p.startsWith("v1="))?.split("=")[1];
@@ -1363,25 +681,16 @@ export const webhookMercadoPago = onRequest(
         (req.body?.data?.id as string | undefined);
       const manifest = `id:${dataId ?? ""};request-id:${xRequestId ?? ""};ts:${ts ?? ""};`;
       const expected = crypto.createHmac("sha256", MP_WEBHOOK_SECRET).update(manifest).digest("hex");
-      if (v1 !== expected) {
-        res.status(401).send("Firma inválida");
-        return;
-      }
+      if (v1 !== expected) { res.status(401).send("Firma inválida"); return; }
     }
 
     const topic = req.query.topic ?? req.body?.type;
     const resourceId = req.body?.data?.id ?? req.query.id;
 
-    if (!topic || !resourceId) {
-      res.status(400).send("topic e id son requeridos.");
-      return;
-    }
+    if (!topic || !resourceId) { res.status(400).send("topic e id son requeridos."); return; }
 
     const MP_ACCESS_TOKEN = process.env.MP_ACCESS_TOKEN;
-    if (!MP_ACCESS_TOKEN) {
-      res.status(500).send("MP_ACCESS_TOKEN no configurado.");
-      return;
-    }
+    if (!MP_ACCESS_TOKEN) { res.status(500).send("MP_ACCESS_TOKEN no configurado."); return; }
 
     try {
       if (topic === "subscription_preapproval" || topic === "preapproval") {
@@ -1403,180 +712,108 @@ async function handlePreapprovalWebhook(preapprovalId: string, token: string) {
   });
   if (!mpRes.ok) return;
   const data = await mpRes.json() as { status: string; external_reference: string };
-
   const empresaId = data.external_reference;
   if (!empresaId) return;
-
   const statusMap: Record<string, string> = {
-    authorized: "active",
-    paused: "paused",
-    cancelled: "canceled",
-    pending: "pending",
+    authorized: "active", paused: "paused", cancelled: "canceled", pending: "pending",
   };
-  const newStatus = statusMap[data.status] ?? data.status;
-
   await db.collection("empresas").doc(empresaId).update({
-    subscription_status: newStatus,
+    subscription_status: statusMap[data.status] ?? data.status,
     updatedAt: admin.firestore.FieldValue.serverTimestamp(),
   });
 }
 
 async function handlePagoAutorizadoWebhook(pagoId: string, token: string) {
-  // Idempotencia: verificar si ya procesamos este pago
-  const existente = await db.collection("documentos_tributarios")
-    .where("payment_ref", "==", pagoId)
-    .limit(1)
-    .get();
-  if (!existente.empty) return; // Ya procesado
+  const existente = await db.collection("documentos_tributarios").where("payment_ref", "==", pagoId).limit(1).get();
+  if (!existente.empty) return;
 
   const mpRes = await fetch(`https://api.mercadopago.com/authorized_payments/${pagoId}`, {
     headers: { Authorization: `Bearer ${token}` },
   });
   if (!mpRes.ok) return;
 
-  const pago = await mpRes.json() as {
-    preapproval_id: string;
-    transaction_amount: number;
-    date_approved: string;
-  };
-
-  // Buscar empresa por preapproval_id
-  const empSnap = await db.collection("empresas")
-    .where("mp_preapproval_id", "==", pago.preapproval_id)
-    .limit(1)
-    .get();
+  const pago = await mpRes.json() as { preapproval_id: string; transaction_amount: number; date_approved: string };
+  const empSnap = await db.collection("empresas").where("mp_preapproval_id", "==", pago.preapproval_id).limit(1).get();
   if (empSnap.empty) return;
 
   const empresaId = empSnap.docs[0].id;
   const empresa = empSnap.docs[0].data();
-
   const montoTotal = pago.transaction_amount;
   const montoNeto = Math.round(montoTotal / 1.19);
   const iva = montoTotal - montoNeto;
-  const periodo = pago.date_approved.slice(0, 7); // YYYY-MM
-
-  // Determinar proveedor DTE configurado
+  const periodo = pago.date_approved.slice(0, 7);
   const dteProvider = empresa.dte_provider_default ?? "sii_manual";
-
   const now = admin.firestore.FieldValue.serverTimestamp();
+
   const docRef = db.collection("documentos_tributarios").doc();
   await docRef.set({
-    empresa_id: empresaId,
-    payment_ref: pagoId,
-    periodo,
+    empresa_id: empresaId, payment_ref: pagoId, periodo,
     tipo_dte: empresa.tipo_dte_default ?? "boleta",
-    monto_neto: montoNeto,
-    iva,
-    monto_total: montoTotal,
-    folio: null,
-    origen: dteProvider,
-    estado: "pendiente",
-    archivo_pdf_url: null,
-    archivo_xml_url: null,
-    emitido_at: null,
-    notificado_at: null,
-    createdAt: now,
-    updatedAt: now,
+    monto_neto: montoNeto, iva, monto_total: montoTotal,
+    folio: null, origen: dteProvider, estado: "pendiente",
+    archivo_pdf_url: null, archivo_xml_url: null,
+    emitido_at: null, notificado_at: null, createdAt: now, updatedAt: now,
   });
 
-  // Si el proveedor es OpenFactura, emitir automáticamente
   if (dteProvider === "openfactura") {
     await emitirDTEOpenFactura(docRef.id, empresaId, empresa, montoNeto, iva, montoTotal, periodo);
   }
 
-  // Marcar empresa como activa si estaba en past_due o trialing
   if (empresa.subscription_status !== "active") {
-    await db.collection("empresas").doc(empresaId).update({
-      subscription_status: "active",
-      updatedAt: now,
-    });
+    await db.collection("empresas").doc(empresaId).update({ subscription_status: "active", updatedAt: now });
   }
 }
 
 async function emitirDTEOpenFactura(
-  documentoId: string,
-  empresaId: string,
-  empresa: admin.firestore.DocumentData,
-  montoNeto: number,
-  iva: number,
-  montoTotal: number,
-  periodo: string
+  documentoId: string, empresaId: string, empresa: admin.firestore.DocumentData,
+  montoNeto: number, iva: number, montoTotal: number, periodo: string
 ) {
   const OF_API_KEY = process.env.OPENFACTURA_API_KEY;
-  if (!OF_API_KEY) {
-    console.warn("OPENFACTURA_API_KEY no configurado, DTE queda pendiente.");
-    return;
-  }
+  if (!OF_API_KEY) { console.warn("OPENFACTURA_API_KEY no configurado, DTE queda pendiente."); return; }
 
   try {
     const body = {
       Encabezado: {
         IdDoc: { TipoDTE: 39 },
         Emisor: {
-          RUTEmisor: process.env.EMISOR_RUT,
-          RznSoc: process.env.EMISOR_RAZON_SOCIAL,
-          GiroEmis: process.env.EMISOR_GIRO,
-          DirOrigen: process.env.EMISOR_DIRECCION,
+          RUTEmisor: process.env.EMISOR_RUT, RznSoc: process.env.EMISOR_RAZON_SOCIAL,
+          GiroEmis: process.env.EMISOR_GIRO, DirOrigen: process.env.EMISOR_DIRECCION,
         },
-        Receptor: {
-          RUTRecep: empresa.rut,
-          RznSocRecep: empresa.razon_social,
-          GiroRecep: empresa.giro,
-          DirRecep: empresa.direccion,
-        },
+        Receptor: { RUTRecep: empresa.rut, RznSocRecep: empresa.razon_social, GiroRecep: empresa.giro, DirRecep: empresa.direccion },
         Totales: { MntNeto: montoNeto, TasaIVA: 19, IVA: iva, MntTotal: montoTotal },
       },
-      Detalle: [{
-        NroLinDet: 1,
-        NmbItem: `Suscripción Nexturn ${empresa.plan ?? ""} — ${periodo}`,
-        QtyItem: 1,
-        PrcItem: montoNeto,
-        MontoItem: montoNeto,
-      }],
+      Detalle: [{ NroLinDet: 1, NmbItem: `Suscripción Nexturn ${empresa.plan ?? ""} — ${periodo}`, QtyItem: 1, PrcItem: montoNeto, MontoItem: montoNeto }],
     };
 
     const res = await fetch("https://api.haulmer.com/v2/dte/document", {
       method: "POST",
-      headers: {
-        "apikey": OF_API_KEY,
-        "Content-Type": "application/json",
-      },
+      headers: { "apikey": OF_API_KEY, "Content-Type": "application/json" },
       body: JSON.stringify(body),
     });
 
     if (!res.ok) {
       console.error("OpenFactura error:", await res.text());
       await db.collection("documentos_tributarios").doc(documentoId).update({
-        estado: "error",
-        updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+        estado: "error", updatedAt: admin.firestore.FieldValue.serverTimestamp(),
       });
       return;
     }
 
     const result = await res.json() as { FOLIO: string | number; PDF: string; XML: string };
-
     await db.collection("documentos_tributarios").doc(documentoId).update({
-      folio: String(result.FOLIO),
-      archivo_pdf_url: result.PDF ?? null,
-      archivo_xml_url: result.XML ?? null,
-      estado: "emitido",
-      emitido_at: admin.firestore.FieldValue.serverTimestamp(),
+      folio: String(result.FOLIO), archivo_pdf_url: result.PDF ?? null, archivo_xml_url: result.XML ?? null,
+      estado: "emitido", emitido_at: admin.firestore.FieldValue.serverTimestamp(),
       updatedAt: admin.firestore.FieldValue.serverTimestamp(),
     });
-
-    // Notificar al cliente/empresa
     await notificarDTE(documentoId, empresaId);
-
   } catch (e) {
     console.error("Error emitiendo DTE OpenFactura:", e);
     await db.collection("documentos_tributarios").doc(documentoId).update({
-      estado: "error",
-      updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+      estado: "error", updatedAt: admin.firestore.FieldValue.serverTimestamp(),
     });
   }
 }
 
-// Notifica al cliente y empresa que su DTE fue emitido
 export const notificarDTEEmitido = onCall<
   { documento_id: string },
   Promise<{ ok: boolean }>
@@ -1588,10 +825,8 @@ export const notificarDTEEmitido = onCall<
   if (!docSnap.exists) throw new HttpsError("not-found", "Documento no encontrado.");
 
   await notificarDTE(documento_id, docSnap.data()!.empresa_id);
-
   await db.collection("documentos_tributarios").doc(documento_id).update({
-    estado: "notificado",
-    notificado_at: admin.firestore.FieldValue.serverTimestamp(),
+    estado: "notificado", notificado_at: admin.firestore.FieldValue.serverTimestamp(),
     updatedAt: admin.firestore.FieldValue.serverTimestamp(),
   });
 
@@ -1599,6 +834,5 @@ export const notificarDTEEmitido = onCall<
 });
 
 async function notificarDTE(documentoId: string, empresaId: string) {
-  // Por ahora registra en consola. Integrar SendGrid/Firebase Email Extension aquí.
   console.log(`DTE ${documentoId} emitido para empresa ${empresaId}. Notificación pendiente de integración de email.`);
 }

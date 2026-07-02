@@ -1,7 +1,16 @@
 {
   "indexes": [
     {
-      "collectionGroup": "segmentos",
+      "collectionGroup": "asignaciones",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "ubicacion_id", "order": "ASCENDING" },
+        { "fieldPath": "date", "order": "ASCENDING" },
+        { "fieldPath": "deletedAt", "order": "ASCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "asignaciones",
       "queryScope": "COLLECTION",
       "fields": [
         { "fieldPath": "empleado_id", "order": "ASCENDING" },
@@ -11,29 +20,12 @@
       ]
     },
     {
-      "collectionGroup": "segmentos",
-      "queryScope": "COLLECTION",
-      "fields": [
-        { "fieldPath": "ubicacion_id", "order": "ASCENDING" },
-        { "fieldPath": "deletedAt", "order": "ASCENDING" },
-        { "fieldPath": "date", "order": "ASCENDING" }
-      ]
-    },
-    {
       "collectionGroup": "asignaciones",
       "queryScope": "COLLECTION",
       "fields": [
         { "fieldPath": "ubicacion_id", "order": "ASCENDING" },
         { "fieldPath": "date", "order": "ASCENDING" },
-        { "fieldPath": "status", "order": "ASCENDING" }
-      ]
-    },
-    {
-      "collectionGroup": "asignaciones",
-      "queryScope": "COLLECTION",
-      "fields": [
-        { "fieldPath": "ubicacion_id", "order": "ASCENDING" },
-        { "fieldPath": "date", "order": "ASCENDING" },
+        { "fieldPath": "status", "order": "ASCENDING" },
         { "fieldPath": "deletedAt", "order": "ASCENDING" }
       ]
     },
