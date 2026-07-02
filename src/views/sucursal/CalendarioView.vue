@@ -719,7 +719,7 @@ function asignacionesParaTurno(diaIdx: number, turno: Turno, estacionId: string 
   return asignaciones.value.filter(a =>
     a.date === fecha &&
     a.estacion_id === estacionId &&
-    a.start < turno.end_time && a.end > turno.start_time
+    a.start === turno.start_time && a.end === turno.end_time
   );
 }
 
@@ -733,7 +733,7 @@ function tieneSugeridosDia(diaIdx: number): boolean {
 
 // ── Sidebar de asignación (empresa) ──────────────────────────────────────────
 
-const sidebarAbierta = ref(false);
+const sidebarAbierta = ref(true);
 const sidebarAsig = ref<Asignacion | null>(null);
 const sidebarTurno = ref<Turno | null>(null);
 const sidebarEstacionId = ref<string | null>(null);
